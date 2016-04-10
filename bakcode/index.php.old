@@ -1,8 +1,0 @@
-<?php
-require_once ("./config.php");
-require_once ("./xhprof.php");
-
-require __DIR__ . '/../zbj_php/ApiCore.php';
-ApiCore::init('app',array('zbj_boss_sdk','zbj_sdk'));
-SDb::setConfigFile("./app/conf/db.php");
-ApiCore::run();

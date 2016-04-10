@@ -42,7 +42,7 @@ endfunction
 if g:isGUI
     "au GUIEnter * simalt ~x                           "窗口启动时自动最大化
     winpos 0 0                                     "指定窗口出现的位置，坐标原点在屏幕左上角
-    set lines=84 columns=214                          "指定窗口大小，lines为高度，columns为宽度
+    set lines=80 columns=217                          "指定窗口大小，lines为高度，columns为宽度
 endif
 
 "设置所有数字为十进制，不管是否以0开头
@@ -67,15 +67,12 @@ language message zh_CN.UTF-8
 set termencoding=utf-8
 set helplang=cn
 
-"set swapfile
-"set dir=/User/lstmango/.vim/bakcode/swp
 
 "显示行号
 set number
 
 "语法高亮度显示
 syntax on     
-
 
       
  "在编辑过程中，在右下角显示光标位置的状态行                       
@@ -154,17 +151,17 @@ set hidden " 允许在有未保存的修改时切换缓冲区，此时的修改�
 
 "更改备份文件目录??????????????????????????????????????????????????????????????????????????????
 "生成备份文件”
-"set backup 
+set backup 
 "重新命名备份文件的后缀为.bak” 备注: 如果°backup°选项是关闭的但°writebackup°选项是打开的, Vim还会生成一个备份文件. 但是, 一旦该文件被成功地保存它就会被自动删除.
-"et backupext=.bak 
+set backupext=.bak 
 "对原始文件进行备份”
 "set patchmode=.orig 
 "指定对原始文件进行备份的后缀”
-"et backupext=.old 
+set backupext=.old 
 
-"et backupdir=/User/lstmango/.vim/bakcode
+set backupdir=/Users/lstmango/code/bakcode
 "指定swp生成路径
-"et directory=/User/lstmango/.vim/bakcode/swp
+set directory=/Users/lstmango/code/bakcode/swp
 "--------------------------------------ctags设置
 "自动切换目录
 set autochdir
@@ -300,10 +297,14 @@ let g:ctrlp_working_path_mode = 'cra'
 
 "批量执行，高亮后C-n C-x跳过 C-p上一个 
 Bundle 'terryma/vim-multiple-cursors'
+let g:multi_cursor_next_key='<S-n>'
+let g:multi_cursor_prev_key='<S-p>'
+let g:multi_cursor_skip_key='<S-x>'
+let g:multi_cursor_quit_key='<Esc>'
 
 "git vim
 Bundle 'sjl/gundo.vim'
-nmap <silent> <A-6> :GundoToggle<CR>
+"nmap <silent> <A-7> :GundoToggle<CR>
 
 "语法检测
 Bundle 'scrooloose/syntastic'
@@ -315,8 +316,6 @@ let g:syntastic_auto_loc_list = 1
 let g:syntastic_check_on_open = 1
 let g:syntastic_check_on_wq = 0
 let g:syntastic_php_checkers = ['php', 'phpcs', 'phpmd']
-
-"Bundle 'vim-scripts/cmdline-completion'
 
 "高亮模糊匹配（没配置成功）
 "Bundle 'haya14busa/incsearch.vim'

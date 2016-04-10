@@ -1,9 +1,0 @@
-<script type="text/javascript" src="pdfobject.js"></script>
-<script type="text/javascript">
-
-      window.onload = function (){
-        var myPDF = new PDFObject({ url: "sample.pdf" }).embed("pdf");
-      };
-
-</script>
-<div id='pdf'></div>
