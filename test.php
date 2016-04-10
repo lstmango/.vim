@@ -1,4 +1,6 @@
 <?php
+
+asdf
 class IndexAction extends BaseAction{
     public function index(){
 		Load('extend'); 
