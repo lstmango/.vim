@@ -1,0 +1,846 @@
+{/capture name="title"/}{/$title/}{//capture/}
+{/assign var="headnav" value=1/}
+{/capture name="body"/}
+<style type="text/css">
+.filter-order{width: 1200px; margin-top: 10px;}
+#tasktab{margin:10px 0px;width: 1200px;}
+input[type="text"]{width:140px;margin-bottom: 0;}
+select{width:100px; margin-bottom: 0;margin-right:8px;font-size:12px;}
+#selpr,#isclose{width:70px;font-size:12px;height:auto;}
+.sort{margin-left:5px;}
+#tasksearch{font-size:14px;margin-bottom:0px;}
+#tasksearch_common{padding:10px;width:930px;}
+.tasksearch_common{box-shadow:0px -4px 4px rgba(0, 0, 0, 0.2);border-bottom:none;}
+#tasksearch_common .btn,#showadv{margin-left:10px;}
+#taskadvsearch_out{position:relative;}
+#taskadvsearch{display:none;position:absolute;width:930px;margin-top:0px;overflow:auto;background: none repeat scroll 0 0 #FFFFFF;box-shadow: 0 4px 4px rgba(0, 0, 0, 0.2),0 2px 0px rgba(0, 0, 0, 0.2);border-top:none;padding:10px;}
+#hideadv{margin-left:10px;}
+.sorted{color: #FF6600;}
+.pointer{cursor: pointer;}
+.addservice_top{ background: none repeat scroll 0 0 #FFA200; color: #FFFFFF; font-size: 12px;font-style: normal; line-height: 22px; padding: 1px 4px;} 
+#configset{text-align:center;cursor:pointer;width:32px;float: left;}
+.configset{border: 1px solid rgba(0, 0, 0, 0.2);border-bottom:none;}
+#configset_out{position:absolute;display: none;}
+{/if $smarty.get.type eq 4/}
+#configset_inner{position:absolute;top:21px;left:-165px;width:240px;background-color:#FFFFFF;border: 1px solid rgba(0, 0, 0, 0.2); border-top:none;}
+{/else/}
+#configset_inner{position:absolute;top:21px;left:-208px;width:240px;background-color:#FFFFFF;border: 1px solid rgba(0, 0, 0, 0.2); border-top:none;}
+{//if/}
+#configset_inner div{ overflow:hidden;}
+#configset_inner .configset_inner_title{float:left;border-top: 1px solid rgba(0, 0, 0, 0.2);width:198px; padding:10px 0 0 10px;}
+#configset_inner .close{float:left; padding:10px 0 0 10px;}
+#configset_inner label{font-size: 12px;float:left;margin-left:10px;width:80px;}
+#configset_inner .split{ clear:both; border-bottom:1px dashed #ccc; margin:10px 0;}
+.sort i{background:url("/assets/img/sort.png");background-repeat:no-repeat; width:7px;height:8px;display: inline-block;}
+i.sort-up{background-position:0px 0px; }
+i.sort-down{background-position:0px -20px;}
+.sorted .sort i.sort-up{background-position:0px -40px; }
+.sorted .sort i.sort-down{background-position:0px -60px;}
+.thead{position: fixed; background-color:#F3F3F3;top:55px;display: none;border-bottom-color: #CCCCCC;border-top-color: #DDDDDD; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);}
+.thead table{margin-bottom:0px;}
+#list{max-width:inherit;margin-top: 20px;}
+#list th{
+    background-color: #e4e4e4;
+    line-height: 33px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+#list th,#list td{white-space:nowrap;border: 1px solid #d7d7d7;}
+.mk-topspc{
+    margin-top: 20px;
+}
+.special,.vip,.agent,.fair-employ{ display:inline-block;height: 20px;width: 20px;margin-right: 5px;vertical-align: bottom;}
+.special {background: url("http://t5.zbjimg.com/r/page/li-ico.png?a=1005") no-repeat scroll 0 -88px transparent;}
+.vip {background: url("/assets/img/vip.jpg") no-repeat scroll 0 0 transparent;}
+.agent {background: url("/assets/img/agent.png") no-repeat scroll 0 0 transparent;}
+.fair-employ {background: url("/assets/img/fair_logo.png") no-repeat scroll 0 0 transparent;}
+.waithosted{clear:both;overflow: hidden;margin-left:10px;}
+.waithosted dl{float: left;margin-top:0;margin-bottom: 8px;width:100%;}
+.waithosted dt{font-weight:bold;}
+.waithosted dt,.waithosted dd{float: left;}
+.waithosted dd a{color:#666666;}
+.waithosted a.active{color:#0088CC;font-weight:bold;}
+.waithosted .error{color: #990000;}
+.teamseatab{margin-left: 30px;}
+.follow_day{color: #CCCCCC;}
+.view{float:left;}
+.view img{width:20px;height: 20px;cursor: pointer;}
+.red{color: #FF0000;}
+.orange{color: #FF8A00;}
+.bold{font-weight: bold;}
+.tip {background-color: #D9EDF7;border-color: #BCE8F1; border-radius: 4px 4px 4px 4px; color: #3A87AD; margin-bottom: 18px; padding: 8px 35px 8px 14px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); clear: both; font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;font-size: 12px;line-height: 20px;}
+h4 a{font-size:12px;}
+.waithosted dd a.active2{color: #FFFFFF;background-color: #3A87AD;border-radius: 3px 3px 3px 3px;display: inline-block;font-weight: bold;line-height: 14px;padding: 2px 4px;text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);vertical-align: baseline;white-space: nowrap;}
+#tasksearch_common .sitem{display: inline-block; }
+#taskadvsearch .sitem{width: 430px;height:30px;float: left;margin-right: 10px;margin-bottom: 10px;}
+</style>
+<div class="thead">
+	<table class="table transaction-table">
+		<thead>
+		{/foreach from=$fields key=key item=field/}
+		<th class="{/if $field.allowsort eq 1/}pointer{//if/}{/if $smarty.get.o eq $key/} sorted{//if/}" sortby="{/$key/}">{/$field.name/}
+		{/if $field.allowsort eq 1/}
+		<span class="sort"><i class="{/if $smarty.get.o eq $key and $smarty.get.ud eq 1/}sort-down{/else/}sort-up{//if/}"></i></span>
+		{//if/}
+		</th>
+		{//foreach/}
+		<th></th>
+		</thead>
+	</table>
+</div>
+<div class="pull-left">
+	<h3>
+		{/$title/}
+	</h3>
+</div>
+<div class="clear">&nbsp;</div>
+<!-- 待受理 -->
+<form id="tasksearch" class="form-inline" action="/wjtask/tasklist">
+<div id="tasksearch_common">
+    <div>
+        {/include file="wjtask/manager.html"/}
+        {/include file="wjtask/sct.html"/}
+        <a id="showadv" href="javascript:void(0);">高级</a>
+        <input type="submit" value="筛选" class="btn normal-submit">
+    </div>
+    {/include file="wjtask/inc/search-filter.html"/}
+</div>
+<ul class="nav nav-tabs" id="tasktab" style="font-size:12px">
+	<li ><a href="/wjtask/taskcase" type="0">任务面板</a></li>
+	{/foreach from=$types key=key item=item/}
+	<li class="{/if $key eq $smarty.get.type/}active{//if/}{/if $key eq 1/} teamseatab{//if/}{/if $key eq 9/} centerseatab{//if/}">
+		<a href="/wjtask/tasklist" type="{/$key/}">{/$item/}</a>
+	</li>
+	{//foreach/}
+	<li><a href="/wjtask/giveUpList?state=-1" type="0">放弃库</a></li>
+	<li class="teamseatab"><a href="/wjtask/auditrefund?audit_state=-1" type="0">关闭库</a></li>
+    <li ><a href="/wjtask/tongji?uid={/$smarty.get.uid/}&own={/$smarty.get.own/}" type="0">统计台</a></li>
+    <li><a href="/wjtask/PubReasonList?state=-2" type="0">B类派单的需求</a></li>
+	<li><a href="/wjtask/PubReasonList?state=-2" type="10">直接公开的需求</a></li>
+
+</ul>
+<!-- 筛选区 -->
+<div class="clear">&nbsp;</div>
+<div class="filter-order">
+    {/if $smarty.get.type eq 1/}
+    <span class="filter-select-warp">
+        任务状态：
+        <select name="taskstate" class="filter-order-select">
+            <option value="0">所有</option>
+            <option value="2" {/if $smarty.get.taskstate eq 2/}selected{//if/}>已发布</option>
+            <option value="1" {/if $smarty.get.taskstate eq 1/}selected{//if/}>未发布</option>
+        </select>
+    </span>
+    {//if/}
+    <span class="filter-select-warp">
+        TOP订单：
+        <select name="top_order_tag" class="filter-order-select">
+            <option value="0">所有</option>
+            <option value="2" {/if $smarty.get.top_order_tag eq 2/}selected{//if/}>是</option>
+            <option value="1" {/if $smarty.get.top_order_tag eq 1/}selected{//if/}>否</option>
+        </select>
+    </span>
+    <span class="filter-select-warp">
+        2是否商机订单：
+        <select name="task_source" class="filter-order-select">
+            <option value="0">所有</option>
+            <option value="1" {/if $smarty.get.task_source eq 1/}selected{//if/}>是</option>
+            <option value="2" {/if $smarty.get.task_source eq 2/}selected{//if/}>否</option>
+        </select>
+    </span>
+    {/if $smarty.get.type eq 1 or $smarty.get.type eq 3/}
+    <span class="filter-select-warp">
+        派单类型：
+        <select name="recstatus" class="filter-order-select">
+            <option value="0">所有</option>
+            <option value="1" {/if $smarty.get.recstatus eq 1/}selected{//if/}>派单中</option>
+            <option value="2" {/if $smarty.get.recstatus eq 2/}selected{//if/}>已派单</option>
+            <option value="3" {/if $smarty.get.recstatus eq 3/}selected{//if/}>未派单</option>
+        </select>
+    </span>
+    {//if/}
+    <input type="hidden" name="type" value="{/$smarty.get.type/}">
+    <input type="hidden" name="own" value="{/$smarty.get.own/}">
+    <input type="hidden" name="o" value="{/$smarty.get.o/}">
+    <input type="hidden" name="ud" value="{/$smarty.get.ud/}">
+    <input type="hidden" name="amount" value="0">
+    <input type="hidden" name="pa" value="-2">
+    <input type="hidden" name="isclose" value="0">
+    <input type="hidden" name="closereason" value="-1">
+    <input type="hidden" name="refundreason" value="-1">
+    <input type="hidden" name="isext" value="0">
+    <input type="hidden" name="seday" value="0">
+    <input type="hidden" name="sstate" value="0">
+    <input type="hidden" name="smode" value="0">
+    <input type="hidden" name="etype" value="0">
+    <input type="hidden" name="olevel" value="0">
+    <input type="hidden" name="mode" value="0">
+    <input type="hidden" name="isfollow" value="0">
+    <input type="hidden" name="source" value="0">
+    <input type="hidden" name="etime" value="0">
+    <input type="hidden" name="fstatus" value="">
+    <input type="hidden" name="estatus" value="100">
+    <input type="hidden" name="otype" value="0">
+    <input type="hidden" name="ostatus" value="0">
+    <input type="hidden" name="atype" value="0">
+    <input type="hidden" name="htype" value="0">
+    <input type="hidden" name="v" value="0">
+    <input type="hidden" name="cuh" value="0">
+    <input type="hidden" name="isdelay" value="0">
+    <input type="hidden" name="atk" value="0">
+    <input type="hidden" name="nt" value="0">
+    <input type="hidden" name="zjtk" value="0">
+    <input type="hidden" name="fullzjtk" value="0">
+    <input type="hidden" name="fwarn" value="0">
+    <input type="hidden" name="ewarn" value="0">
+    <input type="hidden" name="inseatime" value="0">
+    <input type="hidden" name="isyun" value="0">
+    <input type="hidden" name="nallot" value="0">
+    <input type="hidden" name="expriestimes" value="0">
+    <input type="hidden" name="gstatus" value="0">
+</div>
+</form>
+<!--警示框-->
+    <div class="alert mk-topspc">
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+        Tips ！  A类派单：顾问完善梳理后的需求进行派单； B类派单：顾问直接公开的需求进行派单； C类派单：审核人员审核后的需求进行派单；
+    </div>
+<!-- 列表 -->
+<table id="list" class="table transaction-table">
+	<thead>
+		<tr>
+			{/foreach from=$fields key=key item=field/}
+			<th><span class="{/if $field.allowsort eq 1/}pointer{//if/}{/if $smarty.get.o eq $key/} sorted{//if/}" sortby="{/$key/}">
+                {/$field.name/}
+				{/if $field.allowsort eq 1/}
+				<span class="sort"><i class="{/if $smarty.get.o eq $key and $smarty.get.ud eq 1/}sort-down{/else/}sort-up{//if/}"></i></span>
+				{//if/}</span>
+				<div class="filter">
+					{/if $key eq 'amount'/}
+					<select id="sel_amount">
+						<option value="0">全部</option>
+						<option value="1">=0</option>
+						<option value="2">0<赏金≤500</option>
+						<option value="3">500<赏金≤1000</option>
+						<option value="4">1000<赏金≤5000</option>
+						<option value="5">5000<赏金≤10000</option>
+						<option value="6">10000＜赏金≤50000</option>
+						<option value="7">≥50000</option>
+					</select>
+					{/elseif $key eq 'pub_isorder'/}
+					<select id="sel_pa">
+						<option value="-2">全部</option>
+						<option value="0">未设置</option>
+						<option value="90">高</option>
+						<option value="50">中</option>
+						<option value="10">低</option>
+						<option value="-1">放弃</option>
+					</select>
+					{/elseif $key eq 'open_state'/}
+					<select id="sel_isclose">
+						<option value="-1">全部</option>
+						<option value="0" selected="selected">正常</option>
+						<option value="1">关闭</option>
+					</select>
+					{/elseif $key eq 'refused'/}
+					<select id="sel_closereason">
+						<option value="-1">全部</option>
+						{/html_options options=$refused_reason/}
+					</select>
+					{/elseif $key eq 'refund_option'/}
+					<select id="sel_refundreason">
+						<option value="-1">全部</option>
+						{/html_options options=$refund_option_reason/}
+					</select>
+					{/elseif $key eq 'ext_num'/}
+					<select id="sel_isext">
+						<option value="0">全部</option>
+						<option value="1">正常投标</option>
+						<option value="2">延期投标</option>
+					</select>
+					{/elseif $key eq 'ext_selectime'/}
+					<select id="sel_seday">
+						<option value="0">全部</option>
+						{/foreach from=range(1,7) item=day/}
+						<option value="{/$day/}">选标期第{/$day/}天</option>
+						{//foreach/}
+						<option value="-1">超期</option>
+					</select>
+					{/elseif $key eq 'endtime' and $smarty.get.type eq 5/}
+					<select id="sel_etime">
+						<option value="0">全部</option>
+						{/foreach from=range(1,3) item=day/}
+						<option value="{/$day/}">剩{/$day/}天截止</option>
+						{//foreach/}
+						<option value="-1">其它</option>
+					</select>
+					{/elseif $key eq 'select_state'/}
+					<select id="sel_sstate">
+						<option value="0">全部</option>
+						<option value="1">正常待选标</option>
+						<option value="2">超期待选标</option>
+						<option value="3">社会化选标中</option>
+						<option value="4">作弊成立待选标</option>
+					</select>
+					{/elseif $key eq 'is_sysselect'/}
+					<select id="sel_smode">
+						<option value="0">全部</option>
+						<option value="1">正常选标</option>
+						<option value="2">超期选标</option>
+						<option value="3">社会化选标</option>
+					</select>
+					{/elseif $key eq 'end_type'/}
+					<select id="sel_etype">
+						<option value="0">全部</option>
+						<option value="1">正常交易成功</option>
+						<option value="2">投标延期后交易成功</option>
+						<option value="3">社会化选标完成</option>
+						<option value="4">免费需求完成</option>
+						<option value="5">退款</option>
+						<option value="6">结束需求</option>
+						<option value="7">取消交易</option>
+					</select>
+					{/elseif $key eq 'oldlevel'/}
+					<select id="sel_olevel">
+						<option value="0">全部</option>
+						{/html_options options=$levels/}
+					</select>
+					{/elseif $key eq 'mode'/}
+					<select id="sel_mode">
+						<option value="0">全部</option>
+						<option value="1">比稿(单人)</option>
+						<option value="2">比稿(多人)</option>
+						<option value="3">计件</option>
+						<option value="4">服务</option>
+						<option value="5">雇佣</option>
+						<option value="6">招标</option>
+					</select>
+					{/elseif $key eq 'is_follow'/}
+					<select id="sel_isfollow" style="display: none;">
+						<option value="0">全部</option>
+						<option value="1">新订单</option>
+						<option value="2">已跟进</option>
+					</select>
+					{/elseif $key eq 'phone_type'/}
+					<select id="sel_source">
+						<option value="0">全部</option>
+						<option value="1">WEB端</option>
+						<option value="2">android端</option>
+						<option value="3">ios端</option>
+						<option value="4">win8端</option>
+					</select>
+                    {/elseif $key eq 'expriestime'/}
+                    <select id="sel_expriestimes">
+                        <option value="0">全部</option>
+                        <option value="1">今天</option>
+                        <option value="2">明天</option>
+                        <option value="3">后天</option>
+                        <option value="4">近三天</option>
+                        <option value="5">近7天</option>
+                        <option value="6">已超期</option>
+                    </select>
+                    {/elseif $key eq 'giveup_status'/}
+                    <select id="sel_gstatus">
+                        <option value="0">所有</option>
+                        <option value="1">正常</option>
+                        <option value="2">已放弃</option>
+                    </select>
+					{//if/}
+				</div>
+			</th>
+			{//foreach/}
+            {/if $smarty.get.type eq 8/}
+            <th>操作
+                <div style="width:80px;display:none">
+                    {/if $smarty.get.type eq 4/}
+                    <div class="view">
+                        <img src="/assets/img/default_{/if $smarty.get.v eq 1/}on{/else/}off{//if/}.png" alt="默认视图" title="默认视图" value="1">
+                        <img src="/assets/img/follow_{/if $smarty.get.v eq 2/}on{/else/}off{//if/}.png" alt="跟进视图" title="跟进视图" value="2">
+                    </div>
+                    {//if/}
+                    <div id="configset">
+                        <img src="/assets/img/options.png" width="15" height="15"></div>
+                    <div id="configset_out">
+                        <div id="configset_inner">
+                            <form method="post" action="{/str_replace(array('&v=1','&v=2'),'&v=0',$smarty.server.REQUEST_URI)/}">
+                                <div><div class="configset_inner_title">属性</div><div class="close">×</div></div>
+                                <div class="split"></div>
+                                <div style="padding:10px;">
+                                    {/foreach from=$allfields key=key item=field/}
+                                    <label class="checkbox"><input type="checkbox" name="field[]" value="{/$key/}" {/if $key eq 'title'/}disabled="true"{//if/} {/if in_array($key,$fields_key)/}checked="true"{//if/} isdefault="{/$field.isdefault/}">{/$field.name/}</label>
+                                    {//foreach/}
+                                </div>
+                                <div class="split"></div>
+                                <div class="pull-right" style="padding:0 10px 10px 0;"><input type="button" value="恢复默认" class="btn recover">&nbsp;<input type="submit" value="确定" class="btn btn-primary"></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </th>
+            {//if/}
+
+		</tr>
+	</thead>
+	{/foreach from=$list item=task/}
+	<tr {/if $task.expries_tag eq 1/}class="highlight-bg"{//if/}>
+		{/foreach from=$fields key=key item=field/}
+		{/if $key eq 'title'/}
+			<td title="{/$task.$key/}" class="task-id-{/$task.task_id/}">
+				{/if $task.top_order_tag eq 1/}<i class="icon-top-min" title="TOP订单"></i>{//if/}
+				{/if $task.is_produced_by_chance eq 1/}<img src="http://cms.zbjimg.com/boss/task/icon_3.png"/>{//if/}
+				{/if $task.is_mall gt 0/}<span class="badge  bg-red" style="background:red;" title="优选商城需求">优</span>{//if/}
+				{/if $task.recmd_status eq 1/}<span class="badge  bg-red" style="background:red;" title="派单中">派单中</span>{//if/}
+				{/if $task.giveuptimetype eq 1/}<span class="order-state order-state-3h" title="跟进不足3h的放弃订单">跟进不足3h的放弃订单</span>{//if/}
+				{/if $task.giveuptype eq 1/}<span class="order-state order-state-nocontact" title="未联系上雇主的放弃订单">未联系上雇主的放弃订单</span>{//if/}
+				{/if $task.recmd_status eq 2/}<span class="badge  bg-red" style="background:red;" title="已派单">已派单</span>{//if/}
+				{/if $task.out_id eq 1/}<span class="badge  bg-red" style="background:red;">包</span>{//if/}
+				{/if $task.was_pack gt 0/}<span class="special" title="专场需求"></span>{//if/}
+				{/if $task.ht eq 2/}<span class="fair-employ" title="市集雇佣"></span>{//if/}
+				{/if $task.isadvc eq 1/}<span class="vip" title="金牌需求"></span>{//if/}
+				{/if $task.ht eq 1/}<span class="agent" title="经纪人"></span>{//if/}
+				{/if $task.isurgent eq 1/}<span class="badge  bg-red" style="background:red;" title="加急客户">加急客户</span>{/elseif $task.isurgent eq 2/}<span class="badge  bg-red" style="background:red;" title="重点客户">重点客户</span>{//if/}
+
+				<!--招标派单类型-->
+				{/if $task.mode eq 13/}
+					{/if $task.recmd_type eq 0 and $task.recmd_status neq 0/}
+						<span class="badge  bg-red" style="background:red;" title="A类派单">A类派单</span>
+					{//if/}
+					{/if $task.recmd_type eq 1/}
+						<span class="badge  bg-red" style="background:red;" title="B类派单">B类派单</span>
+					{//if/}
+					{/if $task.recmd_type eq 2/}
+						<span class="badge  bg-red" style="background:red;" title="C类派单">C类派单</span>
+					{//if/}
+				{//if/}
+
+                <a href="/task/lastview-id-{/$task.task_id/}.html" target="_blank"
+                                              class="task_title">{/$task.$key|truncate:15/}</a>
+			</td>
+		{/elseif $key eq 'user_id' or $key eq 'succeed_user_id'/}
+			<td>{/if $task.$key/}<a href="/user/view-uid-{/$task.$key/}" target="_blank">{/$task.$key|user:'brand'/}</a>{/else/}无{//if/}</td>
+		{/elseif $key eq 'state'/}
+			<td>{/if $task.amount eq 0/}免费需求{/else/}{/if $task.state eq 2 && $task.hosted eq 0/}待托管
+			{/elseif $task.state eq 2 && $smarty.now ge $task.starttime && $smarty.now lt $task.endtime/}投标中
+			{/elseif $task.state eq 2 && $smarty.now lt $task.ext_selectime/}待选标
+	        {/elseif $task.state eq 2 && $smarty.now gt $task.ext_selectime/}超期
+			{/elseif $task.state eq 3/}已选标
+			{/elseif $task.state eq 4/}交易完成
+			{//if/}{//if/}</td>
+		{/elseif in_array($key,array('createtime','hosted_time','endtime','ext_selectime','close_time','latest_recommend_time'))/}
+			<td>
+			{/if $task.$key/}
+				{/'Y-m-d H:i'|date:$task.$key/}
+			{/else/}
+				无
+			{//if/}
+			</td>
+		{/elseif $key eq 'publicity_begintime'/}<td>
+			{/if $task.publicity_outime/}
+				{/'Y-m-d H:i'|date:($task.publicity_outime-259200)/}
+			{/else/}
+				无
+			{//if/}</td>
+		{/elseif $key eq 'expriestime'/}
+			<td title="{/'Y-m-d H:i'|date:$task.$key/}">
+				<div>{/$task.expriesstr/}</div>
+				<div>{/$task.sea_surplus/}</div>
+			</td>
+		{/elseif $key eq 'eexpriestime'/}
+			<td title="{/'Y-m-d H:i'|date:$task.$key/}">
+				<div>{/$task.eexpriesstr/}</div>
+			</td>
+		{/elseif $key eq 'mode'/}
+			<td>{/if $task.$key eq 10/}{/if $task.allot eq 1/}比稿(单人){/elseif $task.allot eq 2/}比稿(多人){/elseif $task.allot eq 3/}计件{//if/}{/elseif $task.$key eq 11/}服务{/elseif $task.$key eq 12/}雇佣{/elseif $task.$key eq 13/}招标{//if/}</td>
+		{/elseif $key eq 'ispic'/}
+			<td>
+				{/if $task.mode eq 10/}
+					{/if $task.$key eq 2/}招标{/else/}比稿{//if/}
+				{/elseif $task.mode eq 13/}
+				招标
+				{/else/}
+				雇佣/服务
+				{//if/}
+			</td>
+		{/elseif $key eq 'category_id'/}
+			<td {/if $categorys[$task.$key]/}title="{/$categorys[$task.category1id]['category_name']/}>{/$categorys[$task.category2id]['category_name']/}>{/$categorys[$task.$key]['category_name']/}"{//if/}>{/$categorys[$task.$key]['category_name']/}</td>
+		{/elseif $key eq 'isgpay'/}
+			<td>{/if $task.$key eq 1/}是{/else/}否{//if/}</td>
+		{/elseif $key eq 'allot'/}
+			<td>{/if $task.$key eq 1/}单人{/elseif $task.$key eq 2/}多人{/elseif $task.$key eq 3/}计件{//if/}</td>
+		{/elseif $key eq 'addservice'/}<td>
+			{/if $task.was_nosearch neq 1 and $task.was_showorks neq 1 and $task.was_promotion neq 1/}
+				无
+			{/else/}
+				{/if $task.was_nosearch eq 1/}<img src="/assets/img/nosearch.png" title="屏蔽搜索">{//if/}
+				{/if $task.was_showorks eq 1/}<img src="/assets/img/hideworks.png" title="隐藏交稿">{//if/}
+				{/if $task.was_promotion eq 1/}<i title="置顶">顶</i>{//if/}
+			{//if/}</td>
+		{/elseif $key eq 'audit_type'/}
+			<td>{/if $task.hosted eq 1 and $task.issys eq 0/}跟进后担保{/elseif $task.hosted eq 1/}自动担保{/else/}未处理{//if/}</td>
+		{/elseif $key eq 'pub_isorder' or  $key eq 'pub_isrenounce'/}
+			<td>{/if $task.$key eq -1/}放弃{/elseif $task.$key eq 10/}低{/elseif $task.$key eq 50/}中{/elseif $task.$key eq 90/}高{/else/}未设置{//if/}</td>
+		{/elseif $key eq 'open_state'/}
+			<td>{/if $task.$key eq 0/}正常{/elseif $task.$key eq 1/}关闭{//if/}</td>
+		{/elseif $key eq 'ext_num'/}
+			<td>{/if $task.ext_num eq 0/}正常投标{/else/}延期投标{//if/}</td>
+		{/elseif $key eq 'select_state'/}
+			<td>{/if $task.is_sysselect eq 0 and $task.sysselect_reason eq 1/}作弊成立待选标{/elseif $task.is_sysselect eq 1/}社会化选标中{/if $task.sys_state/}({/$task.sys_state/}){//if/}{/elseif $task.ext_selectime lt $smarty.now/}超期待选标{/else/}正常待选标{//if/}{/$task.is_tk/}
+			</td>
+		{/elseif $key eq 'is_sysselect'/}
+			<td>{/if $task.is_sysselect eq 1/}社会化选标{/elseif $task.ext_selectime lt ($task.publicity_outime-259200)/}超期选标{/else/}正常选标{//if/}</td>
+		{/elseif $key eq 'end_type'/}
+			<td>{/if $task.ext_num gt 0/}投标延期后交易成功{/elseif $task.is_sysselect eq 1/}社会化选标完成{/elseif $task.amount eq 0/}免费需求完成{/elseif $task.refund_state neq 0/}退款{/elseif $task.end_type eq 4/}结束需求{/elseif $task.end_type eq 2 or $task.end_type eq 5/}取消交易{/else/}正常交易成功{//if/}</td>
+		{/elseif $key eq 'report_num'/}
+			<td><a href="/task/lastview-id-{/$task.task_id/}-t-6.html" target="_blank">{/(int)$report_num[$task.task_id]/}</a></td>
+		{/elseif $key eq 'report_dispose'/}
+			<td><a href="/task/lastview-id-{/$task.task_id/}-t-6.html" target="_blank">{/(int)$report_dispose[$task.task_id]/}</a></td>
+		{/elseif $key eq 'remark'/}
+			<td title="{/$task.$key/}">{/$task.$key|truncate:10/}</td>
+		{/elseif $key eq 'industry_id'/}
+			<td>{/$task.tag_name/}</td>
+		{/elseif $key eq 'issea'/}
+			<td>{/if $task.$key eq 0/}{/elseif $task.$key eq 1/}小组公海{/elseif $task.$key eq 2/}中心公海{//if/}</td>
+		{/elseif in_array($key,array('level','oldlevel','sys_level'))/}
+			<td>{/$levels[$task.$key]/}</td>
+		{/elseif in_array($key,array('elevel'))/}
+			<td>{/$elevels[$task.$key]/}</td>
+		{/elseif $key eq 'is_follow'/}
+			<td>{/if $task.issys eq 0/}已跟进{/else/}新订单{//if/}</td>
+		{/elseif $key eq 'phone_type'/}
+			<td>{/if $task.$key eq 0/}WEB端{/elseif $task.$key eq 1/}android端{/elseif $task.$key eq 2/}ios端{/elseif $task.$key eq 3 or $task.$key eq 4/}win8端{//if/}</td>
+		{/elseif in_array($key,array('first_follow','second_follow','third_follow','last_follow'))/}
+			<td title="{/$task.$key['remark']/}">
+				{/if $task.$key/}
+				<div>（{/if $levels[$task.$key['oldlevel']]/}{/$levels[$task.$key['oldlevel']]/}->{//if/}{/$levels[$task.$key['level']]/}）{/$task.$key['remark']|truncate:10/}</div>
+				<div class="follow_day">
+					{/if $task.$key['dateline']/}
+					<span>{/$task.$key['dateline']|datetime:'Y-m-d'/}</span>
+					<span>第{/$task.$key['order']/}天</span>
+					{//if/}
+				</div>
+				{/else/}
+				没有跟进记录
+				{//if/}
+			</td>
+		{/elseif $key eq 'recommend_status'/}
+			<td>
+				{/foreach from=$task.$key key=type item=num/}
+				<div>{/$actiontype[$type]/}：{/$num/}</div>
+				{//foreach/}
+			</td>
+		{/else/}
+			<td>{/$task.$key/}</td>
+		{//if/}
+		{//foreach/}
+        {/if $smarty.get.type eq 8/}
+        <td>
+        {/if $task.audit_state eq 4/}
+            <a href="/task/lastview-id-{/$task.task_id/}.html" target="_blank" class="task_title">
+                受理
+            </a>
+        {/else/}
+            <a href={/if $smarty.get.type eq
+            8/}"javascript:;"{/else/}"/task/lastview-id-{/$task.task_id/}.html" target="_blank"{//if/}
+            class="task_title {/if $smarty.get.type eq 8/}j-trace-click{//if/}"
+            data-taskid="{/$task.task_id/}">
+            跟进
+            </a>
+        {//if/}
+        </td>
+        {//if/}
+	</tr>
+	{//foreach/}
+</table>
+<div id="myModal" class="modal hide fade modal-body-auto" tabindex="-1" role="dialog" aria-labelledby="myModalLabel"
+     aria-hidden="true">
+    <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+        <h3 id="myModalLabel">跟进记录</h3>
+    </div>
+    <div class="modal-body" id="myModal-body">
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-primary" id="j-myModal-submit">提交</button>
+    </div>
+</div>
+
+<div class="pagination-total">共找到 {/if $total/}{/$total/}{/else/}0{//if/} 个符合条件的交易</div>
+{/$pagebar/}
+<script type="text/javascript">
+var task_id_list = [];
+{/foreach from=$list item=task/}
+task_id_list.push({/$task.task_id/});
+{//foreach/}
+if (task_id_list.length!=0){
+
+$.ajax({
+			url:'/task/specialtasklist',
+			type:'post',
+			data:"task_id_list="+task_id_list,
+			dataType:'json',
+			success:function(data){
+			   if(data.length >0){
+			   	for(var i = 0;i<data.length;i++){
+			   		var task_id = data[i]['task_id'];
+			   		$(".task-id-"+task_id).prepend('<span class="badge  bg-red" style="background:red;">特</span>');
+			   	}
+				   
+			   }
+			}
+			
+		});}
+$(".cat select[name='cat1'],.cat select[name='cat2']").change(function(){
+	var _this = $(this);
+	var val = _this.val();
+	var html='<option value="0">全部</option>';
+	if(val!=0){
+		$.getJSON("/apitask/getchildcategory",{"pid":val},function(d){
+			var selval2="{/$smarty.get.cat2/}";
+			var selval3="{/$smarty.get.cat3/}";
+			_this.nextAll("select").html(html);
+			for(var i=0;i<d.data.length;i++){
+				var selhtml='';
+				if(selval2==d.data[i]["category_id"]||selval3==d.data[i]["category_id"]){
+					selhtml=' selected="selected" ';
+				}
+				html+='<option value="'+d.data[i]["category_id"]+'" '+selhtml+'>'+d.data[i]["category_name"]+'</option>';
+			}
+			_this.next("select").html(html);
+			_this.next("select").change();
+		});
+	}else{
+		_this.next("select").html(html);
+	}
+});
+$("#showadv").click(function(){
+	$("#taskadvsearch").slideDown();
+	$("#tasksearch_common").addClass("tasksearch_common");
+	$(".normal-submit").hide();
+	$("#showadv").hide();
+	$("#configset_inner .close").click();
+});
+$("#hideadv").click(function(){
+	$("#taskadvsearch").slideUp("normal",function(){
+		$("#tasksearch_common").removeClass("tasksearch_common");
+		$(".normal-submit").show();
+		$("#showadv").show();
+	});
+});
+//切换标签
+$("#tasktab a").click(function(){
+	var type = $(this).attr("type");
+	var get="&type="+type;
+	{/foreach from=array('own','gid','uid','sct','ect','timetype','ssltt', 'esltt', 'sdt', 'edt') item=item/}
+	get+="&{/$item/}={/$smarty.get.$item/}";
+	{//foreach/}
+	if($(this).attr("type")==3 || $(this).attr("type")==4 || $(this).attr("type")==5){
+		get+="&fwarn=1&astatus=3";
+	}
+	$(this).attr('href', function(i,h){
+		return h.indexOf('?')>=0 ? h+get : h +'?' + get;
+	});
+	// window.open("/wjtask/tasklist?"+get,'_self');
+
+});
+
+
+$("#fwarn a[val!=1]").click(function(){
+	$("#tasksearch input[name='fst']").val("");
+	$("#tasksearch input[name='fet']").val("");
+});
+//配置
+$("#configset").click(function(){
+	$("#configset_out").show();
+	$("#configset").addClass("configset");
+});
+$("#configset_inner .close").click(function(){
+	$("#configset_out").hide();
+	$("#configset").removeClass("configset");
+});
+$("#configset_inner .recover").click(function(){
+	$("#configset_inner input[type='checkbox']:not([disabled])").removeAttr("checked");
+	$("#configset_inner input[type='checkbox'][isdefault=1]").attr("checked","true");
+});
+$("#configset_inner .btnconfig").click(function(){
+});
+//排序
+$(".pointer").click(function(){
+	var o = $("#tasksearch input[name='o']").val();
+	var ud = $("#tasksearch input[name='ud']").val();
+	var sortby=$(this).attr("sortby");
+	if(o==sortby){
+		$("#tasksearch input[name='ud']").val((parseInt(ud)+1)%2);
+	}else{
+		$("#tasksearch input[name='o']").val(sortby);
+		$("#tasksearch input[name='ud']").val(0);
+	}
+	$("#tasksearch").submit();
+});
+//内部筛选
+$(".filter select").change(function(){
+	var name=$(this).attr("id").replace("sel_","");
+	$("#tasksearch input[name='"+name+"']").val($(this).val());
+	if(name=='closereason'){
+		$("#sel_isclose").val(1);
+		$("#tasksearch input[name='isclose']").val(1);
+	}
+	if(name=='refundreason'){
+		$("#tasksearch input[name='zjtk']").val(0);
+		$("#tasksearch input[name='fullzjtk']").val(0);
+	}
+
+    if($(this).val() != ''){
+        $("#tasksearch").submit();
+    }
+
+});
+//绑定
+$("#gid").val({/$smarty.get.gid/});
+$("#uid").val({/$smarty.get.uid/});
+$("#tasksearch input[name='sht']").val("{/$smarty.get.sht/}");
+$("#tasksearch input[name='eht']").val("{/$smarty.get.eht/}");
+$("#tasksearch input[name='sbet']").val("{/$smarty.get.sbet/}");
+$("#tasksearch input[name='ebet']").val("{/$smarty.get.ebet/}");
+$("#tasksearch input[name='sset']").val("{/$smarty.get.sset/}");
+$("#tasksearch input[name='eset']").val("{/$smarty.get.eset/}");
+$("#tasksearch input[name='spt']").val("{/$smarty.get.spt/}");
+$("#tasksearch input[name='ept']").val("{/$smarty.get.ept/}");
+$("#tasksearch input[name='spyt']").val("{/$smarty.get.spyt/}");
+$("#tasksearch input[name='epyt']").val("{/$smarty.get.epyt/}");
+$("#tasksearch input[name='fst']").val("{/$smarty.get.fst/}");
+$("#tasksearch input[name='fet']").val("{/$smarty.get.fet/}");
+$("#tasksearch input[name='rfst']").val("{/$smarty.get.rfst/}");
+$("#tasksearch input[name='rfet']").val("{/$smarty.get.rfet/}");
+$("#tasksearch input[name='est']").val("{/$smarty.get.est/}");
+$("#tasksearch input[name='eet']").val("{/$smarty.get.eet/}");
+$("#tasksearch input[name='rest']").val("{/$smarty.get.rest/}");
+$("#tasksearch input[name='reet']").val("{/$smarty.get.reet/}");
+$("#tasksearch input[name='stk']").val("{/$smarty.get.stk/}");
+$("#tasksearch input[name='etk']").val("{/$smarty.get.etk/}");
+if("{/$smarty.get.was_nosearch/}"=="1"){
+	$("#tasksearch input[name='was_nosearch']").attr("checked",true);
+}else{
+	$("#tasksearch input[name='was_nosearch']").attr("checked",false);
+}
+if("{/$smarty.get.was_showorks/}"=="1"){
+	$("#tasksearch input[name='was_showorks']").attr("checked",true);
+}else{
+	$("#tasksearch input[name='was_showorks']").attr("checked",false);
+}
+if("{/$smarty.get.was_promotion/}"=="1"){
+	$("#tasksearch input[name='was_promotion']").attr("checked",true);
+}else{
+	$("#tasksearch input[name='was_promotion']").attr("checked",false);
+}
+if("{/$smarty.get.gk/}"=="1"){
+	$("#tasksearch input[name='gk']").attr("checked",true);
+}else{
+	$("#tasksearch input[name='gk']").attr("checked",false);
+}
+$("#tasksearch input[name='allot[]']").attr("checked",false);
+{/foreach from=$smarty.get.allot item=item/}
+$("#tasksearch input[name='allot[]'][value={/$item/}]").attr("checked",true);
+{//foreach/}
+{/if isset($smarty.get.isgpay)/}
+$("#tasksearch input[name='isgpay'][value={/$smarty.get.isgpay/}]").attr("checked",true);
+{//if/}
+$("#vip").attr("checked",{/if $smarty.get.vip eq 1/}true{/else/}false{//if/});
+$(".cat select[name='cat1']").val({/$smarty.get.cat1/});
+$(".cat select[name='cat1']").change();
+$("#tasksearch input[name='sct']").val("{/$smarty.get.sct/}");
+$("#tasksearch input[name='ect']").val("{/$smarty.get.ect/}");
+
+$("#sel_amount,#tasksearch input[name='amount']").val({/$smarty.get.amount/});
+$("#sel_pa,#tasksearch input[name='pa']").val({/$smarty.get.pa/});
+$("#sel_isclose,#tasksearch input[name='isclose']").val({/$smarty.get.isclose/});
+$("#sel_closereason,#tasksearch input[name='closereason']").val({/$smarty.get.closereason/});
+{/if $smarty.get.zjtk neq 0 or $smarty.get.fullzjtk neq 0/}
+$("#sel_refundreason,#tasksearch input[name='refundreason']").val(189);
+{/else/}
+$("#sel_refundreason,#tasksearch input[name='refundreason']").val({/$smarty.get.refundreason/});
+{//if/}
+$("#sel_isext,#tasksearch input[name='isext']").val({/$smarty.get.isext/});
+$("#sel_seday,#tasksearch input[name='seday']").val({/$smarty.get.seday/});
+$("#sel_etime,#tasksearch input[name='etime']").val({/$smarty.get.etime/});
+$("#sel_sstate,#tasksearch input[name='sstate']").val({/$smarty.get.sstate/});
+$("#sel_smode,#tasksearch input[name='smode']").val({/$smarty.get.smode/});
+$("#sel_etype,#tasksearch input[name='etype']").val({/$smarty.get.etype/});
+$("#sel_olevel,#tasksearch input[name='olevel']").val({/$smarty.get.olevel/});
+$("#sel_mode,#tasksearch input[name='mode']").val("{/$smarty.get.mode/}");
+
+//放弃状态
+$("#sel_gstatus,#tasksearch input[name='gstatus']").val("{/$smarty.get.gstatus/}");
+
+//expriestime
+$("#sel_isfollow,#tasksearch input[name='isfollow']").val("{/$smarty.get.isfollow/}");
+$("#sel_source,#tasksearch input[name='source']").val("{/$smarty.get.source/}");
+$("#sel_expriestimes,#tasksearch input[name='expriestimes']").val("{/$smarty.get.expriestimes/}");
+
+$("#tasksearch input[name='fwarn']").val("{/$smarty.get.fwarn/}");
+$("#tasksearch input[name='ewarn']").val("{/$smarty.get.ewarn/}");
+$("#tasksearch input[name='atype']").val("{/$smarty.get.atype/}");
+$("#tasksearch input[name='htype']").val("{/$smarty.get.htype/}");
+$("#tasksearch input[name='fstatus']").val("{/$smarty.get.fstatus/}");
+$("#tasksearch input[name='estatus']").val("{/$smarty.get.estatus/}");
+$("#tasksearch input[name='ostatus']").val("{/$smarty.get.ostatus/}");
+$("#tasksearch input[name='otype']").val("{/$smarty.get.otype/}");
+$("#tasksearch input[name='cuh']").val("{/$smarty.get.cuh/}");
+$("#tasksearch input[name='isdelay']").val("{/$smarty.get.isdelay/}");
+$("#tasksearch input[name='atk']").val("{/$smarty.get.atk/}");
+$("#tasksearch input[name='nt']").val("{/$smarty.get.nt/}");
+$("#tasksearch input[name='zjtk']").val("{/$smarty.get.zjtk/}");
+$("#tasksearch input[name='fullzjtk']").val("{/$smarty.get.fullzjtk/}");
+$("#tasksearch input[name='inseatime']").val("{/$smarty.get.inseatime/}");
+$("#tasksearch input[name='isyun']").val("{/$smarty.get.isyun/}");
+$("#tasksearch input[name='nallot']").val("{/$smarty.get.nallot/}");
+$("#module_id").val("{/$smarty.get.module_id/}");
+
+//便捷搜索
+{/foreach from=array('fwarn','ewarn','atype','htype','fstatus','inseatime','estatus','otype','ostatus','isyun','taskstate') item=item/}
+    $("#{/$item/} a").click(function(){
+        $("#tasksearch input[name='{/$item/}']").val($(this).attr("val"));
+        $("#tasksearch").submit();
+    });
+    {/if $smarty.get.{/$item/}/}
+        $("#{/$item/} a").removeClass("active");
+        $("#{/$item/} a[val='{/$smarty.get.{/$item/}/}']").addClass("active");
+    {//if/}
+{//foreach/}
+
+$(".filter-order-select").on('change', function(){
+    $("#tasksearch").submit();
+})
+
+
+
+    //快速查询
+{/foreach from=array('cuh','isdelay','atk','nt','zjtk','fullzjtk','nallot') item=item/}
+{/if $smarty.get.$item eq 1/}
+	$("#{/$item/}").addClass("active2");
+	$("#{/$item/}").attr("val",0);
+{/else/}
+	$("#{/$item/}").attr("val",1);
+{//if/}
+{//foreach/}
+
+$("#list tr:eq(1) td").each(function(index){
+	$(".thead tr:eq(0) th").eq(index).width($(this).width());
+});
+$(".view img").click(function(){
+	$("#tasksearch input[name='v']").val($(this).attr("value"));
+	$("#tasksearch").submit();
+});
+$("#fastsearch a").click(function(){
+	$("#tasksearch input[name='"+$(this).attr("id")+"']").val($(this).attr("val"));
+	//交易完成中争议举报退款与全额退款
+	if ("zjtk" == $(this).attr("id") && 1 == $(this).attr("val")) {
+		$("#tasksearch input[name='fullzjtk']").val(0);
+	}
+	if ("fullzjtk" == $(this).attr("id") && 1 == $(this).attr("val")) {
+		$("#tasksearch input[name='zjtk']").val(0);
+	}
+	$("#tasksearch").submit();
+});
+</script>
+{//capture/}
+{/include file="common/zhubajietpl.html"/}

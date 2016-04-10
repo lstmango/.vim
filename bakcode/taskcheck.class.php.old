@@ -1,0 +1,169 @@
+<?php
+/**
+ * 交易系统-订单分配系统
+ */
+class zbj_service_allot_taskcheck extends zbj_components_baseservice{
+	
+	protected $marter_table = 'zbj_model_mk_task';
+	private $noNeedAllotData=array();
+	
+	/**
+	 * 构造函数
+	 */
+	public function __construct($id=0){
+		parent::__construct();
+		$this->setId($id);
+	}
+	
+	/**
+	 * 检查是否需要分配交易顾问，并将需求放入分配池子
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function checkNeedPushPool($data){
+		$resaonData['reason']='checkNeedPushPool ';
+		$resaonData['source']=$data['source']?$data['source']:1;
+		$data['task_id'] = intval($data['task_id']);
+		$resaonData['task_id']=$data['task_id'];
+		if($data['task_id'] < 4800000){
+			$resaonData['reason'].='task_id< 4800000';
+			$markResult=$this->noNeedAllotResaonMark($resaonData);
+			return $markResult;
+		} 
+		
+		// 香港馆需求跳过
+		$srvZone = new zbj_service_zone_hongkong();
+		if($srvZone->isHongKongTask($data['task_id'])){
+			$resaonData['reason'].='isHongKongTask';
+			$markResult=$this->noNeedAllotResaonMark($resaonData);
+			return $markResult;
+		}
+		// 有数据同步过慢的问题，短期内读取主库，长期应采用延迟执行
+		$srvTask = new zbj_service_task($data['task_id']);
+		$srvTask->setDbEntry();
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get();
+		$task_source = $srvTask->get('task_info.task_source');
+
+		//过滤掉商机转化为订单调用服务化接口加入池子,防止重复操作
+		if($task_source == 99){
+			#20151109
+			/*
+			 *$resaonData['reason'].='task_source == 99';
+			 *$markResult=$this->noNeedAllotResaonMark($resaonData);
+			 *return $markResult;
+			 */
+		} 
+		
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$data['task_id']}]不存在");
+		}
+		
+		$predate = strtotime(date('Y-m-d'))-14400; // 昨晚8点过后
+		$needAllot = $task['open_state']==0 && $task['manager_id']==0 && $task['audit_state']!=1 && $task['isaudit']>=0 && 
+			(	
+				(
+					(
+						(in_array($task['mode'],array(10,13)) && $task['state']<=2) || 
+						(in_array($task['mode'],array(11,12)) && $task['state']<=3)
+					) && $task['createtime']>$predate
+				) || 
+				(in_array($task['mode'],array(11,12)) && $task['state']==4)
+			);
+                
+                $isbus = $srvTask->isBusiness() && $task['open_state']==0 && $task['manager_id']==0 && $task['audit_state']!=1 && $task['isaudit']>=0 && $task['state']<4;
+		if(!$needAllot && !$isbus){
+			$resaonData['reason'].='任务状态异常';//del
+			$markResult=$this->noNeedAllotResaonMark($resaonData);
+			return $markResult;
+		}
+		
+		$srvAllotTaskPool = new zbj_service_allot_taskpool();
+		if($srvAllotTaskPool->pushToAllotPool($srvTask) !== true){
+			throw new Exception($srvAllotTaskPool->getError());
+		}
+		if($srvAllotTaskPool->getError()){
+			$resaonData['reason'].=$srvAllotTaskPool->getError();
+			$markResult=$this->noNeedAllotResaonMark($resaonData);
+		}
+		return true;
+	}
+		
+	/**
+	 * 分配交易顾问入口【manager_id】
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function manager($data){
+		$resaonData['reason']='manager ';
+		$data['task_id'] = intval($data['task_id']);
+		$resaonData['task_id']=$data['task_id'];
+		if($data['task_id'] < 4800000){
+			$resaonData['reason'].='task_id< 4800000';
+			$markResult=$this->noNeedAllotResaonMark($resaonData);
+			return $markResult;
+		} 
+		
+		// 短期内读取主库，长期应采用延迟执行
+		$srvTask = new zbj_service_task($data['task_id']);
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get();
+		
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$data['task_id']}]不存在");
+		}
+
+		$predate = strtotime(date('Y-m-d'))-14400; // 昨晚8点过后
+		$chkresult = $task['open_state']==0 && $task['manager_id']==0 && $task['audit_state']!=1 && 
+			(	
+				(
+					(
+						(in_array($task['mode'],array(10,13)) && $task['state']<=2) || 
+						(in_array($task['mode'],array(11,12)) && $task['state']<=3)
+					) && $task['createtime']>$predate
+				) || 
+				(in_array($task['mode'],array(11,12)) && $task['state']==4)
+			);
+		$isbus = $srvTask->isBusiness() && $task['open_state']==0 && $task['manager_id']==0 && $task['audit_state']!=1 && $task['state']<4;
+                
+		$srvAlloter = new zbj_service_allot_taskallot ();
+		if((!$chkresult && !$isbus) || $srvAlloter->checkTaskNeedAllot($srvTask) !== true){ // 不需分配
+			if(!$chkresult && !$isbus){
+				$resaonData['reason'].='任务状态异常';
+				$markResult=$this->noNeedAllotResaonMark($resaonData);
+			}
+			$srvAllotTaskPool = new zbj_service_allot_taskpool();
+			if($srvAllotTaskPool->releaseFromAllotPool($srvTask,'「不满足分配规则」') === false){// 重置池子标识
+				throw new Exception($srvAllotTaskPool->getError());
+			}
+			return true;
+		}
+		
+		// 执行分配
+		if($srvAlloter->getNextManagerAndDoAllot($srvTask) === false){
+			throw new Exception($srvAlloter->getError());
+		}
+		
+		return true;
+	}
+	
+	
+	/*
+	 *无需分配原因记录
+	 */
+	private function noNeedAllotResaonMark($data){
+		$data['createtime'] = time();
+		$data['type'] = 1;
+		$data['reason'].=date('Y-m-d H:i:s',time());
+		$data['status']=$data['reason']?2:1;
+		$allotAnalyseModule=zbj_model_api::get('zbj_model_mk_allotanalyse');
+		$back = $allotAnalyseModule->insert($data);
+		if(!$back){
+			$this->setError(0,'记录未分配原因失败');
+		}
+		return $back;
+	}
+	
+}

@@ -1,0 +1,1826 @@
+<?php
+/**
+ * 商机机会
+ * @author Administrator
+ *
+ */
+class api_bschanceService extends api_BaseService implements com\zhubajie\boss\interfaces\bschanceServiceIf {
+    
+    
+    
+    
+    
+    
+    
+    
+  
+
+
+  
+    
+    public function GetWithDrawList($cb_id,com\zhubajie\crm\dataobject\Chance\WithDrawFilter $withDrawFilter,$type){
+        $rt = new DbListResultDO();
+        try {
+            $filter = array(
+                'year' => (int)$withDrawFilter->year,
+                'month'=>(int)$withDrawFilter->month,
+                'page' => (int)$withDrawFilter->page,
+                'limit'=> (int)$withDrawFilter->limit,
+            );
+            $chanceSrv = new service_chance();
+            $rt->data_obj = $chanceSrv->getWithDrawList((int)$cb_id,$filter,(int)$type);
+            $rt->success = true;
+            $rt->code = 1;
+            $rt->message = 'OK';
+        } catch (Exception $e) {
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+    
+        }
+        return $rt;
+    }
+    
+    public function GetCountInfo(com\zhubajie\crm\dataobject\Chance\GroupByFilter $groupByFilter){
+        $rt = new DbListResultDO();
+        try {
+            $filter = array(
+                'starttime' => (int)$groupByFilter->starttime,
+                'endtime'=>(int)$groupByFilter->endtime,
+                'ct_mobile' => intval($groupByFilter->ct_mobile),					//联系人手机
+                'cb_name'	=> zbj_lib_BaseUtils::getStr($groupByFilter->cb_name),	//发布人姓名
+                'chance_id' => intval($groupByFilter->chance_id),					//机会id
+                'pub_cb_id' => intval($groupByFilter->pub_cb_id),					//发布人id
+                'ct_name'	=> zbj_lib_BaseUtils::getStr($groupByFilter->ct_name), 	//联系人姓名
+            );
+            if(isset($groupByFilter->status)){
+                $filter['status'] = intval($groupByFilter->status);
+            }
+            foreach ($groupByFilter->groupByType as $v){
+                $filter['groupby'][] = $v;
+            }
+            $chanceSrv = new service_chance();
+            $rt->data_obj = $chanceSrv->getCountInfo($filter);
+            $rt->success = true;
+            $rt->code = 1;
+            $rt->message = 'OK';
+        } catch (Exception $e) {
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+    
+        }
+        return $rt;
+    }
+    
+ 
+    
+    //	/**
+    //	 * 检查 该系列员工的提现操作是否可以进行
+    //	 * @see \com\zhubajie\crm\interfaces\ChanceServiceIf::CheckCanBeWithDrawed()
+    //	 */
+    public function CheckCanBeWithDrawed(com\zhubajie\crm\dataobject\Chance\WithDrawDO $withDrawDO){
+        $rt = new actionResultDO();
+        $rt->success = false;
+        $rt->message = "方法弃用";
+        $rt->code = -1;
+        return $rt;
+        //		try {
+        //			$filter = array();
+        //			if(empty($withDrawDO->pub_cb_id) || empty($withDrawDO->total_with_amount) || empty($withDrawDO->total_finish)||empty($withDrawDO->applytimeymd)){
+        //				throw new Exception("发布人id,总成交金额,总提成金额,申请时间都不能为空");
+        //			}else{
+        //				$filter['pub_cb_id'] = intval($withDrawDO->pub_cb_id);
+        //				$filter['total_with_amount'] = floatval($withDrawDO->total_with_amount);
+        //				$filter['total_finish'] = floatval($withDrawDO->total_finish);
+        //				$filter['applytimeymd'] = lib_BaseUtils::getStr($withDrawDO->applytimeymd);
+        //			}
+        //			$chanceSrv = new service_chance();
+        //			$r = $chanceSrv->checkCanBeWithDrawed($filter);
+        //			if($r){
+        //				$rt->success = true;
+        //				$rt->code = 1;
+        //				$rt->message = "员工{$filter['pub_cb_id']}在{$filter['applytimeymd']}的提现可以被申请";
+        //			}
+        //		} catch (Exception $e) {
+        //			$rt->success = false;
+        //			$rt->message = $e->getMessage();
+        //			$rt->code = $e->getCode();
+        //
+        //		}
+        //		return $rt;
+    }
+    
+   
+    
+    /**
+     * 业务到联系人的绑定创建
+     * @param \com\zhubajie\boss\dataobject\bschance\BusinessDO $businessDO
+     * @param \com\zhubajie\boss\dataobject\bschance\ContactorDO $contactorDO
+     * @return actionResultDO
+     */
+    public function CreateBusinessContactor( \com\zhubajie\boss\dataobject\bschance\ContactorDO $contactorDO, \com\zhubajie\union\dataobject\ChanceStat\ChanceStatInsertDTO $ChanceStatInsertDTO)
+    {
+        $rt = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        try{
+            $chanceSrv = new service_bschance_chance();
+            $r = $chanceSrv->businessContactor($contactorDO,$ChanceStatInsertDTO);
+            if($r){
+                SMessageQueue::init();
+                $s_message=new  \MessageQueue\Message();
+                $ChanceStatInsertDTO->chance_id=$r;
+                $s_message->content=json_encode($ChanceStatInsertDTO);
+                $s_message->exchangeName="bschance";
+                $s_message->routingKey="bschance.create";
+                $result=\MessageQueue\Publisher::publish($s_message);
+                // lib_BaseUtils::apiInit();
+                // $api=new com\zhubajie\union\interfaces\ChanceStatServiceClient(null);
+                // lib_BaseUtils::apigetclient($api);
+                // $api->addStat($ChanceStatInsertDTO);
+                $rt->success = true;
+                $rt->code = $r;
+                $rt->message = "信息录入成功,我们客服会在10分钟内联系您！".$r;
+            }
+        }catch (Exception $e){
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+        }
+        return $rt;
+    }
+    
+    
+    
+    /**
+     * 获取业务绑定的联系人
+     * @param \com\zhubajie\boss\dataobject\bschance\BusinessFilter $businessFilter
+     * @return DbListResultDO
+     */
+    public function GetBussinessContactor(\com\zhubajie\boss\dataobject\bschance\BusinessFilter $businessFilter)
+    {
+        $rt = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+        try {
+            $chanceSrv = new service_bschance_chance();
+            $rt->data_obj = $chanceSrv->getBussinessContactor($businessFilter);
+            $rt->success = true;
+            $rt->code = 1;
+            $rt->message = ob_get_clean();
+        } catch (Exception $e) {
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+    
+        }
+        return $rt;
+    }
+    /**
+     * 认领机会
+     * @see \com\zhubajie\boss\interfaces\bschanceServiceIf::lockBussinessContactor()
+     */
+    public function lockBussinessContactor($bs_to_ct_id, $bossuser_id){
+        $rt = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        try{
+            $chanceSrv = new service_bschance_chance();
+            $r = $chanceSrv->lockBussinessContactor($bs_to_ct_id, $bossuser_id);
+            $follow_info=new com\zhubajie\boss\dataobject\bschance\FollowInfoDO();
+            $follow_info->bs_to_ct_id=$bs_to_ct_id;
+            $follow_info->next_follow_time=date('Y-m-d 18:00:00');
+            $follow_info->follow_remark="认领";
+            $follow_info->follow_option=733;
+            $follow_info->is_giveup=0;
+            $chanceSrv->follow($follow_info);
+            $m_bs = new model_mk_bstoct();
+            $m_bs->update(array('bs_to_ct_id'=>$bs_to_ct_id),array('status'=>0,'followtime'=>0));
+            $rt->success=true;
+        }catch (Exception $e){
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+        }
+        return $rt;
+    }
+    
+    /**
+     * 增加联系人到平台用户的绑定
+     * @param \com\zhubajie\boss\dataobject\bschance\CtToU $ctToU
+     * @return actionResultDO
+     */
+    public function AddCt2U(\com\zhubajie\boss\dataobject\bschance\CtToU $ctToU)
+    {
+        $rt = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        try{
+            $chanceSrv = new service_bschance_chance();
+            $r = $chanceSrv->addcttou($ctToU);
+            if($r){
+                $rt->success = true;
+                $rt->code = 1;
+                $rt->message = "更新成功";
+            }
+        }catch (Exception $e){
+            $rt->success = false;
+            $rt->message = $e->getMessage();
+            $rt->code = $e->getCode();
+        }
+        return $rt;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /**
+     * 更新cm_bstoct表的部分字段
+     * @param \com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo $chanceBussinessDo
+     * @return actionResultDO
+     */
+    public function UpdateBussinessChance(\com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo $chanceBussinessDo)
+    {
+		new lsdebug(array(1),'a');
+        $result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        try{
+            $chanceSrv = new service_bschance_chance();
+            $r = $chanceSrv->updateBs2Ct($chanceBussinessDo);
+            if($r){
+                $result->success = true;
+                $result->code = 1;
+                $result->message = "更新成功".ob_get_clean();
+            }
+        }catch (Exception $e){
+            $result->success = false;
+            $result->message = $e->getMessage();
+            $result->code = $e->getCode();
+        }
+        return $result;
+    }
+    /**
+     * 机会创建完任务号后将任务ID写回机会 数据表
+     *
+     * @author glzaboy<glzaboy@163.com>
+     * @see \com\zhubajie\crm\interfaces\ChanceServiceIf::addtasktochance()
+     */
+    public function addtasktochance($bs_to_ct_id, $taskinfo)
+    {
+        $result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        $is_begi_transaction = 0;
+    
+        try {
+            if (! intval($bs_to_ct_id)) {
+                throw new Exception('主键bs_to_ct_id不能为空', - 1);
+            }
+            if (intval($taskinfo['task_id']) <= 0) {
+                throw new Exception('任务号不能为空', - 1);
+            }
+            $m_bstoct = zbj_model_api::get('model_mk_bstoct', $bs_to_ct_id);
+            if($m_bstoct->getData('ordertime')==0){
+                $m_bstoct->set('ordertime',time());
+                $m_bstoct->set('orderymd',date('Y-m-d'));
+                if($taskinfo['orderChanceType']){
+                    $m_bstoct->set('orderChanceType',intval($taskinfo['orderChanceType']));
+                }
+                $m_bstoct->save();
+            }
+            $m_bstoct_task = zbj_model_api::get('model_mk_bstoct_task');
+            $taskdata=array();
+            $taskdata['task_create_amount']=zbj_lib_BaseUtils::getStr($taskinfo['task_create_amount'],'float');
+            $taskdata['task_id']=$taskinfo['task_id'];
+            $taskdata['bs_to_ct_id']=$bs_to_ct_id;
+            if ($m_bstoct_task->insert($taskdata) !== false) {
+                //消费redis
+                $s_chance = new service_bschance_chance();
+                $config_id = $m_bstoct->getData('config_id');
+                $s_chance->removeRedis($bs_to_ct_id, $config_id);
+                $result->success = true;
+            } else {
+                throw new Exception("更新数据失败", - 1);
+            }
+        } catch (Exception $e) {
+            $result->success = false;
+            $result->message = $e->getMessage();
+            $result->code = $e->getCode();
+        }
+    
+        return $result;
+    }
+    /**
+     * 市场机会跟进
+     *
+     * @param FollowInfoDO $follow_info
+     *
+     * @author yuanzhuang
+     * @access public
+     */
+    public function follow(\com\zhubajie\boss\dataobject\bschance\FollowInfoDO $follow_info){
+        $result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        $is_begi_transaction = 0;
+         
+        try {
+            if (! $follow_info->bs_to_ct_id) {
+                throw new Exception('主键bs_to_ct_id不能为空', -1);
+            }
+            if ($follow_info->is_giveup) {
+                if (! $follow_info->giveup_reason_remark) {
+                    throw new Exception('放弃备注不能为空', -1);
+                }
+                if (! $follow_info->giveup_option) {
+                    throw new Exception('放弃原因不能为空', -1);
+                }
+            } else {
+                if (! $follow_info->follow_remark) {
+                    throw new Exception('跟进备注不能为空', -1);
+                }
+                if (! $follow_info->follow_option) {
+                    throw new Exception('跟进记录不能为空', -1);
+                }
+            }
+            if (! $follow_info->follow_user_id) {
+                throw new Exception('跟进用户id不能为空', -1);
+            }
+        
+            $s_chance = new service_bschance_chance();
+            if ($s_chance->follow($follow_info)) {
+                $result->success = true;
+            } else {
+                throw new Exception($s_chance->getError(), -1);
+            }
+        } catch (Exception $e) {
+            $result->success = false;
+            $result->message = $e->getMessage();
+            $result->code = $e->getCode();
+        }
+         
+        return $result;
+    }
+    
+    /**
+     * 获取商机跟进记录日志列表
+     * @author tanqing
+     * @date 2015年7月20日
+     * @param unknown $bs_to_ct_id  商机id
+     * @param unknown $page   page
+     * @param unknown $limit  limit
+     */
+    public function getFollowLogList($bs_to_ct_id,$page ,$limit){
+      $DbListResultDO = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+        try {
+            if(!$bs_to_ct_id){
+                throw new Exception('商机id丢失');
+            }
+            $DbSelectResultDO =new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+            $m_bstoct_follow_log = new model_mk_bstoct_follow_log();
+            $page = $page?$page:1;
+            $limit = $limit?$limit:10;
+            $condition = array('bs_to_ct_id'=>$bs_to_ct_id);
+            $m_bstoct_follow_log->setCount(true);
+            $m_bstoct_follow_log->setLimit($limit);
+            $m_bstoct_follow_log->setPage($page);
+            $logs = $m_bstoct_follow_log->select($condition,'*',null,'order by log_id desc');
+            $DbSelectResultDO->limit = $limit;
+            $DbSelectResultDO->page = $page;
+            $DbSelectResultDO->totalSize = $logs->totalSize;
+            $DbSelectResultDO->items = $logs->items;
+            $DbListResultDO->data_obj = $DbSelectResultDO;
+      } catch (Exception $e) {
+          $DbListResultDO->success = false;
+          $DbListResultDO->message  = $e->getMessage();
+          $DbListResultDO->code = 0;
+      } 
+      return $DbListResultDO; 
+    }
+    
+    /**
+     * 统计数据表mk_bstoct_count.create_num数据 
+     * 针对机会创建者 按机会创建时间统计
+     * 每10分运行一次
+     * 
+     * @author yuanzhuang
+     * @access public
+     * @date 2015-07-20
+     */
+    public function countCreateNum() {
+    	$result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    	
+    	try {
+    		$time = time();
+    		$condition = array(
+    			'mk_bstoct.createymd' => date('Y-m-d', $time),
+    			'create_uid > 0',
+    		);
+    		$item = array(
+    			'mk_bstoct.create_uid',
+    			'count(1) as create_num'
+    		);
+    		$group_by = 'GROUP BY mk_bstoct.create_uid';
+    		
+    		$m_bstoct = new model_mk_bstoct();
+    		$data_list = $m_bstoct->select($condition, $item, $group_by)->items;
+    		if ($data_list) {
+    			$m_bstoct_count = new model_mk_bstoct_count();
+    			$m_bstoct_count->setDbEntry();
+    			foreach ($data_list as $each_item) {
+    				$condition_count = array(
+    					'user_id' => $each_item['create_uid'],
+    					'count_date' => date('Y-m-d', $time),
+    					'type' => 1,
+    				);
+    				$count_info = $m_bstoct_count->selectOne($condition_count);
+    				if ($count_info) {
+    					$count_data = array(
+    						'create_num' => $each_item['create_num'],
+    					);
+    					
+    					$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    				} else {
+    					$count_data = array(
+    						'user_id' => $each_item['create_uid'],
+    						'count_date' => date('Y-m-d', $time),
+    						'type' => 1,
+    						'create_num' => $each_item['create_num'],
+    					);
+    					
+    					$m_bstoct_count->insert($count_data);
+    				}
+    			}
+    		}
+    		
+    		$result->success = true;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    	
+    	return $result;
+    }
+    
+    /**
+     * 统计数据表mk_bstoct_count.allot_num数据 
+     * 针对销售顾问 按机会分配时间统计 
+     * 每5分运行一次
+     *
+     * @author yuanzhuang
+     * @access public
+     * @date 2015-07-20
+     */
+    public function countAllotNum() {
+    	$result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    	 
+    	try {
+    		$time = time();
+    		$condition = array(
+    			'mk_bstoct.allotymd' => date('Y-m-d', $time),
+    			'follow_uid > 0',
+    			'mk_bstoct.allottime >' . ($time - 10 * 60),
+    			'mk_bstoct.allottime <' . $time,
+    		);
+    		
+    		$item = array(
+    			'mk_bstoct.bs_to_ct_id',
+    			'mk_bstoct.allotymd',
+    			'mk_bstoct.follow_uid',
+    		);
+    		
+    		$m_bstoct = new model_mk_bstoct();
+    		$data_list = $m_bstoct->select($condition, $item)->items;
+    		if ($data_list) {
+    			$m_bstoct_count = new model_mk_bstoct_count();
+    			foreach ($data_list as $each_item) {
+    				$condition_count = array(
+    					'user_id' => $each_item['follow_uid'],
+    					'count_date' => $each_item['allotymd'],
+    					'type' => 2,
+    				);
+    				
+    				$count_info = $m_bstoct_count->selectOne($condition_count);
+    				if ($count_info) {
+    					$option = json_decode($count_info['option'], true);
+    					if (! is_array($option)) {
+    						$option = array();
+    					}
+    					if (! (isset($option['allot_chance_list']) && is_array($option['allot_chance_list']))) {
+    						$option['allot_chance_list'] = array();
+    					}
+    					
+    					if (! in_array($each_item['bs_to_ct_id'], $option['allot_chance_list'])) {
+    						$option['allot_chance_list'][] = $each_item['bs_to_ct_id'];
+    					
+    						$count_data = array(
+    							'allot_num' => count($option['allot_chance_list']),
+    							'option' => json_encode($option),
+    						);
+    						$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    					}
+    				} else {
+    					$count_data = array(
+    						'user_id' => $each_item['follow_uid'],
+    						'count_date' => $each_item['allotymd'],
+    						'type' => 2,
+    						'allot_num' => 1,
+    						'option' => json_encode(array('allot_chance_list' => array($each_item['bs_to_ct_id'])))
+    					);
+    					
+    					$m_bstoct_count->insert($count_data);
+    				}
+    			}
+    		}
+    		
+    		$result->success = true;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    	
+    	return $result;
+    }
+    
+    /**
+     * 统计数据表mk_bstoct_count.follow_num数据
+     * 针对销售顾问按机会分配时间统计 
+     * 每5分钟运行一次
+     *
+     * @author yuanzhuang
+     * @access public
+     * @date 2015-07-20
+     */
+    public function countFollowNum() {
+    	$result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    	
+    	try {
+    		$time = time();
+    		$condition = array(
+    			'mk_bstoct.followymd' => date('Y-m-d', $time),
+    			'follow_uid > 0',
+    			'mk_bstoct.followtime >' . ($time - 10 * 60),
+    			'mk_bstoct.followtime <' . $time,
+    		);
+    	
+    		$item = array(
+    			'mk_bstoct.bs_to_ct_id',
+    			'mk_bstoct.allotymd',
+    			'mk_bstoct.follow_uid',
+    		);
+    		
+    		$m_bstoct = new model_mk_bstoct();
+    		$data_list = $m_bstoct->select($condition, $item)->items;
+    		if ($data_list) {
+    			$m_bstoct_count = new model_mk_bstoct_count();
+    			foreach ($data_list as $each_item) {
+    				$condition_count = array(
+    					'user_id' => $each_item['follow_uid'],
+    					'count_date' => $each_item['allotymd'],
+    					'type' => 2,
+    				);
+    	
+    				$count_info = $m_bstoct_count->selectOne($condition_count);
+    				if ($count_info) {
+    					$option = json_decode($count_info['option'], true);
+    					if (! is_array($option)) {
+    						$option = array();
+    					}
+    					if (! (isset($option['follow_chance_list']) && is_array($option['follow_chance_list']))) {
+    						$option['follow_chance_list'] = array();
+    					}
+    						
+    					if (! in_array($each_item['bs_to_ct_id'], $option['follow_chance_list'])) {
+    						$option['follow_chance_list'][] = $each_item['bs_to_ct_id'];
+    					
+    						$count_data = array(
+    							'follow_num' => count($option['follow_chance_list']),
+    							'option' => json_encode($option),
+    						);
+    						$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    					}
+    				} else {
+    					$count_data = array(
+    						'user_id' => $each_item['follow_uid'],
+    						'count_date' => $each_item['allotymd'],
+    						'type' => 2,
+    						'follow_num' => 1,
+    						'option' => json_encode(array('follow_chance_list' => array($each_item['bs_to_ct_id'])))
+    					);
+    					
+    					$m_bstoct_count->insert($count_data);
+    				}
+    			}
+    		}
+    	
+    		$result->success = true;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    	
+    	return $result;
+    }
+    
+    /**
+     * 更新数据表mk_bstoct_count.task_num数据 
+     * 每5分钟运行一次
+     *
+     * @author yuanzhuang
+     * @access public
+     * @date 2015-07-20
+     */
+    public function countTaskNum() {
+    	$result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    	 
+    	try {
+    		$time = time();
+    		$condition = array(
+    			'mk_bstoct_task.task_create_time < "' . date('Y-m-d H:i:s', $time) . '"',
+    			'mk_bstoct_task.task_create_time > "' . date('Y-m-d H:i:s', $time - 10 * 60) . '"',
+    		);
+    		$item = array(
+    			'mk_bstoct_task.bs_to_ct_id',
+    			'mk_bstoct_task.task_id',
+    			'mk_bstoct.follow_uid',
+    			'mk_bstoct.allotymd',
+    			'mk_bstoct.create_uid',
+    			'mk_bstoct.createymd',
+    		);
+    		$left_join = array(
+    			'mk_bstoct' => 'mk_bstoct.bs_to_ct_id = mk_bstoct_task.bs_to_ct_id',
+    		);
+    		
+    		$m_bstoct_task = new model_mk_bstoct_task();
+    		$data_list = $m_bstoct_task->select($condition, $item, '', '', $left_join)->items;
+    		if ($data_list) {
+    			$m_bstoct_count = new model_mk_bstoct_count();
+    			foreach ($data_list as $each_item) {
+    				//count by create user id
+    				if ($each_item['create_uid']) {
+    					$condition_count = array(
+    						'user_id' => $each_item['create_uid'],
+    						'count_date' => $each_item['createymd'],
+    						'type' => 1,
+    					);
+    					
+    					$count_info = $m_bstoct_count->selectOne($condition_count);
+    					if ($count_info) {
+    						$option = json_decode($count_info['option'], true);
+    						if (! is_array($option)) {
+    							$option = array();
+    						}
+    						if (! (isset($option['task_list']) && is_array($option['task_list']))) {
+    							$option['task_list'] = array();
+    						}
+    					
+    						if (! in_array($each_item['task_id'], $option['task_list'])) {
+    							$option['task_list'][] = $each_item['task_id'];
+    						
+    							$count_data = array(
+    								'task_num' => count($option['task_list']),
+    								'option' => json_encode($option),
+    							);
+    							$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    						}
+    					} else {
+    						$count_data = array(
+    							'user_id' => $each_item['create_uid'],
+    							'count_date' => $each_item['createymd'],
+    							'type' => 1,
+    							'task_num' => 1,
+    							'option' => json_encode(array('task_list' => array($each_item['task_id'])))
+    						);
+    					
+    						$m_bstoct_count->insert($count_data);
+    					}
+    				}
+    				
+    				//count by allot user id
+    				if ($each_item['follow_uid']) {
+    					$condition_count = array(
+    						'user_id' => $each_item['follow_uid'],
+    						'count_date' => $each_item['allotymd'],
+    						'type' => 2,
+    					);
+    						
+    					$count_info = $m_bstoct_count->selectOne($condition_count);
+    					if ($count_info) {
+    						$option = json_decode($count_info['option'], true);
+    						if (! is_array($option)) {
+    							$option = array();
+    						}
+    						if (! (isset($option['task_list']) && is_array($option['task_list']))) {
+    							$option['task_list'] = array();
+    						}
+    							
+    						if (! in_array($each_item['task_id'], $option['task_list'])) {
+    							$option['task_list'][] = $each_item['task_id'];
+    						
+    							$count_data = array(
+    								'task_num' => count($option['task_list']),
+    								'option' => json_encode($option),
+    							);
+    							$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    						}
+    					} else {
+    						$count_data = array(
+    							'user_id' => $each_item['follow_uid'],
+    							'count_date' => $each_item['allotymd'],
+    							'type' => 2,
+    							'task_num' => 1,
+    							'option' => json_encode(array('task_list' => array($each_item['task_id'])))
+    						);
+    							
+    						$m_bstoct_count->insert($count_data);
+    					}
+    				}
+    			}
+    		}
+    		
+    		$result->success = true;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    	
+    	return $result;
+    }
+    
+    /**
+     * 更新数据表mk_bstoct_count.deal_amount数据 
+     * 每5分钟运行一次
+     *
+     * @author yuanzhuang
+     * @access public
+     * @date 2015-07-20
+     */
+    public function countDealAmount() {
+    	$result = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    
+    	try {
+    		$time = time();
+    		$condition = array(
+    			'mk_task_info.close_ymd' => date('Y-m-d', $time),
+    			'mk_task_info.close_time >' . ($time - 10 * 60),
+    			'mk_task_info.close_time <' . $time,
+    			'mk_task.state' => 4,
+    			'mk_task.open_state' => 0,
+    			'mk_task_info.end_type' => 1,
+    		);
+    		$item = array(
+    			'mk_task_info.task_id',
+    			'mk_task_info.refund_amount',
+    			'mk_task.hosted_amount',
+    		);
+    		$left_join = array(
+    			'mk_task' => 'mk_task.task_id = mk_task_info.task_id',
+    		);
+    
+    		$m_task_info = new model_mk_task_info();
+    		$data_list = $m_task_info->select($condition, $item, '', '', $left_join)->items;
+    		if ($data_list) {
+    			$m_bstoct_task = new model_mk_bstoct_task();
+    			$m_bstoct_count = new model_mk_bstoct_count();
+    			foreach ($data_list as $each_item) {
+    				$condition = array(
+    					'mk_bstoct_task.task_id' => $each_item['task_id'],
+    				);
+    				$item = array(
+    					'mk_bstoct_task.bs_to_ct_id',
+    					'mk_bstoct.follow_uid',
+    					'mk_bstoct.allotymd',
+    					'mk_bstoct.create_uid',
+    					'mk_bstoct.createymd',
+    				);
+    				$left_join = array(
+    					'mk_bstoct' => 'mk_bstoct.bs_to_ct_id = mk_bstoct_task.bs_to_ct_id',
+    				);
+    				
+    				$bstoct_info = $m_bstoct_task->selectOne($condition, $item, '', '', $left_join);
+    				if ($bstoct_info) {
+    					$task_deal_amount = ($each_item['hosted_amount'] > $each_item['refund_amount'])? $each_item['hosted_amount'] - $each_item['refund_amount']: 0;
+    					
+    					if ($bstoct_info['create_uid']) {
+    						$condition_count = array(
+    							'user_id' => $bstoct_info['create_uid'],
+    							'count_date' => $bstoct_info['createymd'],
+    							'type' => 1,
+    						);
+    							
+    						$count_info = $m_bstoct_count->selectOne($condition_count);
+    						if ($count_info) {
+    							$option = json_decode($count_info['option'], true);
+    							if (! is_array($option)) {
+    								$option = array();
+    							}
+    							if (! (isset($option['amount_list']) && is_array($option['amount_list']))) {
+    								$option['amount_list'] = array();
+    							}
+    						
+    							if (! in_array($each_item['task_id'], array_keys($option['amount_list']))) {
+    								$option['amount_list'][$each_item['task_id']] = $task_deal_amount;
+    							
+    								$deal_amount = 0;
+    								foreach ($option['amount_list'] as $key => $value) {
+    									$deal_amount += $value;
+    								}
+    								$count_data = array(
+    									'deal_amount' => $deal_amount,
+    									'option' => json_encode($option),
+    								);
+    								$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    							}
+    						} else {
+    							$deal_amount = $task_deal_amount;
+    							$count_data = array(
+    								'user_id' => $each_item['create_uid'],
+    								'count_date' => $each_item['createymd'],
+    								'type' => 1,
+    								'deal_amount' => $deal_amount,
+    								'option' => json_encode(array('amount_list' => array($each_item['bs_to_ct_id'] => $deal_amount))),
+    							);
+    						
+    							$m_bstoct_count->insert($count_data);
+    						}
+    					
+    					}
+    					
+    					if ($bstoct_info['follow_uid']) {
+    						$condition_count = array(
+    							'user_id' => $bstoct_info['follow_uid'],
+    							'count_date' => $bstoct_info['allotymd'],
+    							'type' => 2,
+    						);
+    							
+    						$count_info = $m_bstoct_count->selectOne($condition_count);
+    						if ($count_info) {
+    							$option = json_decode($count_info['option'], true);
+    							if (! is_array($option)) {
+    								$option = array();
+    							}
+    							if (! (isset($option['amount_list']) && is_array($option['amount_list']))) {
+    								$option['amount_list'] = array();
+    							}
+    					
+    							if (! in_array($each_item['task_id'], array_keys($option['amount_list']))) {
+    								$option['amount_list'][$each_item['task_id']] = $task_deal_amount;
+    									
+    								$deal_amount = 0;
+    								foreach ($option['amount_list'] as $key => $value) {
+    									$deal_amount += $value;
+    								}
+    								$count_data = array(
+    									'deal_amount' => $deal_amount,
+    									'option' => json_encode($option),
+    								);
+    								$m_bstoct_count->update(array('id' => $count_info['id']), $count_data);
+    							}
+    						} else {
+    							$deal_amount = $task_deal_amount;
+    							$count_data = array(
+    								'user_id' => $each_item['follow_uid'],
+    								'count_date' => $each_item['allotymd'],
+    								'type' => 2,
+    								'deal_amount' => $deal_amount,
+    								'option' => json_encode(array('amount_list' => array($each_item['bs_to_ct_id'] => $deal_amount))),
+    							);
+    					
+    							$m_bstoct_count->insert($count_data);
+    						}
+    							
+    					}
+    					
+    					$m_bstoct_task->update(array('task_id' => $each_item['task_id']), array('deal_amount' => $task_deal_amount));
+    				}
+    			}
+    		}
+    		 
+    		$result->success = true;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    	
+    	return $result;
+    }
+    
+    /**
+     * 机会数据统计
+     * 
+     * @author yuanzhuang
+     * @date 2015-07-21
+     */
+	public function chanceSummary(com\zhubajie\boss\dataobject\bschance\QueryParamsDO $query_params) {
+		$result = new com\zhubajie\boss\dataobject\bschance\actionResultDO();
+		
+		try {
+			if (! $query_params->user_type) {
+				throw new Exception('缺少用户类型参数', -1);
+			}
+			if (! $query_params->user_id) {
+				throw new Exception('缺少用户id', -1);
+			}
+			
+			$condition = array();
+			$condition['mk_bstoct_count.user_id'] = zbj_lib_BaseUtils::getStr($query_params->user_id);
+			
+			if (1 == $query_params->user_type) {
+				$condition['mk_bstoct_count.type'] = 1;
+				if ($query_params->min_create_ymd) {
+					$condition[] = 'mk_bstoct_count.count_date >= "' . zbj_lib_BaseUtils::getStr($query_params->min_create_ymd) . '"';
+				}
+				if ($query_params->max_create_ymd) {
+					$condition[] = 'mk_bstoct_count.count_date <= "' . zbj_lib_BaseUtils::getStr($query_params->max_create_ymd) . '"';
+				}
+			} else if (2 == $query_params->user_type) {
+				$condition['mk_bstoct_count.type'] = 2;
+				if ($query_params->min_allot_ymd) {
+					$condition[] = 'mk_bstoct_count.count_date >= "' . zbj_lib_BaseUtils::getStr($query_params->min_allot_ymd) . '"';
+				}
+				if ($query_params->max_allot_ymd) {
+					$condition[] = 'mk_bstoct_count.count_date <= "' . zbj_lib_BaseUtils::getStr($query_params->max_allot_ymd) . '"';
+				}
+			} else {}
+			
+			$item = array(
+				'sum(mk_bstoct_count.create_num) as create_num',
+				'sum(mk_bstoct_count.allot_num) as allot_num',
+				'sum(mk_bstoct_count.follow_num) as follow_num',
+				'sum(mk_bstoct_count.task_num) as task_num',
+				'sum(mk_bstoct_count.deal_amount) as deal_amount',
+			);
+			
+			$group_by = 'GROUP BY mk_bstoct_count.user_id';
+			
+			$m_bstoct_count = new model_mk_bstoct_count();
+			$count_info = $m_bstoct_count->selectOne($condition, $item, $group_by);
+			if (! $count_info) {
+				$count_info = array(
+					'create_num' => 0,
+					'allot_num' => 0,
+					'follow_num' => 0,
+					'task_num' => 0,
+					'deal_amount' => 0,
+				);
+			}
+			
+			$result->success = true;
+			$result->ext_params = $count_info;
+		} catch (Exception $e) {
+			$result->success = false;
+			$result->code = $e->getCode();
+			$result->message = $e->getMessage();
+		}
+		
+		return $result;
+	}
+    
+	/**
+	 * 机会查询
+	 * 
+	 * @author yuanzhuang
+	 * @date 2015-07-21
+	 */
+	public function query(com\zhubajie\boss\dataobject\bschance\QueryParamsDO $query_params) {
+		$result = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+		
+		try {
+			$page = $query_params->page? zbj_lib_BaseUtils::getStr($query_params->page): 1;
+			$limit = $query_params->limit? zbj_lib_BaseUtils::getStr($query_params->limit): 10;
+			
+			if (! $query_params->keywork) {//按关键字查询时不需要检测其他参数
+				if (! $query_params->user_type) {
+					throw new Exception('缺少用户类型参数', -1);
+				}
+				if (! $query_params->user_id) {
+					throw new Exception('缺少用户id', -1);
+				}
+				if (! $query_params->state) {
+					throw new Exception('缺少状态参数', -1);
+				}
+			}
+			
+			$condition = array();
+			$order_by = 'ORDER BY mk_bstoct.createtime DESC';
+			if (1 == $query_params->user_type) {
+				$condition['mk_bstoct.create_uid'] = zbj_lib_BaseUtils::getStr($query_params->user_id);
+					
+				if ($query_params->min_create_ymd) {
+					$condition[] = 'mk_bstoct.createymd >= "' . zbj_lib_BaseUtils::getStr($query_params->min_create_ymd) . '"';
+				}
+				if ($query_params->max_create_ymd) {
+					$condition[] = 'mk_bstoct.createymd <= "' . zbj_lib_BaseUtils::getStr($query_params->max_create_ymd) . '"';
+				}
+				
+				$order_by = 'ORDER BY mk_bstoct.createtime DESC';
+			} else if (2 == $query_params->user_type) {
+				$condition['mk_bstoct.follow_uid'] = zbj_lib_BaseUtils::getStr($query_params->user_id);
+				
+				if ($query_params->min_allot_ymd) {
+					$condition[] = 'mk_bstoct.allotymd >= "' . zbj_lib_BaseUtils::getStr($query_params->min_allot_ymd) . '"';
+				}
+				if ($query_params->max_allot_ymd) {
+					$condition[] = 'mk_bstoct.allotymd <= "' . zbj_lib_BaseUtils::getStr($query_params->max_allot_ymd) . '"';
+				}
+				
+				$order_by = 'ORDER BY mk_bstoct.allottime DESC';
+			} else {}
+			
+			if ($query_params->state) {
+				switch ((int)$query_params->state) {
+					case 1:
+						break;
+					case 2:
+						break;
+					case 3:
+						$condition['mk_bstoct.status'] = 1;
+						break;
+					case 4:
+						$condition[] = 'mk_bstoct_task.task_id > 0';
+						break;
+					case 5:
+						$condition[] = 'mk_bstoct_task.deal_amount > 0';
+						break;
+					case 6:
+						break;
+					default:
+						break;
+				}
+			}
+			
+			if ($query_params->keywork) {//目前只支持按电话号码查询
+				$condition['mk_bstoct_contacts.ct_mobile'] = zbj_lib_BaseUtils::getStr($query_params->keywork);
+			}
+			
+			$item = array(
+				'mk_bstoct.bs_to_ct_id',
+				'mk_bstoct.status',
+				'mk_bstoct.create_uid',
+				'mk_bstoct.follow_uid',
+				'mk_bstoct.allottime',
+				'mk_bstoct.createtime',
+				'mk_bstoct_task.task_id',
+				'mk_bstoct_follow.is_giveup',
+// 				'mk_bstoct_task.task_create_time',
+// 				'mk_task.manager_id',
+// 				'mk_task.manager_name',
+				'mk_task_info.close_time',
+				'count(1) as task_num',
+			);
+			
+			$left_join = array(
+				'mk_bstoct_follow' => 'mk_bstoct_follow.bs_to_ct_id = mk_bstoct.bs_to_ct_id',
+				'mk_bstoct_task' => 'mk_bstoct_task.bs_to_ct_id = mk_bstoct.bs_to_ct_id',
+// 				'mk_task' => 'mk_task.task_id = mk_bstoct_task.task_id',
+				'mk_task_info' => 'mk_bstoct_task.task_id = mk_task_info.task_id',
+			);
+			if ($query_params->keywork) {
+				$left_join['mk_bstoct_contacts'] = 'mk_bstoct_contacts.ct_id = mk_bstoct.ct_id';
+			}
+			
+			$group_by = 'GROUP BY mk_bstoct.bs_to_ct_id';
+			
+			$m_bstoct = new model_mk_bstoct();
+			$m_bstoct->setPage($page);
+			$m_bstoct->setLimit($limit);
+			$m_bstoct->setCount(true);
+			$bstoct_list = $m_bstoct->select($condition, $item, $group_by, $order_by, $left_join);
+			$list = array();
+			if ($bstoct_list->items) {
+				foreach ($bstoct_list->items as $each_item) {
+// 					$each_item['task_create_time'] = strtotime($each_item['task_create_time']);
+					
+					$list[] = $each_item;
+				}
+			}
+		
+			$data_obj = new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+			$data_obj->limit = $limit;
+			$data_obj->page = $page;
+			$data_obj->totalSize = $bstoct_list->totalSize;
+			$data_obj->items = $list;
+			
+			$result->success = true;
+			$result->data_obj = $data_obj;
+		} catch (Exception $e) {
+			$result->success = false;
+			$result->code = $e->getCode();
+			$result->message = $e->getMessage();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * 机会查询
+	 *
+	 * @author yuanzhuang
+	 * @date 2015-07-21
+	 */
+	public function chanceDetail($bs_to_ct_id) {
+		$result = new com\zhubajie\boss\dataobject\bschance\actionResultDO();
+		
+		try {
+			if (! $bs_to_ct_id) {
+				throw new Exception('参数错误，缺少主键id');
+			}
+			
+			$condition = array(
+				'mk_bstoct.bs_to_ct_id' => zbj_lib_BaseUtils::getStr($bs_to_ct_id),
+			);
+			
+			$item = array(
+				'mk_bstoct.bs_to_ct_id',
+				'mk_bstoct.create_uid',
+				'mk_bstoct.follow_uid',
+				'mk_bstoct.allottime',
+				'mk_bstoct.createtime',
+				'mk_bstoct.isurgent',
+				'mk_bstoct.options',
+				'mk_bstoct.note',
+				'mk_bstoct_task.task_id',
+				'mk_bstoct_task.task_create_time',
+			    'mk_bstoct_task.task_create_amount',
+				'mk_bstoct_follow.is_giveup',
+				'mk_bstoct_follow.giveup_time',
+				'mk_task.manager_id',
+				'mk_task.manager_name',
+			    'mk_task.title',
+			    'mk_task.hosted_amount',
+			    'mk_task.mode',
+				'mk_task.hosted',
+			    'mk_task.allot',
+				'mk_task.open_state',
+				'mk_task.state',
+				'mk_task_info.close_time',
+			);
+			$left_join = array(
+				'mk_bstoct_task' => 'mk_bstoct_task.bs_to_ct_id = mk_bstoct.bs_to_ct_id',
+				'mk_bstoct_follow' => 'mk_bstoct_follow.bs_to_ct_id = mk_bstoct.bs_to_ct_id',
+				'mk_task' => 'mk_task.task_id = mk_bstoct_task.task_id',
+				'mk_task_info' => 'mk_task_info.task_id = mk_task.task_id',
+			);
+				
+			$m_bstoct = new model_mk_bstoct();
+			$list = $m_bstoct->select($condition, $item, '', 'order by mk_task.task_id desc', $left_join)->items;
+			$task_list = array();
+			$bstoct_info = array();
+			if ($list) {
+				foreach ($list as $each_item) {
+					$bstoct_info = array(
+						'bs_to_ct_id' => $each_item['bs_to_ct_id'],
+						'create_uid' => $each_item['create_uid'],
+						'follow_uid' => $each_item['follow_uid'],
+						'allottime' => $each_item['allottime'],
+						'createtime' => $each_item['createtime'],
+						'is_urgent' => $each_item['isurgent'],
+						'note' => $each_item['note'], //商机内容、商机描述
+						'options' => $each_item['options'],
+						'is_giveup' => $each_item['is_giveup'],
+						'giveup_time' => $each_item['giveup_time'],
+					);
+					
+					$task_list[] = array(
+						'task_id' => $each_item['task_id'],
+						'task_create_time' => strtotime($each_item['task_create_time']),
+						'manager_id' => $each_item['manager_id'],
+						'manager_name' => $each_item['manager_name'],
+						'close_time' => $each_item['close_time'],
+					    'title' => $each_item['title'],
+					    'hosted_amount' => $each_item['hosted_amount'],
+					    'mode' => $each_item['mode'],
+					    'allot' => $each_item['allot'],
+					    'task_create_amount' => $each_item['task_create_amount'],
+						'hosted' => $each_item['hosted'],
+						'open_state' => $each_item['open_state'],
+						'state' => $each_item['state'],
+					);
+				}
+			}
+			$bstoct_info['task_list'] = json_encode($task_list);
+			
+			$result->success = true;
+			$result->ext_params = $bstoct_info;
+		} catch (Exception $e) {
+			$result->success = false;
+			$result->code = $e->getCode();
+			$result->message = $e->getMessage();
+		}
+	
+		return $result;
+	}
+    
+    /**
+     * 
+     * @商机排行榜
+     * @author yang'ren'shan
+     * @date   2015-07-21
+     * @access public
+     * 
+     * **/
+    public function rankList(\com\zhubajie\boss\dataobject\bschance\QueryCountDO $queryParameter){
+        try {
+            $condition = array();
+            if ($queryParameter->user_id) {
+                $condition['user_id'] = zbj_lib_BaseUtils::getStr($queryParameter->user_id,'int');
+            }
+            if ($queryParameter->count_date) {
+                $start_date = $queryParameter->count_date . '-01';
+                $end_date = date('Y-m-t', strtotime($start_date));
+                $condition[] = 'count_date >= "' . $start_date . '" AND count_date <= "' . $end_date . '"';
+            }
+            if ($queryParameter->type) {
+                $condition['type'] = zbj_lib_BaseUtils::getStr($queryParameter->type,'int');
+            }
+            $limit = 100;
+            $m_bs_count = new model_mk_bstoct_count();
+            $m_bs_count->setLimit($limit);
+            $item = 'sum(task_num) as task_num,user_id';
+            $order_by = 'order by task_num desc';
+            $group_by = 'group by user_id';
+            $result = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+            $DbSelect = new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+            $data = $m_bs_count->select($condition,$item,$group_by,$order_by)->items;
+            if (empty($data)) {
+                $DbSelect->items = array();
+                $result->data_obj = $DbSelect;
+            }else {
+                $DbSelect->items = $data;
+                $result->data_obj = $DbSelect;
+            }
+            $result->code = 1;
+            $result->message = '数据返回成功！';
+            $result->success = true;
+        } catch (Exception $e) {
+            $result->code = $e->getCode();
+            $result->message = $e->getMessage();
+            $result->success = false;
+        }
+        return $result;
+    }
+    /**
+     *
+     * @商机排行榜
+     * @author yang'ren'shan
+     * @date   2015-07-21
+     * @access public
+     *
+     * **/
+    public function getsource(){
+        try {
+            $condition = array();
+            
+            $m_bs_source = zbj_model_api::get('model_mk_bstoct_source');
+            $result = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+            $DbSelect = new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+            $data = $m_bs_source->select($condition)->items;
+            if (empty($data)) {
+                $DbSelect->items = array();
+                $result->data_obj = $DbSelect;
+            }else {
+                $DbSelect->items = $data;
+                $result->data_obj = $DbSelect;
+            }
+            $result->code = 1;
+            $result->message = '数据返回成功！';
+            $result->success = true;
+        } catch (Exception $e) {
+            $result->code = $e->getCode();
+            $result->message = $e->getMessage();
+            $result->success = false;
+        }
+        return $result;
+    }
+    /**
+     * 
+     * @更新mk_bstoct表中isurgent和options字段
+     * @author yangrenshan
+     * @date 2015-07-22
+     * 
+     * **/
+    public function UpdateOptions(\com\zhubajie\boss\dataobject\bschance\OptionsDO $optionsitems) {
+        $exe = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        lib_Thrift::thriftsafevar($exe);
+        try {
+            if (!$optionsitems->bs_to_ct_id) {
+                throw new Exception('参数错误，缺少主键id！',-1);
+            }
+            if ($optionsitems->isurgent == 0) {
+                if (!$optionsitems->note) {
+                    throw new Exception('备注-其他内容 不能为空！',-2);
+                }
+            }
+            $m_bstock = new model_mk_bstoct();
+            $options  = $m_bstock->selectOne(array('bs_to_ct_id' => zbj_lib_BaseUtils::getStr($optionsitems->bs_to_ct_id,'int')),'create_uid,follow_uid,options,isurgent');
+            if ($options['create_uid'] != $optionsitems->bosscreate_uid) {
+                throw new Exception('非创建者无法备注');
+            }
+            $temp_arr = array();
+            if ($optionsitems->isurgent == 1) {
+                $temp = array(
+                    'note' => '#加急客户#',
+                    'time' => time(),
+                    'create_uid'=>$options['create_uid'],
+                );
+            }else if ($optionsitems->isurgent == 2) {
+                $temp = array(
+                    'note' => '#重点客户#',
+                    'time' => time(),
+                    'create_uid'=>$options['create_uid'],
+                );
+            } else {
+                $temp = array(
+                    'note' => zbj_lib_BaseUtils::getStr($optionsitems->note,'string'),
+                    'time' => time(),
+                    'create_uid'=>$options['create_uid'],
+                );
+            }
+            
+            if (! isset($options['options'])) {
+                $temp_arr = array();
+            } else {
+                $temp_arr = json_decode($options['options'], true);
+            }
+            if (! isset($options['options']['note_info'])) {
+                $temp_arr['note_info'] = array($temp);
+            } else {
+                $temp_arr['note_info'][] = $temp;
+            }
+            $data = array(
+                'isurgent' => ($optionsitems->isurgent > 0) ? (($optionsitems->isurgent == 1) ? 1: 2) : $options['isurgent'],
+                'options' => json_encode($temp_arr),
+            );
+            $result = $m_bstock->update(array('bs_to_ct_id' => zbj_lib_BaseUtils::getStr($optionsitems->bs_to_ct_id,'int')),$data);
+            if (! $result) {
+                throw new Exception('更新失败', -1);
+            }
+ 
+            $exe->code = 1;
+            $exe->message = '冗余信息更新成功！';
+            $exe->success = true;
+        } catch (Exception $e) {
+            $exe->code = $e->getCode();
+            $exe->message = $e->getMessage();
+            $exe->success = false;
+        }
+        return $exe;
+    }
+    /**
+     * 根据手机号查询分配人
+     * 
+     * @author tanqing
+     * @date 2015年7月23日
+     * @param unknown $phone
+     */
+    public function getFollowUserByPhone($phone){
+        $actionDo =new com\zhubajie\boss\dataobject\bschance\actionResultDO();
+        try {
+            if (empty($phone)){
+                throw new Exception('没有手机号码');
+            }
+            $m_bstoct = new model_mk_bstoct();
+            $table_bstoct = $m_bstoct->tableName();
+            
+            $m_bstoct_contacts = new model_mk_bstoct_contacts();
+            $table_bstoct_contacts = $m_bstoct_contacts->tableName();
+            $leftjoin = array(
+                $table_bstoct_contacts => $table_bstoct_contacts.".ct_id = ".$table_bstoct.".ct_id",
+            );
+            $condition = array();
+            $condition[$table_bstoct_contacts.'.ct_mobile'] = $phone;
+            $condition[] = $table_bstoct.'.follow_uid>0';
+            $item = array(
+                $table_bstoct.'.follow_uid',
+                $table_bstoct.'.bs_to_ct_id',
+            );
+            $info = $m_bstoct->selectOne($condition,$item,'','order by bs_to_ct_id desc',$leftjoin);
+            if (!$info){
+                throw new Exception('没有查询到相关数据');
+            }
+            $actionDo->ext_params = $info;
+            $actionDo->code = 200;
+            $actionDo->message = '返回成功';
+            $actionDo->success = true;
+        } catch (Exception $e) {
+            $actionDo->code = 0;
+            $actionDo->message = $e->getMessage();
+            $actionDo->success = false;
+        }
+        return $actionDo;
+    }
+    
+    /**
+     * 订单查询用于展示在微信号端
+     *
+     * @author yuanzhuang
+     * @date 2015-07-21
+     */
+    public function taskDetail($task_id) {
+    	$result = new com\zhubajie\boss\dataobject\bschance\actionResultDO();
+    
+    	try {
+    		if (! $task_id) {
+    			throw new Exception('参数错误，缺少主键id');
+    		}
+    			
+    		$condition = array(
+    			'mk_task.task_id' => (int) $task_id,
+    		);
+    			
+    		$item = array(
+    			'mk_task.task_id',
+    			'mk_task.manager_id',
+    			'mk_task.manager_name',
+    			'mk_task.title',
+    			'mk_task.mode',
+    			'mk_task.allot',
+    			'mk_bstoct.options',
+    			'mk_bstoct.bs_to_ct_id',
+    		);
+    		$left_join = array(
+//     			'mk_task_info' => 'mk_task_info.task_id = mk_task.task_id',
+				'mk_bstoct_task' => 'mk_bstoct_task.task_id = mk_task.task_id',
+    			'mk_bstoct' => 'mk_bstoct.bs_to_ct_id = mk_bstoct_task.bs_to_ct_id',
+    		);
+    		
+    		$m_task = new model_mk_task();
+    		$task_info = $m_task->selectOne($condition, $item, '', '', $left_join);
+    		if (! $task_info) {
+    			throw new Exception('查询失败，请重试');
+    		}
+    		
+    		//get chance note list
+    		$optios = json_decode($task_info['options'], true);
+    		$chance_note_list = array();
+    		if (isset($optios['note_info'])) {
+    			$chance_note_list = json_encode($optios['note_info']);
+    		}
+    		$task_info['chance_note_list'] = $chance_note_list;
+    		unset($task_info['options']);
+    		
+    		//get task remark list;
+    		$m_remark = new model_cp_remark();
+    		$condition = array(
+    			'pk_id' => (int) $task_id,
+    			'type_id' => 1,
+    		);
+    		$item = array(
+    			'content',
+    			'create_time',
+    		);
+    		$task_remark_list = $m_remark->select($condition, $item)->items;
+    		$task_info['task_remark_list'] = json_encode($task_remark_list);
+    		
+    		$result->success = true;
+    		$result->ext_params = $task_info;
+    	} catch (Exception $e) {
+    		$result->success = false;
+    		$result->code = $e->getCode();
+    		$result->message = $e->getMessage();
+    	}
+    
+    	return $result;
+    }
+    
+    /**
+     * 
+     * 根据task_id 查询商机加急状态
+     * @author tanqing
+     * @date 2015年7月30日
+     * @param array $task_ids
+     */
+    public function getBstoctidsByTaskId( $task_ids){
+        $DbListResultDO = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+        try {
+            $DbSelectResultDO = new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+            
+            $m_task = new model_mk_bstoct_task();
+            $table_task = $m_task->tableName();
+            $m_bstoct = new model_mk_bstoct();
+            $table_bstoct = $m_bstoct->tableName();
+            
+            if ($task_ids){
+                $condition = array(
+                    $table_task.'.task_id in ('.implode(',',$task_ids).')'
+                );
+                $item =array(
+                    $table_bstoct.'.isurgent',
+                    $table_bstoct.'.bs_to_ct_id',
+                    $table_task.'.task_id',
+                );
+                $left_join = array(
+                    'mk_bstoct' => 'mk_bstoct.bs_to_ct_id = mk_bstoct_task.bs_to_ct_id',
+                );
+                $datas = $m_task->select($condition,$item,null,null,$left_join);
+                if ($datas->items){
+                    $DbSelectResultDO->items = $datas->items;
+                    $DbListResultDO->data_obj = $DbSelectResultDO;
+                    $DbListResultDO->message = '返回成功';
+                }else{
+                    $DbListResultDO->message = '没有查询到相关数据';
+                }
+            }else{
+                throw new Exception('taskid不能为空');
+            }
+            $DbListResultDO->success = true;
+            $DbListResultDO->message = '返回成功';
+            $DbListResultDO->code = '0';
+        } catch (Exception $e) {
+            $DbListResultDO->success = false;
+            $DbListResultDO->message = $e->getMessage();
+            $DbListResultDO->code = '0';
+        }
+        return $DbListResultDO;
+    }
+    /**
+     * 获取没有分配的机会
+     * (non-PHPdoc)
+     * @see \com\zhubajie\boss\interfaces\bschanceServiceIf::getUnAllotChance()
+     */
+    public function getUnAllotChance($config_ids,$page,$limit){
+    	$DbListResultDO = new com\zhubajie\boss\dataobject\bschance\DbListResultDO();
+    	try {
+    		$DbSelectResultDO = new com\zhubajie\boss\dataobject\bschance\DbSelectResultDO();
+    		
+    		$bstoctMdl = new model_mk_bstoct();
+    		$contactMdl = new model_mk_bstoct_contacts();
+    		$chanceTable = $bstoctMdl->tableName();
+    		$contactTable = $contactMdl->tableName();
+    		$condition = array();
+    		$condition[$chanceTable.'.follow_uid'] = 0;
+    		if (count($config_ids) == 1){
+    			$condition[$chanceTable.'.config_id'] = $config_ids[0];
+    		}else{
+    			$condition[] = $chanceTable.'.config_id in ('.implode(',', $config_ids).')';
+    		}
+    		$condition[] = $chanceTable.".allottime =0 and ".$chanceTable.".status = 0 ";
+    		$condition[] = $chanceTable.".ordertime =0";
+    		$leftjoin = array(
+    			$contactTable => $chanceTable.".ct_id = ".$contactTable.".ct_id",
+    		);
+    		$item = array(
+    				$chanceTable.'.bs_to_ct_id',
+    				$chanceTable.'.follow_uid',
+    				$chanceTable.'.config_id',
+    				$chanceTable.'.createtime',
+    				$chanceTable.'.user_id',
+    				$chanceTable.'.way_type',
+    				$chanceTable.'.source',
+    				$chanceTable.'.followtime',
+    				$chanceTable.'.create_uid',
+    				$chanceTable.'.allottime',
+    				$chanceTable.'.ordertime',
+    				$chanceTable.".base_cat3",
+    				$chanceTable.".base_cat2",
+    				$chanceTable.".base_cat1",
+    				$contactTable.".ct_mobile",
+    		);
+    		if ($limit==1) {
+    			$unAccept = $bstoctMdl->selectOne($condition,$item,null,null,$leftjoin);
+    			if ($unAccept) {
+	    			$DbSelectResultDO->items = array($unAccept);
+	    			$DbSelectResultDO->totalSize = 1;
+    			}
+    		}else{
+    			$bstoctMdl->setCount(true);
+    			$bstoctMdl->setLimit($limit);
+    			$bstoctMdl->setPage($page);
+    			$unAccept = $bstoctMdl->select($condition,$item,null,'order by bs_to_ct_id desc',$leftjoin);
+    			$DbSelectResultDO->items = $unAccept->items;
+    			$DbSelectResultDO->totalSize = $unAccept->totalSize;
+    		}
+    		$DbListResultDO->data_obj = $DbSelectResultDO;
+    		$DbListResultDO->message = '返回成功';
+    		$DbListResultDO->success = true;
+    		$DbListResultDO->code = 200;
+    	} catch (Exception $e) {
+    		$DbListResultDO->success = false;
+    		$DbListResultDO->message = $e->getMessage();
+    		$DbListResultDO->code = 0;
+    	}
+    	return $DbListResultDO;
+    }
+    /**
+     * 检测是否还有未跟进的机会
+     * @author tanqing
+     * @date 2015-9-14
+     * @param unknown $manager_id
+     * @throws Exception
+     * @return \com\zhubajie\boss\dataobject\bschance\actionResultDO
+     */
+    public function checkUnAcceptByManager($manager_id){
+    	$execResult = new com\zhubajie\boss\dataobject\bossbase\execResult();
+    	try {
+    		if (!$manager_id) {
+    			throw new Exception('manager_id丢失');
+    		}
+    		
+    		$bstoctMdl = new model_mk_bstoct();
+    		$chanceTable = $bstoctMdl->tableName();
+    		$condition = array();
+    		$condition[$chanceTable.'.follow_uid'] = $manager_id;
+    		$condition[] = $chanceTable.".allottime >0 and ".$chanceTable.".status = 0 ";
+    		$condition[] = $chanceTable.".ordertime =0";
+    		$unAccept = $bstoctMdl->selectOne($condition);
+    		if ($unAccept) {
+    			throw new Exception('还有未跟进的机会');
+    		}
+    		$execResult->success = true;
+    		$execResult->message = '没有未跟进的机会';
+    		$execResult->code = 0;
+    	} catch (Exception $e) {
+    		$execResult->success = false;
+    		$execResult->message = $e->getMessage();
+    		$execResult->code = 0;
+    	}
+    	return $execResult;
+    }
+    /**
+     * 抢机会 暂时未启用
+     * @author tanqing
+     * @date 2015-9-15
+     * @param unknown $manager_id
+     * @param unknown $config_ids
+     */
+    public function grabChance(com\zhubajie\boss\dataobject\bschance\grabParamsDO $grabParamsDO){
+    	$actionResultDO = new com\zhubajie\boss\dataobject\bschance\actionResultDO();
+    	try {
+    		$manager_id = $grabParamsDO->manager_id;
+    		$is_allot = $grabParamsDO->is_allot;
+    		$next_follow_time = $grabParamsDO->next_follow_time;
+    		$config_ids = $grabParamsDO->config_ids;
+    		$config_managers = $grabParamsDO->config_managers;
+    		
+    		if (!$manager_id) {
+    			throw new Exception('manager_id丢失',-1);
+    		}
+    		if (!$config_ids) {
+    			throw new Exception("您不是订单顾问或未上线，请上线后再抢!(●'◡'●)",-2);
+    		}
+    		if (!$is_allot) {
+	    		$unAcceptChance = $this->checkUnAcceptByManager($manager_id);
+	    		if (!$unAcceptChance->success) {
+	    			throw new Exception("您现在有待受理商机，赶紧跟进吧！(●'◡'●)",com\zhubajie\boss\dataobject\bschance\grabChanceStatus::UNACCEPTCHANCE);
+	    		}
+    		}
+    		$config_112 = false;
+    		if (in_array(112, $config_ids)) {
+    			$config_112 =  true;
+    			foreach ($config_ids as $id){
+    				if($id!=112){
+    					$ids [] =$id;
+    				}
+    			}
+    			$config_ids = $ids;
+    		}
+    		$redis = new lib_redis();
+			$redis->select(2);
+    		$config_id = 0;
+    		if ($config_ids) {
+    			foreach ($config_ids as $id){
+    				$redis_name = 'boss.bschance.redis.config_'.$id;
+    				$bs_to_ct_id = $redis->rpop($redis_name);
+    				if ($bs_to_ct_id) {
+    					$config_id = $id;
+    					break;
+    				}
+    			}
+    		}
+    		//没有找到
+    		if ( !$bs_to_ct_id && $config_112) {
+    			$redis_name = 'boss.bschance.redis.config_112';
+    			$bs_to_ct_id = $redis->rpop($redis_name);
+    			$config_id = 112;
+    		}
+    		if ($bs_to_ct_id) {
+    			$createUsers = $config_managers[$config_id];
+    			$m_bstoct = new model_mk_bstoct();
+    			$chance = $m_bstoct->selectOne(array('bs_to_ct_id'=>$bs_to_ct_id));
+    			if ($chance['follow_uid']) {
+    				throw new Exception("该商机已分配顾问，请重试(●'◡'●)",com\zhubajie\boss\dataobject\bschance\grabChanceStatus::FOLLOWED);
+    			}
+    			$code = 1;
+    			$log = '抢机会成功，分配给创建人';
+    			if ($chance['create_uid'] && in_array($chance['create_uid'], $createUsers)) {
+    				$log = '抢机会成功，分配给创建人';
+    				$manager_id = $chance['create_uid'];
+    				$code = com\zhubajie\boss\dataobject\bschance\grabChanceStatus::MANUAL;
+    			}else{
+    				$m_bstoct_contacts = new model_mk_bstoct_contacts();
+    				$contacts = $m_bstoct_contacts->selectOne(array('ct_id'=>$chance['ct_id']),'ct_mobile');
+    				$searchPhoneResult = $this->getFollowUserByPhone($contacts['ct_mobile']);
+    				if ($searchPhoneResult->success) {
+    					if ($searchPhoneResult->ext_params['follow_uid'] && in_array($searchPhoneResult->ext_params['follow_uid'], $createUsers)) {
+    						$uid = $searchPhoneResult->ext_params['follow_uid'];
+    						$s_user = new service_cp_user($uid);
+    						if ($s_user->get('isleave') !=1) {
+    							$manager_id = $uid;
+    							$log = '抢机会成功，分配给相同手机号的商机顾问';
+    							$code = com\zhubajie\boss\dataobject\bschance\grabChanceStatus::SAMEPHONE;
+    						}
+    					}
+    				}
+    			}
+    			$chanceBussinessDo = new com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo();
+    			$chanceBussinessDo->bs_to_ct_id=$bs_to_ct_id;
+    			$chanceBussinessDo->follow_uid=$manager_id;
+    			$chanceBussinessDo->allottime=time();
+    			$chanceBussinessDo->next_follow_time = date('Y-m-d H:i:s',$next_follow_time);
+    			$result = $this->UpdateBussinessChance($chanceBussinessDo);
+    			if ($result->success) {
+    				$actionResultDO->code = $code;
+    				$actionResultDO->message = $log;
+    				$actionResultDO->success = true;
+    				$actionResultDO->ext_params=array('manager_id'=>$manager_id,'config_id'=>$config_id,'bs_to_ct_id'=>$bs_to_ct_id);
+    			}else{
+    				throw new Exception("很遗憾，抢单失败，请重试！(●'◡'●)",com\zhubajie\boss\dataobject\bschance\grabChanceStatus::ERROR_FOLLOW);
+    			}
+    		}else{
+    			throw new Exception("暂时没有合适的订单哦，稍后再来试试吧！(●'◡'●)",com\zhubajie\boss\dataobject\bschance\grabChanceStatus::NOCHANCE);
+    		}
+    	} catch (Exception $e) {
+    		$actionResultDO->success = false;
+    		$actionResultDO->code = $e->getCode();
+    		$actionResultDO->message = $e->getMessage();
+    	}
+    	return $actionResultDO;
+    }
+    /**
+     * 手动回收redis服务
+     * 
+     * @author tanqing
+     * @date 2015年9月18日
+     * @param unknown $bs_to_ct_id
+     * @param unknown $config_id
+     * @throws Exception
+     * @return \com\zhubajie\boss\dataobject\bschance\actionResultDO
+     */
+    public function delGrabChanceRedis($bs_to_ct_id,$config_id){
+        $actionResultDO = new com\zhubajie\boss\dataobject\bossbase\execResult();
+        try {
+            if (!$bs_to_ct_id){
+                throw new Exception('商机id丢失');
+            }
+            $s_chance = new service_bschance_chance();
+            $r = $s_chance->removeRedis($bs_to_ct_id, $config_id);
+            if ($r){
+                $actionResultDO->success=true;
+                $actionResultDO->code = 0;
+                $actionResultDO->message = '回收成功';
+            }else{
+                throw new Exception('清楚失败');
+            }
+        } catch (Exception $e) {
+            $actionResultDO->success=false;
+            $actionResultDO->code = 0;
+            $actionResultDO->message = $e->getMessage();
+        }
+        return $actionResultDO;
+    }
+
+	/*
+	 *获取待抢商机列表
+	 */
+	public function getRedisChanceList($config_id){
+        $redisListDo = new com\zhubajie\boss\dataobject\bschance\RedisListDo();
+        try {
+            if (!$config_id){
+                throw new Exception('config_id丢失');
+            }
+            $s_chance = new service_bschance_chance();
+            $r = $s_chance->getRedisConfigList($config_id);
+            if ($r){
+                $redisListDo->success=true;
+                $redisListDo->code = $config_id;
+                $redisListDo->message = '获取数据成功';
+                $redisListDo->items = $r;
+            }else{
+                throw new Exception('获取数据失败');
+            }
+        } catch (Exception $e) {
+            $redisListDo->success=false;
+            $redisListDo->code = $config_id;
+            $redisListDo->message = $e->getMessage();
+        }
+        return $redisListDo;
+	}
+    
+    
+    
+}

@@ -1,0 +1,341 @@
+<?php
+
+/**
+ * 提醒
+ */
+class zbj_service_cplog extends zbj_components_baseservice {
+
+	// 当前业务ID
+	protected $id;
+	// 当前对象主数据表
+	protected $marter_table = 'zbj_model_cp_remark';
+
+	public function __construct($id = 0) {
+		parent::__construct();
+		if ($id) {
+			$this->id = $id;
+		}
+	}
+
+	/**
+	 * 添加后台日志
+	 * @param int $user_id 操作人
+	 * @param int $pk_id 编号
+	 * @param string $content 内容
+	 * @param int $type 类型，见type2id方法
+	 * @param int $origin 来源
+	 * @param int $create_time 创建时间
+	 * @param array $option 冗余
+	 * @return boolean
+	 */
+	public function addLog($user_id, $pk_id, $content = '', $type = 'task', $origin = 0, $create_time = 0, $option = array()) {
+		$type = trim($type);
+		$content = zbj_lib_BaseUtils::getStr(trim($content));
+		$pk_id = (int) $pk_id;
+		$status = (int) $status;
+		$user_id = (int) $user_id;
+		$create_time = $create_time ? (int) $create_time : time();
+
+		if ($user_id < 0) {
+			$this->setError(0, '请传入用户的编号');
+			return false;
+		}
+		if ($user_id == 0) {
+			$name = '系统';
+		} else {
+			switch ($origin) {
+				case 0://后台
+					$cpuser = new zbj_model_cp_user();
+					$row = $cpuser->selectOne(array('user_id' => $user_id), 'name');
+					if ($row) {
+						$name = $row['name'];
+					} else {
+						$this->setError(0, '后台找不到此用户');
+						return false;
+					}
+					break;
+				case 1://前台
+				case 2://云客服
+					$account = new zbj_model_mb_account();
+					$row = $account->selectOne(array('user_id' => $user_id), 'nickname');
+					if ($row) {
+						$name = $row['nickname'];
+					} else {
+						$this->setError(0, '前天找不到此用户');
+						return false;
+					}
+					break;
+				case 3://后台协商退款
+					$cpuser = new zbj_model_cp_user();
+					$row = $cpuser->selectOne(array('user_id' => $user_id), 'name');
+					if ($row) {
+						$name = $row['name'];
+					} else {
+						$this->setError(0, '后台找不到此用户');
+						return false;
+					}
+					break;
+				default:
+					$this->setError(0, '日志来源错误');
+					return false;
+			}
+		}
+
+		$type_id = $this->type2id($type);
+		if ($type_id < 1) {
+			$this->setError(0, '暂时不支持该类型的日志');
+			return false;
+		}
+		if ($type_id == 1) {//任务
+			$sTask = new zbj_model_mk_task();
+			$row = $sTask->selectOne(array('task_id' => $pk_id), 'state');
+			var_dump($row);
+			if ($row) {
+				$status = $row['state'];
+			} else {
+				$this->setError(0, '任务不存在');
+				return false;
+			}
+		} else {
+			$status = 0;
+		}
+		if (!$content) {
+			$this->setError(0, '请传入日志内容');
+			return false;
+		}
+		$item = array(
+			'type_id' => $type_id,
+			'user_id' => $user_id,
+			'name' => $name,
+			'create_date' => date('Y-m-d', $create_time),
+			'create_time' => $create_time,
+			'local_time' => time(),
+			'content' => $content,
+			'pk_id' => $pk_id,
+			'status' => $status,
+			'origin' => $origin, //来源,0:后台,1:前台
+			'is_log' => 1,
+			'action' => $this->getTrace(),
+		);
+		if ($option) {
+			$item['option'] = json_encode($option);
+		}
+//		define('DEBUG', 1);
+		if (!$this->model()->insert($item)) {
+			$this->setError(0, '日志插入失败');
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 添加后台备注
+	 * @param int $user_id 操作人
+	 * @param int $pk_id 编号
+	 * @param string $content 内容
+	 * @param string $attachment 附件
+	 * @param int $type 类型，见type2id方法
+	 * @param int $origin 来源
+	 * @param int $remark_catalog 分类,见getRemarkCatalog方法
+	 * @param array $option 冗余
+	 * @return boolean
+	 */
+	public function addRemark($user_id, $pk_id, $content = '', $attachment = '', $type = 'task', $origin = 0, $remark_catalog = 0, $option = array()) {
+		$type = trim($type);
+		$content = zbj_lib_BaseUtils::getStr(trim($content));
+		$pk_id = (int) $pk_id;
+		$status = (int) $status;
+		$user_id = (int) $user_id;
+		$create_time = time();
+
+		if (!$user_id) {
+			$this->setError(0, '请传入用户的编号');
+			return false;
+		}
+		switch ($origin) {
+			case 0://后台
+				$cpuser = new zbj_model_cp_user();
+				$row = $cpuser->selectOne(array('user_id' => $user_id), 'name');
+				if ($row) {
+					$name = $row['name'];
+				} else {
+					$this->setError(0, '后台找不到此用户');
+					return false;
+				}
+				break;
+			case 1://前台
+			case 2://云客服
+				$account = new zbj_model_mb_account();
+				$row = $account->selectOne(array('user_id' => $user_id), 'nickname');
+				if ($row) {
+					$name = $row['nickname'];
+				} else {
+					$this->setError(0, '前天找不到此用户');
+					return false;
+				}
+				break;
+			default:
+				$this->setError(0, '日志来源错误');
+				return false;
+		}
+
+		$type_id = $this->type2id($type);
+		if ($type_id < 1) {
+			$this->setError(0, '暂时不支持该类型的日志');
+			return false;
+		}
+		if ($type_id == 1) {//任务
+			$sTask = new zbj_model_mk_task();
+			$row = $sTask->selectOne(array('task_id' => $pk_id), 'state');
+			if ($row) {
+				$status = $row['state'];
+			} else {
+				$this->setError(0, '任务不存在');
+				return false;
+			}
+		} else {
+			$status = 0;
+		}
+		if (!$content) {
+			$this->setError(0, '请传入日志内容');
+			return false;
+		}
+		$item = array(
+			'type_id' => $type_id,
+			'user_id' => $user_id,
+			'name' => $name,
+			'create_date' => date('Y-m-d', $create_time),
+			'create_time' => $create_time,
+			'local_time' => time(),
+			'content' => $content,
+			'attachment' => $attachment,
+			'pk_id' => $pk_id,
+			'status' => $status,
+			'origin' => $origin,
+			'is_log' => 0,
+			'remark_catalog' => $remark_catalog,
+			'action' => $this->getTrace(),
+		);
+		if ($option) {
+			$item['option'] = json_encode($option);
+		}
+		$remark = new zbj_model_cp_remark();
+//		define('DEBUG', 1);
+		if (!$remark->insert($item)) {
+			$this->setError(0, '日志插入失败');
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 获取任务最后一条备注
+	 */
+	function getTaskLastRemark($task_id, $remark_catalog = NULL) {
+		$condition = array('type_id' => 1, 'pk_id' => $task_id, 'is_log' => 0);
+		if ($remark_catalog !== NULL) {
+			$condition['remark_catalog'] = $remark_catalog;
+		}
+		$row = $this->model()->selectOne($condition, '*', '', 'order by remark_id desc');
+		return $row;
+	}
+
+	/**
+	 * 获取用户最后一条备注
+	 */
+	function getUserLastRemark($user_id, $remark_catalog = NULL) {
+		$condition = array('type_id' => 6, 'pk_id' => $user_id, 'is_log' => 0);
+		if ($remark_catalog !== NULL) {
+			$condition['remark_catalog'] = $remark_catalog;
+		}
+		$row = $this->model()->selectOne($condition, '*', '', 'order by remark_id desc');
+		return $row;
+	}
+
+	function getRemarkLog($pk_id, $type_id = 1, $limit = 0, $page = 1) {
+		if ($pk_id) {
+			$condition['pk_id'] = $pk_id;
+		}
+		if (is_string($type_id)) {
+			$condition['type_id'] = $this->type2id($type_id);
+		} else {
+			$condition['type_id'] = $type_id;
+		}
+//		define('DEBUG', 1);
+		$remark = new zbj_model_cp_remark();
+		if ($limit > 0) {
+			$remark->setLimit($limit);
+			$remark->setPage($page);
+			$remark->setCount(true);
+		}
+		$data = $remark->select($condition, '*', null, 'order by remark_id desc');
+		return $data;
+	}
+
+	protected function type2id($type) {
+		$types = array(
+			1 => 'task', //需求
+			2 => 'refund', //退款
+			3 => 'works', //稿件
+			4 => 'taskcomment', //任务评论
+			5 => 'workscomment', //稿件点评
+			6 => 'user', //用户
+			7 => 'tag', //标签
+			8 => 'service', //服务
+			9 => 'council', //诚信委员会
+			10 => 'bill', //发票
+			11 => 'copyright', //商标版权
+			12 => 'chance', //机会
+			13 => 'cms_article',//cms
+			14 => 'cms_category',// cms 分类管理
+			15 => 'cms_recommend',//cms 推荐位管理
+			16 => 'cms_form',//cms 表单管理
+			17 => 'cms_requirement',//cms 需求管理
+			18 => 'cms_channel',//频道
+			19 => 'cms_recommendlocation',//cms 页面
+			20 => 'cms_field',//cms 字段
+			14 => 'realauth', //实名认证
+		);
+		return array_search($type, $types);
+	}
+
+	/**
+	 * 获取备注分类
+	 */
+	function getRemarkCatalog() {
+		return array(
+			0 => '默认',
+			1 => '转包满意失败',
+			2 => '服务商评价',
+			3 => '服务记录',
+			4 => '促进签约跟进（未签约）',
+			5 => '促进签约跟进（已断约）',
+			6 => '回访答疑类',
+			7 => '回访操作类',
+			8 => '回访分析类',
+			9 => '回访续约类',
+			10 => '雇主跟进记录',
+		);
+	}
+
+	/**
+	 * 获取路径
+	 */
+	protected function getTrace() {
+		$trace = debug_backtrace();
+		$code = '';
+		if (is_array($trace)) {
+			asort($trace);
+			foreach ($trace as $value) {
+				$class = explode('_', $value['class']);
+				if ($class[0] != 'controller') {
+					continue;
+				}
+				$function = str_replace('page', '', strtolower($value['function']));
+				$code .= '/' . end($class) . '_' . $function;
+			}
+		}
+		return $code;
+	}
+
+}

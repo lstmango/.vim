@@ -1,0 +1,108 @@
+<?php
+/**
+ * @author yangliangliang <yangliangliang@zhubajie.com>
+ * @time 2015/6/4
+ * 任务工作台流程
+ */
+
+class zbj_service_workbench extends zbj_components_baseservice {
+
+	static $_workFlow = array();
+
+	//当前对象主数据表
+	protected $marter_table = 'zbj_model_mk_workbench';
+
+	public function __construct() {
+		parent::__construct();
+	}
+	
+	public function getWorkFlow($task_id , $works_id){
+		$task_id = intval($task_id);
+		$works_id = intval($works_id);
+		
+		if($task_id<=0 || $works_id<=0){
+			return false;
+		}
+		
+		$workflow = $this->getWorkFlowBatch($task_id,array($works_id));
+		return $workflow[$works_id];
+	}
+	
+	/**
+	 * 批量提取工作台数据
+	 * */
+	public function getWorkFlowBatch($task_id , array $works_ids){
+		$getid = array();
+		$works_ids = array_unique($works_ids);
+		if(empty($works_ids)) return false;
+		
+		foreach($works_ids as $wid){
+			$wid = intval($wid);
+			if(empty(self::$_workFlow[$wid])){
+				$getid[] = $wid;
+			}
+		}
+		
+		if(empty($getid)){
+			return $this->getCache($works_ids);
+		}
+		
+		try{
+	    	zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET,15,array('zbj_sdk'));
+	    	$payapi = new com\zhubajie\task\interfaces\WorkBenchServiceClient(NULL);
+			zbj_lib_ApiClient::build($payapi);
+			
+			//var_dump($task_id);
+			//var_dump($getid);
+			//die();
+			$back = $payapi->getWorkBenchBatch($task_id,$getid);
+	    	if($back->success != true){
+	    		throw new Exception($back->message);
+	    	}
+	    	
+	    	foreach((array)$back->data as $wid=>$list){
+	    		$list = (array)$list;
+	    		if(empty($list)) continue;
+	    		
+	    		$workflow = array();
+	    		foreach($list as $line){
+	    			$line = (array)$line;
+	    			if(empty($line)) continue;
+		    		$workflow[] = $this->unserializeArray($line);
+	    		}
+	    		self::$_workFlow[$wid] = $workflow;
+	    	}
+	    	
+        }catch(Exception $e){
+			var_dump($e->getMessage());
+        	return false;
+        }
+        
+		return $this->getCache($works_ids);
+	}
+	
+	private function unserializeArray($line){
+		if(!isset($line['content'])) return $line;
+		
+		$content = @unserialize($line['content']);
+		if(is_array($content['log'])){ // 支付日志
+			foreach($content['log'] as $k=>$log){
+				if(is_string($content['log'][$k]['content']))
+				$content['log'][$k]['content'] = @unserialize($content['log'][$k]['content']); 
+			}
+		}
+		$line['content'] = $content;
+		
+		return $line;
+	}
+	
+	private function getCache(array $works_ids){
+		$result = array();
+		foreach($works_ids as $wid){
+			if(!empty(self::$_workFlow[$wid])){
+				$result[$wid] = self::$_workFlow[$wid];
+			}
+		}
+		return $result;
+	}
+}

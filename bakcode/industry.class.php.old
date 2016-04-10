@@ -1,0 +1,387 @@
+<?php
+use \com\zhubajie\category\interfaces\IndustryServiceClient;
+class zbj_service_industry extends zbj_components_baseservice {
+	public $solr;
+	
+	public function __construct($id=0) {
+        parent::__construct($id);
+		$this->solr = new SSolr();
+	}
+
+	public function getNav() {
+		//所有行业
+		$aIndustryList = $this->_getIndustry();
+		//所有频道
+		$aChannelList = $this->_getChannel();
+		//所有分类
+		$aCatalogList = $this->_getCatalogByChannelId();
+		//构建行业数组
+		if (is_array($aChannelList) && is_array($aCatalogList)) {
+			foreach ($aChannelList as $key => $val) {
+				$aGroup = array();
+				foreach ($aCatalogList as $v) {
+					if ($val['channel_id'] == $v['channel_id']) {
+						$aChannelList[$key]['child'][] = $v;
+						$aGroup[] = $v['category_id'];
+					}
+				}
+				$aChannelList[$key]['idgroup'] = $aGroup;
+			}
+		}
+		if (is_array($aIndustryList) && is_array($aChannelList)) {
+			foreach ($aIndustryList as $key => $val) {
+				$aGroup = array();
+				foreach ($aChannelList as $v) {
+					if ($val['industry_id'] == $v['industry_id']) {
+						$aIndustryList[$key]['child'][] = $v;
+						if (is_array($v['idgroup'])) $aGroup = array_merge($aGroup,$v['idgroup']);
+					}
+				}
+				$aIndustryList[$key]['idgroup'] = array_unique($aGroup);
+			}
+		}
+
+		return $aIndustryList;
+	}
+	
+	/**
+	 * 生成导航
+	 */
+	public function createNav($show=0) {
+		//$cache = new zbj_lib_cache('memcache');
+		//$html = $cache->get('zbj.nav');
+		
+		//if (!empty($html)) return $html;
+		
+		//所有行业
+		$aIndustryList = $this->_getIndustry();
+	
+		//所有频道
+		$aChannelList = $this->_getChannel();
+	
+		//所有分类
+		$aCatalogList = $this->_getCatalogByChannelId();
+	
+		//构建行业数组
+		if (is_array($aIndustryList) && is_array($aCatalogList)) {
+			foreach ($aChannelList as $key => $val) {
+				$aGroup = array();
+				foreach ($aCatalogList as $v) {
+					if ($val['channel_id'] == $v['channel_id']) {
+						$aChannelList[$key]['child'][] = $v;
+						$aGroup[] = $v['category_id'];
+					}
+				}
+				$aChannelList[$key]['cata'] = $aGroup;
+			}
+		}
+		if (is_array($aIndustryList) && is_array($aChannelList)) {
+			foreach ($aIndustryList as $key => $val) {
+				if ($val['industry_id'] == 2){
+					$aIndustryList[$key]['industry_name'] = '推广';
+				} elseif($val['industry_id'] == 4){
+					$aIndustryList[$key]['industry_name'] = '写作';
+				} elseif($val['industry_id'] == 5){
+					$aIndustryList[$key]['industry_name'] = '装修';
+				} elseif($val['industry_id'] == 6){
+					$aIndustryList[$key]['industry_name'] = '商务';
+				} elseif($val['industry_id'] == 7){
+					$aIndustryList[$key]['industry_name'] = '生活';
+				} elseif($val['industry_id'] == 8){
+					$aIndustryList[$key]['industry_name'] = '影音';
+				}
+				$aGroup = array();
+				foreach ($aChannelList as $v) {
+					if ($val['industry_id'] == $v['industry_id']) {
+						$aIndustryList[$key]['child'][] = $v;
+						if (is_array($v['cata'])) $aGroup = array_merge($aGroup,$v['cata']);
+					}
+				}
+				$aIndustryList[$key]['cata'] = array_unique($aGroup);
+			}
+		}
+	
+		//获取推荐位
+		$cms = new zbj_lib_cms();
+	
+		$aRecommend = $cms->getRecommend(111);
+	
+		if (!empty($aRecommend['list']) && is_array($aRecommend['list'])) {
+			$this->_setSolr(zbj_lib_Constant::TALENT_SEARCH_IP,'8080','/solr/core1');
+				
+			foreach ($aIndustryList as $key => $val) {
+				$q1 = $sep = '';
+				
+				foreach ($aRecommend['list'] as $v) {
+					$q1.= $sep.'user_id:'.$v['relation_id'];
+					$sep = ' OR ';
+				}
+				
+				$q2 = 'main_industry_id:'.$val['industry_id'];
+				
+				if (is_array($val['child'])) {
+					$childNum = count($val['child']);
+					if ($childNum >= 6) {
+						$limit = 3;
+					} else if ($childNum >= 4) {
+						$limit = 2;
+					} else {
+						$limit = 1;
+					}
+				} else {
+					$limit = 1;
+				}
+
+	
+				$q = "({$q1}) AND {$q2}";
+				$fl = 'user_id,nickname,isauth,deposit,evaluation,ability,skill,alias,brandname,ensure';
+	
+				$result = $this->solr->search($q,0,50,array('fl'=>$fl));
+	
+				$aResult = $this->_returnAry($result);
+				$aResult = $aResult['record'];
+				
+				$count = count($aResult);
+				
+				$aTalent = $aHave = array();
+				if ($limit >= $count) {
+					$aTalent = $aResult;
+				} else {
+					for ($i = 0; $i < $limit; $i++) {
+						$rand = rand(0,$count-1);
+						while (in_array($rand,$aHave)) {
+							$rand = rand(0,$count-1);
+						}
+						$aTalent[] = $aResult[$rand];
+						$aHave[] = $rand;
+					}
+				}
+
+				
+				if (is_array($aTalent)) {
+					foreach ($aRecommend['list'] as $k => $v) {
+						foreach ($aTalent as $v1) {
+							if ($v['relation_id'] == $v1['user_id']) {
+								unset($aRecommend['list'][$k]);
+								break;
+							}
+						}
+					}
+					$aIndustryList[$key]['talent'] = $aTalent;
+				}
+			}
+		}
+
+		$SGui = new SGui();
+		
+		$tpl = dirname(__FILE__).'/../templates/nav/temp_nav.html';
+		
+		$html = $SGui->render($tpl,array('industryList'=>$aIndustryList,'show'=>$show));
+
+		//if (!empty($html)) $cache->set('zbj.nav',$html,3600);
+	
+		return $html;
+	}
+	
+	/**
+	 * 设置Solr连接参数
+	 * @param string HOST
+	 * @param integer PORT
+	 * @param string PATH
+	 */
+	protected function _setSolr($host='localhost',$port=8080,$path='/solr') {
+		$this->solr->setHost($host);
+		$this->solr->setPort($port);
+		$this->solr->setPath($path);
+	}
+	
+	/**
+	 * 根据solr查询返回的docs，转换成数组结构
+	 * @param $oRes;
+	 * @param $facet;
+	 * return $aRes;
+	 */
+	protected function _returnAry($oRes){
+		$aRecord = array();
+		$i = 0;
+	
+		if (is_array($oRes->response->docs)) {
+			foreach ($oRes->response->docs as $k => $v) {
+				foreach ($v as $k1 => $v1) {
+					$aRecord[$i][$k1] = $v1;
+				}
+				$i++;
+			}
+		}
+	
+		return array('record'=>$aRecord,'totalsize'=>$oRes->response->numFound);
+	}
+	
+	/**
+	 * 获得行业
+	 * @param integer ID
+	 * @param string 目录名
+	 * @return array
+	 */
+	protected function _getIndustry($id=0,$dir='') {
+		$modelIndustry = zbj_model_api::get('zbj_model_mk_catalogindustry');
+	
+		$aCondition = array('is_show'=>1);
+		if (!empty($id)) $aCondition['industry_id'] = $id;
+		if (!empty($dir)) $aCondition['cndir'] = $dir;
+		$item = '*';
+		$orderby = "ORDER BY sort ASC";
+	
+		$aIndustry = $modelIndustry->select($aCondition,$item,'',$orderby)->items;
+	
+		if (empty($aIndustry)) return FALSE;
+	
+		if (!empty($id) || !empty($dir)) {
+			return $aIndustry[0];
+		} else {
+			return $aIndustry;
+		}
+	}
+	
+	/**
+	 * 获得一级分类
+	 * @param integer 频道ID
+	 * @param integer 行业ID
+	 * @param string 目录名
+	 * @return array
+	 */
+	protected function _getChannel($cid=0,$iid=0,$dir='') {
+		$modelChannel = zbj_model_api::get('zbj_model_mk_catalogchannel');
+		$modelI2c = zbj_model_api::get('zbj_model_mk_catalogi2c');
+	
+		$table1 = $modelChannel->tableName();
+		$table2 = $modelI2c->tableName();
+	
+		$condition = "{$table1}.is_show=1";
+	
+		if ($iid) $condition.= " AND {$table2}.industry_id={$iid}";
+		if ($cid) $condition.= " AND {$table1}.channel_id={$cid}";
+		if ($dir) $condition.= " AND {$table1}.cndir='{$dir}'";
+	
+		$item = "{$table1}.*,{$table2}.industry_id";
+		$aJoin = array($table2=>"{$table1}.channel_id={$table2}.channel_id");
+	
+		$aChannel = $modelChannel->select($condition,$item,'',array($table2.'.sort'=>'ASC'),$aJoin)->items;
+	
+		if ($cid || $dir) $aChannel = $aChannel[0];
+	
+		if (empty($aChannel)) return FALSE;
+	
+		return $aChannel;
+	}
+	
+	/**
+	 * 获得二级分类 BY 频道ID
+	 * @param integer|string ID
+	 * @return array
+	 */
+	protected function _getCatalogByChannelId($id=0) {
+		$modelC2c = zbj_model_api::get('zbj_model_mk_catalogc2c');
+		$modelCatalog = zbj_model_api::get('zbj_model_mk_catalog');
+	
+		$table1 = $modelC2c->tableName();
+		$table2 = $modelCatalog->tableName();
+	
+		if (!empty($id)) {
+			if (is_numeric($id)) {
+				$condition = "{$table1}.channel_id={$id}";
+			} else {
+				$condition = "{$table1}.channel_id IN ({$id})";
+			}
+		} else {
+			$condition = "{$table2}.pid>0";
+		}
+		$condition.= " AND {$table2}.isdisplay>0";
+		$condition.= " AND {$table2}.catalog_id<>394"; //不查找最新任务分类
+		$item = "{$table1}.*,{$table2}.cndir,{$table2}.task_count,{$table2}.talent_count,{$table2}.sub_count";
+		$item.= ",{$table2}.tabtask_alias,{$table2}.tabtalent_alias";
+		$aJoin = array($table2 => "{$table1}.category_id={$table2}.catalog_id");
+	
+		$aCatalog = $modelC2c->select($condition,$item,'',array($table1.'.sort'=>'ASC'),$aJoin)->items;
+	
+		if (empty($aCatalog)) return FALSE;
+	
+		return $aCatalog;
+	}
+
+	/**
+	 * 根据三级分类id取行业id
+	 * @param $category3id
+	 * @return bool|int
+	 */
+    public function getIndustryIdByCategory3Id($category3id) {
+        $category3id = intval($category3id);
+        if ($category3id <= 0) return $this->errorFalse('无法获取3级分类id', 1);
+
+        try{
+            zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET);
+            $clientIndustry = new IndustryServiceClient(NULL);
+            zbj_lib_ApiClient::build($clientIndustry);
+            $result = $clientIndustry->getIndustryIdByCategory3Id($category3id);
+            if ($result->is_success !== true) {
+                throw new Exception($result->msg, $result->code);
+            }
+        }catch(Exception $e){
+            return $this->errorFalse($e->getMessage());
+        }
+        $industry_id = $result->data;
+        $industry_id = intval($industry_id['industry_id']);
+        return $industry_id;
+    }
+
+    /**
+     * 批量根据三级分类取分类对应的行业id
+     * @param $category_ids
+     * @return mixed
+     */
+    public static function getBatchIndustryIdByCategoryId($category_ids) {
+        $category_ids = array_values(zbj_lib_sqlHelper::getValidIntArray($category_ids));
+        if ( ! $category_ids ) return self::setStaticErrorFalse('无3级分类id', -1);
+        try {
+            zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET);
+            $clientIndustry = new \com\zhubajie\category\interfaces\IndustryServiceClient(NULL);
+            zbj_lib_ApiClient::build($clientIndustry);
+            $result = $clientIndustry->getBatchIndustryIdByCategory3Id($category_ids);
+            if ($result->is_success !== true) {
+                throw new Exception($result->msg, $result->code);
+            }
+        } catch (Exception $e) {
+            return self::setStaticErrorFalse($e->getMessage(), $e->getCode());
+        }
+        $result = $result->data;
+        $error = json_decode($result['errors'], true);
+        if ($error) self::setStaticErrorFalse($error);
+        unset($result['errors']);
+        return $result;
+    }
+
+    /**
+     * 获取行业管理模块列表
+     * return array
+     */
+    public static function getIndustryArrInfo(){
+
+        $cache = new zbj_lib_cache('memcached');
+        $cacheName = 'cache.industry.info.arr';
+        $cacheData = $cache->get($cacheName);
+        if($cacheData == false){
+            $mk_module=new zbj_model_mk_module();
+            $fields = 'module_id,module_name';
+            $order  = ' ORDER BY module_id ASC ';
+            $res = $mk_module->select(array(),$fields,'',$order);
+            $result = $res->items;
+            $brr = array();
+            foreach($result as $k=>$v){
+                $brr[$v['module_id']] = $v['module_name'];
+            }
+            $cache->set($cacheName,$brr,7*86400);
+            return $brr;
+        }
+        return $cacheData;
+    }
+}

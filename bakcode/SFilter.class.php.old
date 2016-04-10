@@ -1,0 +1,751 @@
+<?php
+/*{{{LICENSE
++-----------------------------------------------------------------------+
+| SlightPHP Framework                                                   |
++-----------------------------------------------------------------------+
+| This program is free software; you can redistribute it and/or modify  |
+| it under the terms of the GNU General Public License as published by  |
+| the Free Software Foundation. You should have received a copy of the  |
+| GNU General Public License along with this program.  If not, see      |
+| http://www.gnu.org/licenses/.                                         |
+| Copyright (C) 2008-2009. All Rights Reserved.                         |
++-----------------------------------------------------------------------+
+| Supports: http://www.slightphp.com                                    |
++-----------------------------------------------------------------------+
+}}}*/
+
+/**
+ * @package SlightPHP
+ */
+class SFilter
+{
+    /**
+     * filter
+     */
+    public static $SF;
+
+    /**
+     * dict level 1
+     *
+     * @var string
+     */
+    private static $DICT_LV1 = '/var/www/SlightPHP/plugins/sf_dict/dict1.txt';
+
+    /**
+     * dict level 2
+     * @var string
+     */
+    private static $DICT_LV2 = '/var/www/SlightPHP/plugins/sf_dict/dict2.txt';
+
+    /**
+     * dict base
+     *
+     * @var string
+     */
+    private static $DICT_BASE = 'sf_dict/dict_base.txt';
+
+    /**
+     * rel
+     */
+    private static $REL;
+
+    /**
+     * banned 词典
+     *
+     * @var
+     */
+    private static $BANNED;
+
+    /**
+     * lib_cache
+     *
+     * @var
+     */
+    private static $_cache;
+
+    /**
+     * unused variables
+     * @var array
+     */
+    private static $unused_variables = array();
+
+    /**
+     * sensitive words for cache
+     *
+     * @var array
+     */
+    private static $sensitive_words = array();
+
+    /**
+     * 检查屏蔽
+     *
+     * @param string $strings 过滤字符,
+     * @param bool|false $retype 是否替换
+     * @param string $dict_type 使用词典类型
+     * @return bool|int|string -1无内容,0无匹配,1有匹配
+     */
+    public static function check($strings, $retype = false, $dict_type = '1')
+    {
+        if ($strings) {
+            self::addUnusedVariables($dict_type);
+            self::addUnusedVariables(SFilter::$DICT_BASE);
+            self::addUnusedVariables(SFilter::$DICT_LV1);
+            self::addUnusedVariables(SFilter::$DICT_LV2);
+            self::addUnusedVariables(SFilter::$REL);
+            return self::_checkKey($strings, $retype);//2015年6月4日 调整
+            /*
+            SFilter::$SF = acfilter_new();
+
+            if (1 == $dict_type) {
+                acfilter_load_dict(SFilter::$SF, SFilter::$DICT_LV1);
+            } elseif (2 == $dict_type) {
+                acfilter_load_dict(SFilter::$SF, SFilter::$DICT_LV2);
+            } else {
+                acfilter_load_dict(SFilter::$SF, SFilter::$DICT_LV1);
+            }
+
+            acfilter_prepare(SFilter::$SF);
+
+            if (SFilter::$REL = acfilter_check_text(SFilter::$SF, $strings)) {
+                if ($retype) {
+                    return SFilter::$REL;
+                } else {
+                    return 1;
+                }
+            } else {
+                return 0;
+            }
+            acfilter_close(SFilter::$SF);
+            */
+        } else {
+            return -1;
+        }
+    }
+
+    /**
+     * 检查是否含过滤关键词
+     *
+     * @param string $str 需要检查的内容
+     * @param int $level 检查关键词等级,等级0,不加载关键词库，等级1只针对非法关键词，等级2含后台配置的关键词字典
+     * @param array $add_key 把指定的关键词添加进去
+     * @return true|false
+     */
+    public static function checkey($str = '', $level = 1, $add_key = array())
+    {
+        self::addUnusedVariables($level);
+        self::addUnusedVariables($add_key);
+        return self::_checkKey($str);//2015年6月4日 调整
+        /*
+        //加载字典
+        $banned = SFilter::getDict($level, 1, $addkey);
+
+        if (empty($banned)) {
+            return false;
+        }
+
+        $banned_list = array_chunk($banned, 1500);
+
+        foreach ($banned_list as $banned_str) {
+
+            if (preg_match('/(' . implode('|', $banned_str) . ')/i', $str)) {
+                return true;
+            }
+        }
+
+        return false;
+        */
+    }
+
+    /**
+     * 替换敏感关键词
+     *
+     * @param string $str 需要检查的内容
+     * @param int $level 检查关键词等级,等级1只针对非法关键词，等级2含后台配置的关键词字典
+     * @param array $add_key 把指定的关键词添加进去
+     * @return string
+     */
+    public static function replace($str = '', $level = 1, $add_key = array())
+    {
+        //return self::_checkKey($str, true);//2015年6月4日 调整
+        //加载字典
+        $banned = SFilter::getDict($level, 2, $add_key);
+
+        if (empty($banned)) {
+            return $str;
+        }
+
+        //return preg_replace($banned, '**', $str);
+
+        $banned_list = array_chunk($banned, 1500);
+
+        foreach ($banned_list as $banned_str) {
+            $str = str_replace($banned_str, '**', $str);
+        }
+
+        return $str;
+    }
+
+    /**
+     * 获取数据库的关键词表
+     *
+     * @return false | array
+     */
+    public static function getDbDict()
+    {
+        $kw_array = array();
+        $cont = SFilter::exp_dict();    // TODO
+        if (empty($cont)) {
+            return $kw_array;
+        }
+
+        $tmp_array = explode("\n", $cont);
+        foreach ((array)$tmp_array as $kw) {
+            if (empty($kw)) {
+                continue;
+            }
+            $kw_array[] = $kw;
+        }
+
+        if (!empty($kw_array)) {
+            $kw_array = SFilter::getFullPreg($kw_array);
+        }
+
+        return $kw_array;
+    }
+
+    /**
+     * 获取本地关键词表
+     *
+     * @param int $type base | prep
+     * @return false | array
+     */
+    public static function getLocalDict($type)
+    {
+        $type = strtolower($type);
+        if (!in_array($type, array('base', 'preg'))) {
+            return false;
+        }
+
+        if (isset(SFilter::$_cache[$type])) {
+            return SFilter::$_cache[$type];
+        }
+
+        $dict_path = dirname(__FILE__) . '/sf_dict/dict_' . $type . '.txt';
+        if (!is_file($dict_path)) {
+            return false;
+        }
+
+        $cont = @file_get_contents($dict_path);
+        if (empty($cont)) {
+            return false;
+        }
+
+        $kw_array = array();
+        $tmp_array = explode("\n", $cont);
+        foreach ((array)$tmp_array as $kw) {
+            if (empty($kw)) {
+                continue;
+            }
+            $kw_array[] = $kw;
+        }
+
+        if ($type == 'preg' && !empty($kw_array)) {
+            $kw_array = SFilter::getFullPreg($kw_array);
+        }
+
+        if (!empty($kw_array)) {
+            $kw_array = array_unique($kw_array);
+            $kw_array = array_chunk($kw_array, 2000);
+        }
+        SFilter::$_cache[$type] = $kw_array;
+
+        return $kw_array;
+    }
+
+    /**
+     * 获取完整的正则
+     *
+     * @param array $keyword_array
+     * @return array
+     */
+    protected static function getFullPreg(array $keyword_array)
+    {
+        foreach ($keyword_array as &$kw) {
+            $kw = preg_replace("/\\\{(\d+)\\\}/", ".{0,\\1}", preg_quote($kw, '/'));
+            $kw = '/' . $kw . '/i';
+        }
+
+        return $keyword_array;
+    }
+
+    /**
+     * 获得扩展的关键词库
+     *
+     * @return string
+     */
+    public static function exp_dict()
+    {
+        return ''; // TODO 临时功能，数据库的关键词配置已全部放入文件字典中，重置数据库配置后可改为正常返回
+
+        /*
+        $m = new zbj_lib_cache("memcache");
+        if (!empty($m)) {
+            $banned_keyword = $m->get('banned_keyword');
+        }
+        if (empty($banned_keyword)) {
+            //查询数据库
+            $db = SDb::getDbEngine("pdo_new_mysql");
+            $rs = $db->selectOne('mb_censor', array('var' => 'banned'));
+            $banned_keyword = $rs['cont'];
+            if (!empty($banned_keyword) && !empty($m)) {
+                $m->set('banned_keyword', $banned_keyword);
+            }
+        }
+
+        return $banned_keyword;
+        */
+    }
+
+    /**
+     * 获取被禁止的IP地址
+     *
+     * @return string
+     */
+    public static function getDeniedIp()
+    {
+        $m = new zbj_lib_cache('memcache');
+        if (!empty($m)) {
+            $banned_ip = $m->get('banned_ip');
+        }
+        if (empty($banned_ip)) {
+            //查询数据库
+            $db = SDb::getDbEngine("pdo_new_mysql");
+            $rs = $db->selectOne('mb_censor', array('var' => 'denied_ip'));
+            $banned_ip = $rs['cont'];
+            if (!empty($banned_ip) && !empty($m)) {
+                $m->set('banned_ip', $banned_ip);
+            }
+        }
+
+        return $banned_ip;
+    }
+
+    /**
+     * 获取被禁止的md5
+     *
+     * @return string
+     */
+    public static function getDeniedMd5()
+    {
+        $m = new zbj_lib_cache('memcache');
+        if (!empty($m)) {
+            $banned_md5 = $m->get('banned_md5');
+        }
+        if (empty($banned_md5)) {
+            //查询数据库
+            $db = SDb::getDbEngine("pdo_new_mysql");
+            $rs = $db->selectOne('mb_censor', array('var' => 'banned_md5'));
+            $banned_md5 = $rs['cont'];
+            if (!empty($banned_md5) && !empty($m)) {
+                $m->set('banned_md5', $banned_md5);
+            }
+        }
+
+        return $banned_md5;
+    }
+
+    /**
+     * 获取关键词表
+     *
+     * @param int $level 检查关键词等级,等级1只针对非法关键词，等级2含后台配置的关键词字典
+     * @param int $type 1:匹配性内容 2:替换性内容
+     * @param array $add_key 把指定的关键词添加进去
+     * @return string
+     */
+    public static function getDict($level = 1, $type = 1, $add_key = array())
+    {
+
+        self::addUnusedVariables($level);
+        //如果已经读出数据，直接采用
+        if (!empty(SFilter::$BANNED[$type]) && empty($add_key)) {
+            return SFilter::$BANNED[$type];
+        }
+
+        //加载基本字典 DICT_BASE
+        $banned = array();
+        $dict = self::_getAllKey();
+
+        if (!empty($add_key)) {
+            $dict = array_merge($dict, $add_key);
+        }
+        //$dict = array_unique($dict);
+        $dict = (array) $dict;
+        foreach ($dict as $key => $v) {
+            $key = trim($key);
+            if (empty($key)) {
+                continue;
+            }
+            //$find = preg_replace("/\\\{(\d+)\\\}/", ".{0,\\1}", preg_quote($key, '/'));
+            $banned[] = $key;//$type == 1 ? $find : '/'. $find. '/i';
+        }
+
+        if (empty($banned)) {
+            return null;
+        } else {
+            //return SFilter::$BANNED[$type]=$type==1?'/('.implode('|', $banned).')/i':$banned;
+            return SFilter::$BANNED[$type] = $banned;
+        }
+    }
+
+    /**
+     * 该IP是否被限制操作
+     *
+     * @param string $ip 指定IP
+     * @param int $level 检查ip等级,等级0，不加入系统屏蔽的IP,等级1加入系统已屏蔽的IP
+     * @param array $add_ip_banned 增加匹配的IP范围
+     * @return bool
+     */
+    public static function checkIp($ip = '', $level = 1, $add_ip_banned = array())
+    {
+
+        $ip = empty($ip) ? SUtil::getIP() : $ip;
+        if ($level) {
+            $ip_banned = SFilter::getDeniedIp();
+            if (!empty($add_ip_banned)) {
+                $add_ip_banned_str = trim(join("\r\n", $add_ip_banned));
+                $ip_banned .= "\r\n" . $add_ip_banned_str;
+            }
+        } else {
+            $add_ip_banned_str = trim(join("\r\n", $add_ip_banned));
+            $ip_banned = $add_ip_banned_str;
+        }
+        if (empty($ip_banned) || !$ip) {
+            return false;
+        }
+
+        return self::checkIpExists($ip_banned, $ip) ? true : false;
+        //return empty($ipbanned) ? false :(preg_match("/^(".preg_replace('/\|+/i', '|', str_replace(array("\r\n", ' ', '||'), array('|', '', '|'), preg_quote(trim($ipbanned), '/'))).")/", $ip) > 0 ? true : false);
+    }
+
+    /**
+     * 检查某一ip是否在字符串或者数组中出现
+     *
+     * @param string|array $ip_array 被遍历的ip字符串或者ip数组
+     * @param string $ip 要查找的ip
+     * @param string|array $split 用于ip段查询使用，比如192.168.1.108-192.168.1.123
+     * @return bool true表示匹配成功，false表示匹配失败
+     */
+    private static function checkIpExists($ip_array, $ip, $split = array())
+    {
+        if (is_array($ip_array)) {
+            $ip_str = implode("\r\n", $ip_array);
+        } else {
+            $ip_str = $ip_array;
+        }
+        //简单匹配ip
+        $result = $ip_str ? (strpos($ip_str . "\r\n", $ip . "\r\n") === false ? false : true) : false;
+        //匹配ip段
+        if (!$result) {
+            preg_match_all("/\d{1,3}\.\d{1,3}\.\d{1,3}\.[\ \*]{0,}\\r\\n/iU", $ip_str . "\r\n", $matches);
+            $find_ip = explode(".", $ip);
+            $find_ip_str = $find_ip[0] . "." . $find_ip[1] . "." . $find_ip[2] . ".";
+            foreach ($matches[0] as $mcs) {
+                $p_find_ip = explode(".", $mcs);
+                $p_find_ip_str = $p_find_ip[0] . "." . $p_find_ip[1] . "." . $p_find_ip[2] . ".";
+                if ($p_find_ip_str == $find_ip_str) {
+                    $result = true;
+                    break;
+                }
+            }
+        }
+        //匹配ip区间
+        if (!$result) {
+            if (empty($split)) {
+                $result = false;
+            } else {
+                if (is_array($split)) {
+                    $split_string = implode("\\", $split);
+                } else {
+                    $split_string = $split;
+                }
+                preg_match_all("/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}[" . $split_string . "]\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3} {0,}\\r\\n/iU",
+                    $ip_str . "\r\n", $matches);
+                $ip_int = ip2long($ip);
+                foreach ($matches[0] as $mcs) {
+                    $match_array = preg_split("/[$split_string]/", $mcs);
+                    if ($ip_int >= ip2long(trim($match_array[0])) && $ip_int <= ip2long(trim($match_array[1]))) {
+                        $result = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if ($result == true) {
+            $m = new zbj_lib_cache('memcache');
+            $cache_name = 'denips' . date('YmdH');
+            $ip_tmp_str = $m->get($cache_name);
+            $ip_str = '';
+            if ($ip_tmp_str) {
+                if (strpos($ip_tmp_str, $ip . ",") === false) {
+                    $ip_str .= $ip_tmp_str . $ip . ",";
+                }
+            } else {
+                $ip_str .= $ip_tmp_str . $ip . ",";
+            }
+            if ($ip_str && $ip_tmp_str != $ip_str) {
+                $m->set($cache_name, $ip_str, 3600);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * 检查请求的内容是否包含联系方式(contacts方法调用)
+     *
+     * @param string $str 检查的字符串
+     * @param bool|true $is_strict qq号座机号是否只检测字符串中含有'QQ','座机','坐机','tel'或'电话'时才匹配
+     * @return array|bool 不包含是返回false 否则返回为数组如array('have'=>true, 'code'=>'1,2', 'msg'=>"包含手机号||包含QQ号", 'str'=>'座机: **')
+     */
+    private static function _contacts($str, $is_strict = true)
+    {
+        // $str = zbj_lib_Filter::turnNum($str);
+        $is_strict = is_bool($is_strict) ? $is_strict : true;
+        $rtn_matches = $codes = array();
+        $errors = array(
+            '1' => '包含手机号',
+            '2' => '包含QQ号',
+            '3' => '包含电话号码',
+            '4' => '包含邮箱'
+        );
+        $cnt = count($errors);
+        for ($i = 0; $i < $cnt; $i++) {
+            $code = $i + 1;
+            switch ($code) {
+                case 1: //手机号
+                    $re = '/0?(?:13|15|18|14)[0-9]{9}/';
+                    $match_index = 0;
+                    break;
+                case 2: //QQ号
+                    if ($is_strict) {
+                        $re = '/(?:[qQ扣]+\D{0,10})([1-9][0-9]{4,11})/';
+                        $match_index = 1;
+                    } else {
+                        $re = '/[1-9][0-9]{5,11}/';
+                        $match_index = 0;
+                    }
+                    break;
+                case 3: //tel
+                    if ($is_strict) {
+                        $re = '/0\d{2}[\s\-\－]?([1-9]\d{7})|0\d{3}[\s\-\－]?([1-9]\d{6})|(?:电话|座机|坐机|tel)\D{0,10}([1-9]\d{6,7})/i';
+                        $match_index = 0;
+                    } else {
+                        $re = '/0\d{2}[\s\-\－]?[1-9]\d{7}|0\d{3}[\s\-\－]?[1-9]\d{6}|[1-9]\d{6,7}/';
+                        $match_index = 0;
+                    }
+                    break;
+                case 4: //邮箱
+                    $re = '/[a-z0-9\-_.]+@[\da-z][\.\w\-]+\.[a-z]{2,4}/i';
+                    $match_index = 0;
+                    break;
+                default:
+                    return false;
+            }
+            $match_num = preg_match_all($re, $str, $matches);
+            if ($match_num > 0) {
+                $codes[] = $code;
+                $str = preg_replace($re, '**', $str);
+                $rtn_matches[$code] = $matches[$match_index];
+            }
+            unset($match_num, $matches);
+        }
+        if ($codes) {
+            $rtn = array('codes' => $codes, 'str' => $str, 'match' => $rtn_matches);
+
+            return $rtn;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * 检查请求的内容是否包含联系方式
+     *
+     * @param string $str 检查的字符串
+     * @param bool|false $is_replace 是否返回经替换的字符串
+     * @param bool|false $return_match 是否返回匹配的联系方式
+     * @param bool|true $is_strict qq号座机号是否只检测字符串中含有'QQ','座机','坐机','tel'或'电话'时才匹配
+     * @return array|bool 替换字符串和匹配的联系方式都不返回的时候返回为布尔值 true为包含联系方式
+     * 否则返回为数组如array('have'=>true, 'code'=>'1,2', 'msg'=>"包含手机号||包含QQ号", 'str'=>'座机: **') array('have'=>false);
+     */
+    public static function contacts($str, $is_replace = false, $return_match = false, $is_strict = true)
+    {
+        // $str = zbj_lib_Filter::turnNum($str);
+        $is_replace = is_bool($is_replace) ? $is_replace : false;
+        $return_match = is_bool($return_match) ? $return_match : false;
+        $errors = array(
+            '1' => '包含手机号',
+            '2' => '包含QQ号',
+            '3' => '包含电话号码',
+            '4' => '包含邮箱'
+        );
+        //取出url地址不检查
+        $pattern_url = '/(?:http|https|ftp)\:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(?:\:[a-zA-Z0-9]*)?\/?[a-zA-Z0-9\-\._\?\,\'\/\+\;\&%#\=~]*/i';
+        $match_num = preg_match_all($pattern_url, $str, $matches, PREG_OFFSET_CAPTURE);
+        $match_str = $result_str = $substring = '';
+        $result_codes = $result_matches = array();
+        if ($match_num > 0) {
+            $cur_pos = 0;
+            $max_pos = strlen($str) - 1;
+            foreach ($matches[0] as $k => $match) {
+                $match_str = $match[0];
+                $offset = $match[1];
+                $substring = substr($str, $cur_pos, $offset - $cur_pos);
+                $result_sub = SFilter::_contacts($substring, $is_strict);
+                if ($result_sub === false) {
+                    $result_str .= $substring . $match_str;
+                } else {
+                    $result_str .= $result_sub['str'] . $match_str;
+                    foreach ($result_sub['codes'] as $code) {
+                        if (in_array($code, $result_codes)) {
+                            $result_matches[$code] = array_merge($result_matches[$code], $result_sub['match'][$code]);
+                        } else {
+                            $result_codes[] = $code;
+                            $result_matches[$code] = $result_sub['match'][$code];
+                        }
+                    }
+
+                }
+                $cur_pos = $offset + strlen($match_str);
+            }
+            if ($cur_pos < $max_pos) { //匹配的最后一个url后面还有字符串
+                $substring = substr($str, $cur_pos, $max_pos);
+                $result_sub = SFilter::_contacts($substring, $is_strict);
+                if ($result_sub === false) {
+                    $result_str .= $substring . $match_str;
+                } else {
+                    $result_str .= $result_sub['str'] . $match_str;
+                    foreach ($result_sub['codes'] as $code) {
+                        if (in_array($code, $result_codes)) {
+                            $result_matches[$code] = array_merge($result_matches[$code], $result_sub['match'][$code]);
+                        } else {
+                            $result_codes[] = $code;
+                            $result_matches[$code] = $result_sub['match'][$code];
+                        }
+                    }
+                }
+            }
+        } else {
+            $result = SFilter::_contacts($str, $is_strict);
+            if ($result !== false) {
+                $result_str = $result['str'];
+                $result_codes = $result['codes'];
+                $result_matches = $result['match'];
+            } else {
+                $result_str = $str;
+            }
+        }
+        if ($result_codes) {
+            if (!$is_replace && !$return_match) {
+                return true;
+            }
+            $messages = array();
+            foreach ($result_codes as $code) {
+                $messages[$code] = $errors[$code];
+            }
+            $rtn = array('have' => true, 'code' => implode(',', $result_codes), 'msg' => implode('||', $messages));
+        } else {
+            if (!$is_replace && !$return_match) {
+                return false;
+            }
+            $rtn = array('have' => false);
+        }
+        if ($is_replace === true) {
+            $rtn['str'] = $result_str;
+        }
+        if ($return_match === true) {
+            $rtn['match'] = $result_matches;
+        }
+
+        return $rtn;
+    }
+
+    /**
+     * 检查非法关键字
+     *
+     * @param string $str 检查的字符串
+     * @param boolean $replace 是否返回经替换的字符串
+     * @return boolean|string
+     */
+    static public function _checkKey($str, $replace = false)
+    {
+        zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET, 1,
+            array('util-sdk'));
+        $api = new com\zhubajie\util\interfaces\SensitiveServiceClient(null);
+        zbj_lib_ApiClient::build($api);
+        try {
+            if ($replace) {
+                $rs = $api->replaceSensitiveWord($str);
+                if ($rs && $rs->success === true) {
+                    return $rs->afterReplaced;
+                }
+            } else {
+                $rs = $api->querySensitiveWord($str);
+                if ($rs && $rs->hasSensitive === true) {
+                    return true;
+                }
+            }
+        } catch (Exception $e) {
+            //echo $e->getMessage();
+        }
+
+        return $replace ? $str : false;
+    }
+
+    /**
+     * 获取所有非法关键字
+     *
+     * @return string
+     */
+    public static function _getAllKey()
+    {
+		return '';
+        if (self::$sensitive_words) {
+            return self::$sensitive_words;
+        }
+        $mc = new zbj_lib_cache('memcache');
+        $cn = "zbj_SensitiveWords";
+        $str = $mc->get($cn);
+        if ($str) {
+            return $str;
+        }
+        zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET, 2,
+            array('util-sdk'));
+        $api = new com\zhubajie\util\interfaces\SensitiveServiceClient(null);
+        zbj_lib_ApiClient::build($api);
+        try {
+            $str = $api->getSensitiveWords();
+            if ($str) {
+                self::$sensitive_words = $str;
+            }
+            $mc->set($cn, $str, 1800);
+
+            return $str;
+        } catch (Exception $e) {
+            //echo $e->getMessage();
+        }
+
+        return '';
+    }
+
+    /**
+     * add unused variable
+     * @param mixed $unused_variable
+     */
+    private static function addUnusedVariables($unused_variable)
+    {
+        self::$unused_variables[] = $unused_variable;
+    }
+
+
+}

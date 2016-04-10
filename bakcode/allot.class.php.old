@@ -1,0 +1,479 @@
+<?php
+
+/**
+ * 订单分配
+ * @author 
+ */
+class controller_crontab_allot extends zbj_components_basepage {
+		
+		
+	/**
+	 * 统计所有交易顾问的订单分配数据，CLI模式执行
+	 * 每天执行一次
+	 * */
+	function count(){
+		if(PHP_SAPI != 'cli'){
+			exit('cli support only');
+		}
+		
+		if($_GET['_d'])	define('DEBUG',1);
+		
+		$tmpstr = trim($_GET['mid']);
+		$tmparray = explode(',',$tmpstr);
+		$tmparray = (array)$tmparray;
+		$allCounselor = array();
+		foreach($tmparray as $id){
+			$id = intval($id);
+			if($id>0) $allCounselor[] = $id;
+		}
+		if(empty($allCounselor)){
+			// 取出所有参与新撮合运营的交易顾问
+			$srvAlloter1 = new zbj_service_allot_taskallot();
+			$allCounselor = $srvAlloter1->getAllotDimensionManagers(0,false,false);
+			$allCounselor = (array)$allCounselor;
+		}
+		
+		if(empty($allCounselor)){
+			exit('have no data!');
+		}
+		
+		$allCounselor = array_unique($allCounselor);
+		
+		// 只取近3个月来统计
+		$ymarray = array();
+		$nowtime = time();
+		$ymarray[0] = date('Y-m',$nowtime); // 当月
+		$ymarray[1] = date('Y-m',strtotime($ymarray[0].'-01 00:00:01')-172800); // 上一月
+		$ymarray[2] = date('Y-m',strtotime($ymarray[1].'-01 00:00:01')-172800); // 上一月
+		
+		$errored = array();
+		foreach($allCounselor as $counselor){
+			foreach($ymarray as $ym){
+				zbj_model_api::destroy(); // 防止长时间运行导致数据库连接超时
+				$srvAC = new zbj_service_taskallotcount();
+				$back = $srvAC->upManagerAllotCountData($counselor,$ym);
+				if($back === false){
+					$errored[$counselor][] = $ym;
+				}
+			}
+		}
+		
+		// 写错误日志
+		if(!empty($errored)){
+			$srvCpLog = new zbj_service_cplog();
+			foreach($errored as $managerid=>$data){
+				$srvCpLog->addRemark($managerid,0,'订单分配归档失败：'.json_encode($data),'','user');
+			}
+			print_r($errored);
+		}
+		
+		echo 'done';
+	}
+	
+		
+	/**
+	 * 重置网建突击队的交易顾问分配数据
+	 * 每天3点执行一次
+	 * */
+	function resetcfg(){
+		return true;
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+				
+		if($_GET['_d'])	define('DEBUG',1);
+		
+		
+		$force = $_GET['force']==1?true:false;
+		
+		$tmpstr = trim($_GET['mid']);
+		$tmparray = explode(',',$tmpstr);
+		$tmparray = (array)$tmparray;
+		$allCounselor = array();
+		foreach($tmparray as $id){
+			$id = intval($id);
+			if($id>0) $allCounselor[] = $id;
+		}
+		if(empty($allCounselor)){
+			// 取出所有参与新撮合运营的交易顾问
+			$srvAlloter0 = new zbj_service_taskalloter();
+			$allCounselor = $srvAlloter0->getAllotDimensionManagers(0,false,false);
+			$allCounselor = (array)$allCounselor;
+		}
+		
+		if(empty($allCounselor)){
+			exit('have no data!');
+		}
+		
+		$allCounselor = array_unique($allCounselor);
+		
+		// 重置数据
+		$errored = array(); $suc = 0;
+		foreach($allCounselor as $counselor){
+			zbj_model_api::destroy(); // 防止长时间运行导致数据库连接超时
+			$srvAlloter1 = new zbj_service_taskalloter($counselor);
+			$reset = $srvAlloter1->resetManagerAllotData($force);
+			if($reset !== true){
+				$errored[$counselor] = array('msg'=>'[1]'.$srvAlloter1->getError());
+				continue;
+			}
+			
+			zbj_model_api::destroy(); // 防止长时间运行导致数据库连接超时
+			$srvAlloter2 = new zbj_service_taskalloter($counselor);
+			$reset = $srvAlloter2->resetManagerAllotConfig();
+			if($reset !== true){
+				$errored[$counselor] = array('msg'=>'[2]'.$srvAlloter2->getError());
+			}
+			$suc ++;
+		}
+		
+		// 写错误日志
+		if(!empty($errored)){
+			/*
+			$srvCpLog = new zbj_service_cplog();
+			foreach($errored as $managerid=>$data){
+				$srvCpLog->addRemark($managerid,0,'重置订单分配配置失败：'.serialize($data),'','user');
+			}*/
+			print_r($errored);
+		}
+		echo 'suc:'.$suc;
+	}
+	
+	
+		
+	/**
+	 * 将前一天晚上没有分配的需求执行分配交易顾问，执行unallotTask（）提取到的数据
+	 * CLI模式执行
+	 * 每天5分钟执行一次
+	 * */
+	function unallotDispatch($inPath){
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+		
+		$url = $this->getUrlParams($inPath);
+		
+		$sptype = (int)$url['sptype']; // 专场类型
+		if($sptype<=0) exit('bad sptype!');
+
+		$cache = new zbj_lib_cache('memcache');
+		$cachekey = 'task.zhubajie.unallottask.specialtype.'.$sptype;
+
+		$tasklist = $cache->get($cachekey);
+		
+		$getrow = 30;
+		$total = count($tasklist);
+		
+		if(empty($tasklist) || !is_array($tasklist) || $total == 0){
+			echo implode('-',$inPath).':have no data!';
+			return true;
+		}
+		
+		$throwlist = array();
+		if($total <= $getrow){
+			$throwlist = $tasklist;
+			$tasklist = array();
+		}else{
+			$throwlist = array_slice($tasklist,0,$getrow);
+			array_splice($tasklist,0,$getrow,array());
+		}
+		
+		$cache->set($cachekey,$tasklist,3600);
+		$throwlist = (array)$throwlist;
+		
+		if($sptype==1){
+			$srvTaskPool = new zbj_service_allot_taskpool();
+			foreach($throwlist as $tid){
+				if($tid<=0) continue;
+				$srvTask = new zbj_service_task($tid);
+				$srvTask = $srvTask->init();
+				$srvTaskPool->repushToAllotPool($srvTask,true);
+			}
+		}
+		else if($sptype==2){
+			$srvBschancePool = new zbj_service_allot_bspool();
+			foreach($throwlist as $tid){
+				if($tid<=0) continue;
+				$bsModule = zbj_model_api::get('zbj_model_mk_bstoct');
+				$bsArray=$bsModule->selectOne('bs_to_ct_id='.$tid);
+				$srvBschancePool->repushToAllotPool($bsArray,true);
+			}
+		}
+		echo 'done:<br>';
+		print_r($throwlist);
+	}
+		
+	/**
+	 * 【归档】提取前一天晚上没有分配的所有需求，CLI模式执行
+	 * 每天9点执行一次
+	 * */
+	function unallotTask($inPath){
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+		if($_GET['_d']==1) define('DEBUG',1);
+		$url = $this->getUrlParams($inPath);
+		$sptype = (int)$url['sptype']; // 专场类型
+		if($sptype<=0) exit('bad sptype!');
+		
+		$tasklist = array();
+		switch($sptype){
+			case 1: // 网建专场类需求
+				$tasklist = $this->getTaskManagerType1();
+				break;
+				
+			case 2: // 后期扩展
+				$tasklist = $this->getTaskManagerType2();
+				break;
+		}
+		if(empty($tasklist)){
+			echo implode('-',$inPath).':have no data!';
+			return true;
+		}
+		print_r($tasklist);
+		// 放入缓存
+		$cache = new zbj_lib_cache('memcache');
+		$cachekey = 'task.zhubajie.unallottask.specialtype.'.$sptype;
+
+		$cache->set($cachekey, $tasklist, 86400);
+		
+		echo 'done:'.count($tasklist);
+	}
+
+	/**
+	 * 提取未分配的商机需求
+	 * */
+	private function getTaskManagerType2(){
+
+		$predate = date('Y-m-d',strtotime('-3 day'));
+		$pretime = strtotime($predate) - 21600; // 前一天晚上6点后的单子
+		$condition = array(
+			'needallot=-2',
+			'allotstate=0',
+			"type=2",
+		);
+		
+		$taskModel = zbj_model_api::get('zbj_model_mk_allotpool');
+		$tasklist = $taskModel->select($condition,'task_id,type','','order by task_id asc')->items;
+		$tasklist = (array)$tasklist;
+		
+		$taskarray = array();
+		foreach($tasklist as $task){
+			 $task['task_id']>0 && $taskarray[] = $task['task_id'];
+		}
+		
+		return $taskarray;
+	}
+	
+	/**
+	 * 提取未分配售前交易顾问的需求
+	 * */
+	private function getTaskManagerType1(){
+
+		$predate = date('Y-m-d',strtotime('-3 day'));
+		$pretime = strtotime($predate) - 21600; // 前一天晚上6点后的单子
+		$condition = array(
+			"createymd>='{$predate}'",
+			'mode>=10 and state<=4',
+			'manager_id=0',
+			'open_state>=0',
+			'isaudit=-2',
+			"createtime>='{$pretime}'",
+		);
+		
+		$taskModel = zbj_model_api::get('zbj_model_mk_task');
+		$tasklist = $taskModel->select($condition,'task_id','','order by task_id asc')->items;
+		$tasklist = (array)$tasklist;
+		
+		$taskarray = array();
+		foreach($tasklist as $task){
+			 $task['task_id']>0 && $taskarray[] = $task['task_id'];
+		}
+		
+		return $taskarray;
+	}
+	
+		
+	/**
+	 * 将池子中需要分配的需求交给分配系统
+	 * CLI模式执行
+	 * 每天1分钟执行一次，内部会循环5次
+	 * */
+	function doAllot($inPath){
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+		if($_GET['_d']==1) define('DEBUG',1);
+		$url = $this->getUrlParams($inPath);
+		
+				
+		// 临时方案，10秒1次，50秒后自动退出
+		$times = 0;
+		while($times<5){
+			$totime = time()+10;
+			// 释放所有数据库对象
+			zbj_model_api::destroy();
+		//	define('DEBUG',1);
+			$srvTaskPool = new zbj_service_allot_taskpool();
+			$result = $srvTaskPool->pushPoolTaskToAlloter(30);
+			
+			time_sleep_until($totime);
+			
+			$times++;
+			echo '<br>times:'.$times.'['.date('Y-m-d H:i:s').']<br>';
+		}
+		echo 'finished!';
+
+		var_dump($result);
+	}
+
+	//del测试访问地址
+	function duzhonglin(){
+		$online = zbj_lib_Constant::DOMAIN == 'zhubajie.com' ? true : false;
+			var_dump($online);
+		die();
+		if(!$online){
+			$this->doAllot();
+		}
+	}	
+
+	/**
+	 * 将盲抢池子中待了30分钟的需求交给审核系统
+	 * CLI模式执行
+	 * 每天1分钟执行一次，内部会循环5次
+	 * */
+	function releaseFromGrabPoolToVerify($inPath){
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+		if($_GET['_d']==1) define('DEBUG',1);
+		$url = $this->getUrlParams($inPath);
+		
+		// 临时方案，10秒1次，50秒后自动退出
+		$times = 0;
+		while($times<5){
+			$totime = time()+10;
+			// 释放所有数据库对象
+			zbj_model_api::destroy();
+		//	define('DEBUG',1);
+			$sGrab = new zbj_service_randgrab();
+			$result = $sGrab->releaseFromGrabPoolToVerify(30);
+			
+			time_sleep_until($totime);
+			
+			$times++;
+			echo '<br>times:'.$times.'['.date('Y-m-d H:i:s').']<br>';
+		}
+
+		//清除盲抢异常订单标记
+		$delGrabData['status']	= 0; 
+		$delGrabData['createtime']	< time()-1800;
+		$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+		$delResult=$taskAllotGrabModule->delete($delGrabData);
+
+		echo 'finished!';
+
+		var_dump($result);
+	}
+	
+	/**
+	 * 重置分配交易顾问分配阀值
+	 * 每天早上8点执行一次
+	 * */
+	function resetManagerConf($inPath){
+		if(PHP_SAPI != 'cli'){
+		//	exit('cli support only');
+		}
+		if($_GET['_d']==1) define('DEBUG',1);
+		
+		$allotUserModule = zbj_model_api::get('zbj_model_mk_allotuser');
+		$update['allot_num']=0;
+		$result=$allotUserModule->update('1=1',$update);
+
+		echo 'finished!';
+
+		var_dump($result);
+	}
+
+
+	/*
+	 *分发统计分析计划任务
+	 *每五分钟执行一次
+	 */
+	public function allotEventReservePlan(){
+		$taskModel = zbj_model_api::get('zbj_model_mk_task');
+		if(intval($_GET['time'])>0){
+			$data[]='createtime>'.intval($_GET['time']);
+		}
+		else{
+			$data[]='createtime>'.(time()-600).' and createtime<'.(time()-300);
+		}
+		$data[]='task_id>5000000';
+		$taskArray=$taskModel->select($data,'task_id')->items;
+		if(!$taskArray){
+			return true;
+		}
+		foreach($taskArray as $taskValue){
+			$tid = intval($taskValue['task_id']);
+			$tid > 0 && $taskIdArray[] = $tid;
+		}
+		$allotPoolModel = zbj_model_api::get('zbj_model_mk_allotpool');
+		$taskIds = implode(',', $taskIdArray);
+		$poolData[]='`task_id` in('.$taskIds.')';
+		$poolData[]='type=1';
+		$notPushPoolData=$allotPoolModel->select($poolData,'task_id')->items;
+
+		$notPushPoolId=array();
+		if(!$notPushPoolData){
+			$notPushPoolId=$taskIdArray;
+		}
+		else{
+			unset($tid);
+			foreach($notPushPoolData as $poolValue){
+				$tid = intval($poolValue['task_id']);
+				$tid > 0 && $notPushPoolIdArray[] = $tid;
+			}
+			foreach($taskIdArray as $id){
+				if(!in_array($id,$notPushPoolIdArray)){
+					$notPushPoolId[]=$id;
+				}
+			}
+		}
+		if(!$notPushPoolId){
+			return true;
+		}
+
+		$noTaskIds = implode(',', $notPushPoolId);
+		unset($poolData);
+		$poolData[]='`task_id` in('.$noTaskIds.')';
+		$poolData[]='type=1';
+		$allotAnalyseModule=zbj_model_api::get('zbj_model_mk_allotanalyse');
+		$noAnalyseData=$allotAnalyseModule->select($poolData,'task_id')->items;
+		$pushIdArray=array();
+		if(!$noAnalyseData){
+			$pushIdArray=$notPushPoolId;
+		}
+		else{
+			unset($tid);
+			foreach($noAnalyseData as $analyseValue){
+				$tid = intval($analyseValue['task_id']);
+				$tid > 0 && $noAnalyseIdArray[] = $tid;
+			}
+			foreach($notPushPoolId as $id){
+				if(!in_array($id,$noAnalyseIdArray)){
+					$pushIdArray[]=$id;
+				}
+			}
+		}
+		if(!$pushIdArray){
+			return true;
+		}
+		foreach($pushIdArray as $checkId){
+			$srvAllotTask=new zbj_service_allot_taskcheck();
+			$checkData['task_id']=$checkId;
+			$checkData['source']=2;
+			$result=$srvAllotTask->checkNeedPushPool($checkData);
+			var_dump($checkId.'-'.$result);
+		}
+	}
+}

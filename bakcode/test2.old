@@ -1,0 +1,10 @@
+#! /bin/bash
+a=1
+b=2
+c=$a+$b
+d=$[a+b]
+test f=$a+$b
+#感觉let的方式更符合自然
+echo $c
+echo $d
+echo $f

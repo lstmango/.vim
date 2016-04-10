@@ -1,0 +1,1902 @@
+<?php
+class controller_wjtask extends components_basepage {
+	public $url;
+
+	public $cache;
+
+	public $cache_key;
+
+	public $manager_list;
+
+	function __construct() {
+		error_reporting(0);
+		parent::__construct();
+
+		$this->cache = new zbj_lib_cache('memcache');
+		if($_GET['own'] == '1'){
+			$_GET['thisuid'] = $this->_userid;
+		}
+		if(empty($_GET['timetype'])){
+			$_GET['timetype'] = 1;
+		}
+
+		$this->cache_key = $_SERVER['PHP_SELF'].'/'.md5(join('', $_GET)).'20150318';
+		$this->cache_key = md5($this->cache_key);
+
+		if($_GET['json'] == '1' && zbj_lib_Constant::DOMAIN == 'zhubajie.com'){
+			if( ($data = $this->cache->get($this->cache_key)) != false ){
+				echo json_encode($data);
+				exit();
+			}
+		}
+		$allotSrv = new zbj_service_taskalloter();
+		$manager_list = $allotSrv->getAllotDimensionManagers(0,false,false);
+		$this->manager_list = $manager_list;
+
+		$mmanager = new zbj_model_cp_user();
+
+		$manager_list = $mmanager->select("user_id in (".join(',', $manager_list).")",'user_id, truename, group_id')->items;
+
+		$this->params['manager_list'] = $manager_list;
+	}
+	public function __destruct()
+	{
+		// $this->cache->close();
+		// todo
+	}
+	
+	private function init($inPath){
+		$this->url = $this->getUrlParams($inPath);
+
+	}
+
+	/**
+     * 所有任务列表
+     */
+    public function pageList($inPath) {
+    	return $this->pageTaskList($inPath,true);
+    }
+    	
+	/**
+     * 任务列表
+     * @author houxiaopeng 20150721
+     */
+    public function pageTaskList($inPath,$fromlist=false) {
+		$this->init($inPath);
+		$type = $_GET['type'] ? (int) $_GET['type'] : 1;
+		
+		// 收回所有订单列表的权限，往/wjtask/list上跳转
+		if($type==1 && $fromlist===false){
+			$params = '';
+			if(count($inPath)>3){
+				$paramarray = array_slice($inPath,3);
+				$paramarray = implode('-',$paramarray);
+				$params .= '-'.$paramarray;
+			}
+			if(!empty($_SERVER['QUERY_STRING'])){
+				$params .= '?'.$_SERVER['QUERY_STRING'];
+			}
+			$jumpurl = '/wjtask/list'.$params;
+			$this->redirect($jumpurl);exit;
+		}
+		
+		$limit = 30;
+		$page = isset($this->url['page']) ? (int) $this->url['page'] : 1;
+		$params['title'] = '订单库';
+		$params['leftnav'] = array(60, 10);
+		$mTask = new zbj_model_mk_task();
+
+        //获取搜索条件
+		$SearchCondition = $this->getSearchCondition($type);
+
+		$mTask->setLimit($limit);
+		$mTask->setPage($page);
+		$mTask->setCount(true);
+
+		//------------获取标题字段-------------
+		$getTaskListTitle = $this->getTaskListTitle($type);
+		//define('DEBUG',1);
+        //搜索列表数据
+		$oTask = $mTask->select($SearchCondition['condition'], $SearchCondition['items'], '', $SearchCondition['orderby'], $SearchCondition['leftjoin']);
+        //搜索总额
+	    //$totlePrice = $mTask->selectOne($SearchCondition['condition'], 'sum(mk_task.amount) as c', '', '', $SearchCondition['leftjoin']);
+		//$totlePrice = $totlePrice['c'];
+		//$totlePrice = number_format($totlePrice);
+
+		//json = 1时，返回统计台数据 20150810
+		if($_GET['json'] == '1'){
+            if($type == 7){
+				$totlePrice = $mTask->selectOne($SearchCondition['condition'], 'SUM(mk_task.hosted_amount)-SUM(mk_task_info.refund_amount) as c', '', '', $SearchCondition['leftjoin']);
+			}else{
+				$totlePrice = $mTask->selectOne($SearchCondition['condition'], 'sum(mk_task.amount) as c', '', '', $SearchCondition['leftjoin']);
+			}
+			$totlePrice = $totlePrice['c'];
+			$totlePrice = number_format($totlePrice);
+
+			$data = array();
+			$data['price'] = $totlePrice;
+			$data['count'] = (int)$oTask->totalSize;
+
+			$this->cache->set($this->cache_key, $data, 3600);
+
+			echo json_encode($data);
+			exit();
+		}
+
+		$totlePrice = 0;
+        //修改列表数据
+        $list = $this->getTaskListData($oTask,$getTaskListTitle['fields']);
+
+		//小组、处理人
+		$s_cpallot = new service_cpallot();
+		$params['groups'] = $s_cpallot->getAllotGroup(1);
+		$params['list'] = $list;
+
+		if ($_GET['own'] == 1) {//我的
+			$params['title'] = '我的订单库';
+			$params['leftnav'] = array(60, 20);
+		}
+		$params['total'] = (int) $oTask->totalSize;
+		$params['totlePrice'] = $totlePrice;
+		$params['fields'] = $getTaskListTitle['fieldsConfig'];
+		$params['fields_key'] = $getTaskListTitle['fields'];
+		$params['allfields'] = $getTaskListTitle['allfields'];
+		$params['types'] = $getTaskListTitle['types'];
+		$params['actiontype'] = service_recommendwk::getType();
+		$params['myid'] = $this->_userid;
+		$params['mygroup'] =  $s_cpallot->getConfigIDByMnagerID($this->_userid);
+		//分类
+		$sCategory = new service_category();
+		$params['category1'] = $sCategory->getChild();
+		$params['categorys'] = $sCategory->getCategorys();
+		//行业
+		$s_module = new service_module();
+		$params['modules'] = $s_module->getModule();
+		//分页
+		$params['pagebar'] = $this->PageBar($oTask->totalSize, $limit, $page, $inPath, 'style4', $_SERVER['QUERY_STRING']);
+		$params['manager_list'] = $this->params['manager_list'];
+  
+		$group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$params['group_list'] = $group_lists['data'];
+		$params['group_list'][]=array(
+			'group_id'=>'386',
+			'name'=>'建筑工程取经团',
+		);
+		$params['group_list'][]=array(
+			'group_id'=>'453',
+			'name'=>'悬赏项目',
+		);
+        return $this->render('wjtask/tasklist.html', $params);
+
+	}
+
+	/**
+     * 处理搜索结果
+     * @author houxiaopeng 20150721
+     * $oTask 搜索到的结果 $fields 标题数据
+     */
+	private function getTaskListData($oTask,$fields){
+		$list = array();
+		$flogs = array();
+		if ($oTask->items) {
+			$sFollow = new service_follow();
+
+			$cache = new zbj_lib_cache('memcache');
+			foreach ($oTask->items as $key => $tk) {
+				$list[$key] = $tk;
+				if($oTask->items[$key]['out_id']>0){
+					$list[$key]['out_id']=1;
+				}else{
+					$list[$key]['out_id']=0;
+				}
+				$ids[] = $tk['task_id'];
+				if ($tk['is_sysselect'] == 1 && $tk['state'] == 2) {
+					$toption = unserialize($tk['option']);
+					switch ($toption['sys_select_status']) {
+						case 1:
+						case 2:
+							$list[$key]['sys_state'] = '诚信委员会处理';
+							break;
+						case 3:
+							$list[$key]['sys_state'] = '客服处理';
+							break;
+						case 4:
+							$list[$key]['sys_state'] = '已选标';
+							break;
+						default:
+							$list[$key]['sys_state'] = '未分配';
+							break;
+					}
+				} else {
+					$list[$key]['sys_state'] = '';
+				}
+
+				foreach ($fields as $fname) {
+					switch ($fname) {
+						case 'giveup_status':
+							$list[$key][$fname] = $tk['giveup_status'] == '2' ? '已放弃' : ($tk['giveup_status'] == '1' ? '已放弃': ($tk['giveup_status'] == '3' ? '已放弃' : '正常'));							
+							break;
+						case 'audit_state':
+							$list[$key][$fname] = $tk['expriestime'] ? ($tk['expriestime'] <= time() ? "已超期" :'跟进中') : '跟进中';
+							$list[$key]['expries_tag'] = $tk['expriestime'] ? ($tk['expriestime'] <= time() ? 1 : 0 ) : 0;
+							
+							break;
+						case 'expriestime':
+							if($tk['hosted']==1){
+								$list[$key]['expriesstr'] = '';
+							}else{
+								$list[$key]['expriesstr'] = $sFollow->formatExpries($tk['expriestime']);
+							}
+							
+							$list[$key]['expriesstr'] = $tk['expriestime'] ? ($tk['expriestime'] <= time() ? '已超期' : '未受理' ): '';
+							$list[$key]['expries_tag'] = $tk['expriestime'] ? ($tk['expriestime'] <= time() ? 1 : 0 ) : 0;
+							if($list[$key]['expriestime'] > 0 && date('Ymd', $list[$key]['expriestime']) == date('Ymd') && $_GET['type'] == '8'){
+								//预约列表中，如果今日需求跟进的就展示具体的跟进时间
+								$list[$key]['expriesstr'] = date('Y-m-d H:i:s',$tk['expriestime']);
+							}
+							break;
+						case 'eexpriestime':
+							$list[$key]['eexpriesstr'] = $sFollow->formatExpries($tk['eexpriestime']);
+							break;
+					}
+				}
+			}
+		
+		}
+
+
+        if(!empty($list)){
+        	//增加预约数据 20150522 by houxiaopeng
+            foreach($list as $k=>$v){
+                $follow_id_array[$v['follow_id']] = $v['follow_id'];
+                $task_id_array[$v['task_id']] = $v['task_id'];
+                $reservation_group_array[$v['follow_id']] = $v['reservation_group'];
+				$v['mode'] ==13 && $newbid_task_id_array[] =$v['task_id'];
+            }
+
+            //跟进ID
+            if(!empty($follow_id_array)){
+                $follow_id_string = implode(',',$follow_id_array);
+                $follow_id_string = trim($follow_id_string,',');
+            }
+ 
+            //任务ID
+            if(!empty($task_id_array)){
+                $task_id_string = implode(',',$task_id_array);
+                $task_id_string = trim($task_id_string,',');
+            }
+
+            //获取派单总数
+            if($task_id_string){
+            	$taskseller_obj = zbj_model_api::get('zbj_model_mk_taskseller');
+                $taskseller_res = $taskseller_obj->select("task_id in({$task_id_string})",'count(*) as recnum,task_id','group by task_id')->items;
+            }
+            if($taskseller_res){
+            	foreach($taskseller_res as $k=>$v){
+                    $taskseller[$v['task_id']] = $v['recnum'];
+            	}
+            }
+
+			//派单类型
+			if(!empty($newbid_task_id_array)){
+				$task_extends_model = zbj_model_api::get("zbj_model_mk_taskextends");
+				$condi = array(
+					' task_id in ('.implode(",",$newbid_task_id_array).')'
+				);
+				$recmd_types = $task_extends_model->select($condi,"task_id,recmd_type")->items;
+				if(is_array($recmd_types) && !empty($recmd_types)){
+					$recmd_types = zbj_lib_BaseUtils::indexArray($recmd_types,"task_id");
+				}
+			}
+            //客户类型，加急客户，重点客户
+            if($task_id_string){      
+	            $bstoct_task_obj = zbj_model_api::get('zbj_model_mk_bstocttask');
+	            $bstoct_task_res = $bstoct_task_obj->select("task_id in({$task_id_string})",'task_id,bs_to_ct_id')->items;
+            }
+
+            if($bstoct_task_res){
+            	foreach($bstoct_task_res as $k=>$v){
+            		$bstoct_task_array[$v['bs_to_ct_id']] = $v['bs_to_ct_id'];
+            		$bstoct_task_id[$v['bs_to_ct_id']][$v['task_id']] = $v['task_id'];
+            	}
+            	$bstoct_task_string = implode(',',$bstoct_task_array);
+                $bstoct_task_string = trim($bstoct_task_string,',');
+
+                if($bstoct_task_string){
+                	$bstoct_obj = zbj_model_api::get('zbj_model_mk_bstoct');
+                    $bstoct_res = $bstoct_obj->select("bs_to_ct_id in({$bstoct_task_string})",'bs_to_ct_id,isurgent')->items;
+                }
+
+                if($bstoct_res){
+                	foreach($bstoct_res as $k=>$v){
+                		foreach($bstoct_task_id[$v['bs_to_ct_id']] as $kk=>$vv){
+                			$bstoct[$vv] = $v['isurgent'];
+                		}
+                	}
+                }
+                
+            }
+
+            //跟进日志
+            if($follow_id_string){
+                $reservation_obj = zbj_model_api::get('zbj_model_mk_followreservationlog');
+                $reservation_res = $reservation_obj->select("follow_id in({$follow_id_string})")->items;
+            }
+
+            if($reservation_res){
+            	//处理预约日志数据
+                foreach($reservation_res as $kk=>$vv){
+                    if($vv['reservation_group'] == $reservation_group_array[$vv['follow_id']]){
+                        trim($vv['reservation_key']) > 0 && $reservation_k_v[$vv['follow_id']][$kk] = $this->GetReservationValueArray($vv['reservation_key']);
+                        trim($vv['reservation_value']) && $reservation_k_v[$vv['follow_id']][$kk] = trim($vv['reservation_value']);
+                    }
+                }
+                //组装预约文案
+                foreach($reservation_k_v as $kkk=>$vvv){
+                    $reservation[$kkk] = implode('<br>',$vvv);
+                } 
+                
+            }
+
+            //联系不上雇主，3小时未联系标记
+            if($task_id_string){      
+	            $mk_task_extends = zbj_model_api::get('zbj_model_mk_taskextends');
+	            $mk_task_extends_res = $mk_task_extends->select("task_id in({$task_id_string})",'task_id,first_effect_follow_time,giveuptime,giveuptype')->items;
+            }
+            if($mk_task_extends_res){
+                foreach($mk_task_extends_res as $k=>$v){
+                    if($v['giveuptime'] > 0 && $v['giveuptime'] - $v['first_effect_follow_time'] < 10800){
+                        $v['giveuptimetype'] = 1;
+                    }else{
+                        $v['giveuptimetype'] = 0;
+                    }
+                    $TaskExtends[$v['task_id']] = $v;
+                }
+            }
+
+            foreach($list as $kkkk=>$vvvv){
+            	//预约日志
+                $list[$kkkk]['reservation'] = $reservation[$vvvv['follow_id']];
+                //派单总数
+                if($taskseller[$vvvv['task_id']]){
+                    $list[$kkkk]['allot_num'] = $taskseller[$vvvv['task_id']];
+                }else{
+                	$list[$kkkk]['allot_num'] = 0;
+                }
+                //商机类型
+                $list[$kkkk]['isurgent'] = $bstoct[$vvvv['task_id']];
+                $list[$kkkk]['giveuptimetype'] = $TaskExtends[$vvvv['task_id']]['giveuptimetype'];
+                $list[$kkkk]['giveuptype'] = $TaskExtends[$vvvv['task_id']]['giveuptype'];
+				//派单类型
+				$list[$kkkk]['recmd_type']= !empty($recmd_types) && isset($recmd_types[$vvvv['task_id']])?$recmd_types[$vvvv['task_id']]['recmd_type']:-1;
+            }
+
+        }
+        return $list;
+	}
+
+    /**
+     * 获取列表标题
+     * @author houxiaopeng 20150721
+     */
+	private function getTaskListTitle($type){
+		$sConfig = new service_config();
+		$types = array(
+			8 => '预约',
+			1 => '所有订单',
+			3 => '已受理，跟进中',
+			6 => '已选标，未成交',
+			7 => '已成交',
+		);
+		$sConfig = $sConfig->init($type);
+		$field = $_POST['field'];
+		if (!$field) {
+			//视图模式,0:自由视图,1:默认视图,2:跟进视图
+			switch ((int) $_GET['v']) {
+				case 1://默认视图
+					$field = array_keys($sConfig->getDefaultConfig());
+					break;
+				case 2://跟进视图
+					$field = array('title', 'first_follow', 'second_follow', 'third_follow', 'last_follow');
+					break;
+			}
+		}
+		if ($field) {
+			$sConfig->setField('title');
+			foreach ($field as $value) {
+				$sConfig->setField($value);
+			}
+			$sConfig->addConfig($this->_userid);
+		}
+		if($type == 1){
+			$fieldsConfig = array(
+				'task_id'=>array('name'=>'需求编号','isdefault'=>1,'allowsort'=>0),
+				'category_id'=>array('name'=>'订单分类','isdefault'=>1,'allowsort'=>0),
+				'title'=>array('name'=>'标题','isdefault'=>1,'allowsort'=>0),
+				'amount'=>array('name'=>'赏金','isdefault'=>1,'allowsort'=>1),
+				'hosted_amount'=>array('name'=>'托管金额','isdefault'=>1,'allowsort'=>1),
+				'mode'=>array('name'=>'模式','isdefault'=>1,'allowsort'=>0),
+				'works_num'=>array('name'=>'投标数','isdefault'=>1,'allowsort'=>1),
+				'allot_num'=>array('name'=>'派单数','isdefault'=>1,'allowsort'=>0),
+				'audit_state'=>array('name'=>'受理状态','isdefault'=>1,'allowsort'=>0),
+				'giveup_status'=>array('name'=>'放弃状态','isdefault'=>1,'allowsort'=>0),
+				'state'=>array('name'=>'需求状态','isdefault'=>1,'allowsort'=>1),
+				'createtime'=>array('name'=>'提交时间','isdefault'=>1,'allowsort'=>1),
+				'manager_name'=>array('name'=>'交易顾问','isdefault'=>1,'allowsort'=>0),
+		    );
+		}else if($type == 3){
+			$fieldsConfig = array(
+				'task_id'=>array('name'=>'需求编号','isdefault'=>1,'allowsort'=>0),
+				'title'=>array('name'=>'标题','isdefault'=>1,'allowsort'=>0),
+				'amount'=>array('name'=>'赏金','isdefault'=>1,'allowsort'=>1),
+				'hosted_amount'=>array('name'=>'托管金额','isdefault'=>1,'allowsort'=>1),
+				'mode'=>array('name'=>'模式','isdefault'=>1,'allowsort'=>0),
+				'works_num'=>array('name'=>'投标数','isdefault'=>1,'allowsort'=>1),
+				'allot_num'=>array('name'=>'派单数','isdefault'=>1,'allowsort'=>0),
+				'audit_state'=>array('name'=>'受理状态','isdefault'=>1,'allowsort'=>0),
+				'giveup_status'=>array('name'=>'放弃状态','isdefault'=>1,'allowsort'=>0),
+				'createtime'=>array('name'=>'提交时间','isdefault'=>1,'allowsort'=>1),
+				//'remark'=>array('name'=>'最新备注','isdefault'=>1,'allowsort'=>0),
+				'expriestime'=>array('name'=>'跟进时间','isdefault'=>1,'allowsort'=>1),
+				'manager_name'=>array('name'=>'交易顾问','isdefault'=>1,'allowsort'=>0),
+			);
+		}else if($type == 6){
+			$fieldsConfig = array(
+				'task_id'=>array('name'=>'需求编号','isdefault'=>1,'allowsort'=>0),
+				'title'=>array('name'=>'标题','isdefault'=>1,'allowsort'=>0),
+				'amount'=>array('name'=>'赏金','isdefault'=>1,'allowsort'=>1),
+				'hosted_amount'=>array('name'=>'托管金额','isdefault'=>1,'allowsort'=>1),
+				'mode'=>array('name'=>'模式','isdefault'=>1,'allowsort'=>0),
+				'works_num'=>array('name'=>'投标数','isdefault'=>1,'allowsort'=>1),
+				'allot_num'=>array('name'=>'派单数','isdefault'=>1,'allowsort'=>0),
+				'audit_state'=>array('name'=>'受理状态','isdefault'=>1,'allowsort'=>0),
+				'giveup_status'=>array('name'=>'放弃状态','isdefault'=>1,'allowsort'=>0),
+				//'remark'=>array('name'=>'最新备注','isdefault'=>1,'allowsort'=>0),
+				'createtime'=>array('name'=>'提交时间','isdefault'=>1,'allowsort'=>1),
+				'expriestime'=>array('name'=>'跟进时间','isdefault'=>1,'allowsort'=>1),
+				'manager_name'=>array('name'=>'交易顾问','isdefault'=>1,'allowsort'=>0),
+			);
+		}else if($type == 7){
+			$fieldsConfig = array(
+				'task_id'=>array('name'=>'需求编号','isdefault'=>1,'allowsort'=>0),
+				'title'=>array('name'=>'标题','isdefault'=>1,'allowsort'=>0),
+				'amount'=>array('name'=>'赏金','isdefault'=>1,'allowsort'=>1),
+				'hosted_amount'=>array('name'=>'托管金额','isdefault'=>1,'allowsort'=>1),
+				'mode'=>array('name'=>'模式','isdefault'=>1,'allowsort'=>0),
+				'works_num'=>array('name'=>'投标数','isdefault'=>1,'allowsort'=>1),
+				'createtime'=>array('name'=>'提交时间','isdefault'=>1,'allowsort'=>1),
+				'expriestime'=>array('name'=>'跟进时间','isdefault'=>1,'allowsort'=>1),
+				'endtime'=>array('name'=>'结束时间','isdefault'=>1,'allowsort'=>1),
+				'user_id'=>array('name'=>'发布者','isdefault'=>1,'allowsort'=>0),
+				'manager_name'=>array('name'=>'交易顾问','isdefault'=>1,'allowsort'=>0),
+				//'remark'=>array('name'=>'最新备注','isdefault'=>1,'allowsort'=>0),
+			);
+		}else if($type == 8){
+			$fieldsConfig = array(
+				'task_id'=>array('name'=>'需求编号','isdefault'=>1,'allowsort'=>0),
+				'title'=>array('name'=>'标题','isdefault'=>1,'allowsort'=>0),
+				'amount'=>array('name'=>'赏金','isdefault'=>1,'allowsort'=>1),
+				'hosted_amount'=>array('name'=>'托管金额','isdefault'=>1,'allowsort'=>1),
+				'mode'=>array('name'=>'模式','isdefault'=>1,'allowsort'=>0),
+				'works_num'=>array('name'=>'投标数','isdefault'=>1,'allowsort'=>1),
+				'expriestime'=>array('name'=>'跟进时间','isdefault'=>1,'allowsort'=>1),
+				'ext_selectime'=>array('name'=>'选标截止时间','isdefault'=>1,'allowsort'=>1),
+				'manager_name'=>array('name'=>'交易顾问','isdefault'=>1,'allowsort'=>0),
+				'reservation'=>array('name'=>'预约目的','isdefault'=>1,'allowsort'=>0),
+				//'remark'=>array('name'=>'最新备注','isdefault'=>1,'allowsort'=>0),
+			);
+		}else{
+			$fieldsConfig = $sConfig->getFieldsByUser($this->_userid);
+		}
+
+		if(in_array($type, array(3,4,5,6)) && $_GET['gstatus'] == '2'){
+			//把位置提前
+			array_splice($fieldsConfig, 4, 0, array('giveup_option'=>array('name'=>'放弃原因','isdefault'=>1,'allowsort'=>0)));
+			$new_fieldsConfig = array();
+			foreach($fieldsConfig as $key=>$value){
+				if($key === 0){
+					$key = 'giveup_option';
+				}
+				$new_fieldsConfig[$key] = $value;
+			}
+			$fieldsConfig = $new_fieldsConfig;
+			$s_cpoption=new service_cpoption();
+			$fulloptions=$s_cpoption->getFullItems();
+		}
+		if (array_key_exists('task_id', $fieldsConfig)) {//需求编号始终第一
+			$tmpTidField = $fieldsConfig['task_id'];
+			unset($fieldsConfig['task_id']);
+			$fieldsConfig = array_merge(array('task_id' => $tmpTidField), (array) $fieldsConfig);
+		}
+		$result['fields'] = array_keys($fieldsConfig);
+		$result['fieldsConfig'] = $fieldsConfig;
+		$result['types'] = $types;
+		$result['allfields'] = $sConfig->getFields();
+
+		return $result;
+	}
+
+    /**
+     * 获取搜索条件
+     * @author houxiaopeng 20150721
+     */
+	private function getSearchCondition($type){
+		$mTaskInfo = new zbj_model_mk_taskinfo();
+		$mTaskOpis = new zbj_model_mk_taskopis();
+		$mFollow = new model_mk_follow();
+		$mWorks = new zbj_model_mk_works();
+		
+		$taskInfoTable = $mTaskInfo->tableName();
+		$taskOpisTable = $mTaskOpis->tableName();
+		$followTable = $mFollow->tableName();
+		$worksTable = $mWorks->tableName();
+		$taskTable = 'mk_task';
+		 
+		$leftjoin = array(
+			$taskInfoTable => "{$taskTable}.task_id={$taskInfoTable}.task_id",
+			$taskOpisTable => "{$taskTable}.task_id={$taskOpisTable}.task_id",
+			$followTable => "{$taskTable}.task_id={$followTable}.task_id",
+		);
+		//------------排序-------------
+		$o = $_GET['o']; //排序条件
+		$ud = (int) $_GET['ud']; //升降序
+		$orderarray = array();
+		if($type==2){
+			$orderarray[] = "{$taskTable}.hosted desc";
+		}
+		if($o == 'createtime'){
+			$o = 'mk_task.createymd';
+		}
+		if($type==7 && empty($o)){
+			$o = $_GET['o'] = 'mk_task.endymd';
+			$ud = $_GET['ud'] =  1;
+		}elseif($type==6 && empty($o)){
+			$o = $_GET['o'] = 'mk_task.publicity_outime';
+			$ud = $_GET['ud'] =  1;
+		}elseif($type==3 && empty($o)){
+			$o = $_GET['o'] = 'mk_task.createymd';
+			$ud = $_GET['ud'] =  1;
+		}elseif($type==1 && empty($o)){
+			$o = $_GET['o'] = 'mk_task.createymd';
+			$ud = $_GET['ud'] =  1;
+		}elseif($type==8 && empty($o)){
+            $o = $_GET['o'] = 'mk_follow.expries';
+			$ud = $_GET['ud'] =  1;
+		}
+		if ($o) {
+			switch ($o) {
+				case 'publicity_begintime':
+					$orderarray[] = "publicity_outime " . ($ud == 1 ? 'desc' : 'asc');
+					break;
+				case 'expriestime':
+						$orderarray[] = "{$followTable}.expries " . ($ud == 1 ? 'asc' : 'desc');
+					break;
+				case 'sys_level':
+					$orderarray[] = "{$followTable}.level " . ($ud == 1 ? 'asc' : 'desc');
+					break;
+				default:
+					$orderarray[] = "$o " . ($ud == 1 ? 'desc' : 'asc');
+					break;
+			}
+		}
+		if(!empty($orderarray)){
+			$orderby = 'order by '.implode(',',$orderarray);
+		}
+
+		//------------条件-------------
+		//处理人
+		$group_id = intval($_GET['gid']);
+		$user_id = intval($_GET['uid']);
+        
+        //判断是否有分组，有分组取分组下的所有交易顾问
+        if($user_id == 0 && $group_id){
+			//获取分组下的交易顾问ID
+			$manager_id_list = zbj_lib_BaseUtils::apicall('cpuser', 'GetUserByGroupID', array(
+							'gid' => $group_id,
+						));
+			if(!empty($manager_id_list['data'])){
+				foreach($manager_id_list['data'] as $k=>$v){
+					$manager_id_lists[] = $v['user_id'];
+				}
+				$manager_id_list_str = implode(',',$manager_id_lists);
+			}
+	    }
+		if($manager_id_list_str) $user_id=$manager_id_list_str;
+
+		$own = $_GET['own'];
+		if ($own == 1) {//我的
+			if (!in_array($type, array(18, 19, 21))) {
+				$user_id = $this->_userid;
+			}
+		}
+
+		if(!isset($_GET['uid']) && !isset($_GET['gid'])){
+			$user_id = $this->_userid;
+		}
+
+		//通过top订单标记，筛选任务 20150515 by houxiaopeng
+		if(in_array($_GET['top_order_tag'],array(1,2)) && is_numeric($_GET['top_order_tag'])){
+			$top_order_tag = intval($_GET['top_order_tag']);
+			$top_tag = $top_order_tag == 1 ? 0 : 1;
+			$condition[] = "{$followTable}.top_order_tag = {$top_tag}";
+		}
+
+        //判断是否商机订单
+		if(in_array($_GET['task_source'],array(1,2)) && is_numeric($_GET['task_source'])){
+			$task_source = intval($_GET['task_source']);
+			if($task_source == 1){
+				$condition[] = "{$taskInfoTable}.task_source = 99";
+			}else{
+                $condition[] = "{$taskInfoTable}.task_source != 99";
+			}
+		}
+
+		$condition[] = "{$taskInfoTable}.pub_type=9";
+
+		if ($user_id) {
+			$condition[] = "mk_task.manager_id in($user_id)";
+		}elseif($user_id == 0 && $group_id == 0){
+			$condition[] = "mk_task.manager_id in (".join(',', $this->manager_list).")";
+		}elseif(!$user_id && !$manager_id_list_str && $group_id !== 0){
+			$condition[] = "mk_task.manager_id $user_id = 0";
+		}
+
+		//赏金
+		if(!is_numeric($_GET['amount']) && $_GET['amount'] != '') return $this->printmsg('赏金有误');
+		switch ((int) $_GET['amount']) {
+			case 1://等于0
+				$condition[] = "{$taskTable}.amount = 0";
+				break;
+			case 2://大于0小于等于500
+				$condition[] = "{$taskTable}.amount > 0 and {$taskTable}.amount <= 500";
+				break;
+			case 3://大于500小于等于1000
+				$condition[] = "{$taskTable}.amount > 500 and {$taskTable}.amount <= 1000";
+				break;
+			case 4://大于1000小于等于5000
+				$condition[] = "{$taskTable}.amount > 1000 and {$taskTable}.amount <= 5000";
+				break;
+			case 5://大于5000小于等于10000
+				$condition[] = "{$taskTable}.amount > 5000 and {$taskTable}.amount <= 10000";
+				break;
+			case 6://大于10000小于等于50000
+				$condition[] = "{$taskTable}.amount > 10000 and {$taskTable}.amount <= 50000";
+				break;
+			case 7://大于等于50000
+				$condition[] = "{$taskTable}.amount >= 50000";
+				break;
+		}
+
+        //赏金区间
+		if(is_numeric($_GET['samount'])){
+			$condition[] = "{$taskTable}.amount >= ".$_GET['samount'];
+		}
+
+		if(is_numeric($_GET['eamount'])){
+			$condition[] = "{$taskTable}.amount <= ".$_GET['eamount'];
+		}
+
+		if(is_numeric($_GET['samount']) && is_numeric($_GET['eamount'])){
+			if($_GET['samount'] > $_GET['eamount']){
+				$condition[] = "{$taskTable}.amount >= ".$_GET['eamount']." and {$taskTable}.amount <= ".$_GET['samount'];
+			}
+		}
+	
+		//时间条件
+		if($_GET['timetype'] == '1'){
+			//提交时间
+			if($_GET['sct'] || $_GET['ect']){
+				$condition[] = $this->TimeBeginEnd($_GET['sct'],$_GET['ect'],"{$taskTable}.createymd");
+			}
+		}else if($_GET['timetype'] == '2'){
+			$leftjoin[$worksTable] = "mk_works.task_id=mk_task.task_id";
+
+			$condition[] = 'mk_works.issuccess=1';
+			//选标时间
+			if($_GET['ssltt'] || $_GET['esltt']){
+			    $condition[] = $this->TimeBeginEnd($_GET['ssltt'],$_GET['esltt'],"mk_works.select_ymd");
+			}
+		}else if($_GET['timetype'] == '3'){
+			//成交时间
+			if($_GET['sdt'] || $_GET['edt']){
+			    $condition[] = $this->TimeBeginEnd($_GET['sdt'],$_GET['edt'],"mk_task_info.close_ymd");
+		    }
+		}else if($_GET['timetype'] == '4'){
+			//预约时间
+			if($_GET['esdt'] || $_GET['eedt']){
+			    $condition[] = $this->TimeBeginEnd($_GET['esdt'],$_GET['eedt'],"mk_follow.expries");
+		    }
+		}
+
+        //跟进时间筛选 20150527 by houxiaopeng
+		switch ((int) $_GET['expriestimes']) {
+			case 1://今天
+			    $expriestime = date('Y-m-d',time());
+				$condition[] = "{$followTable}.expries = '{$expriestime}'";
+				break;
+			case 2://明天
+			    $expriestimes = date('Y-m-d',time());
+			    $expriestimee = date('Y-m-d',time() + 86400);
+				$condition[] = "{$followTable}.expries <= '{$expriestimee}' and {$followTable}.expries > '{$expriestimes}'";
+				break;
+			case 3://后天
+			    $expriestimes = date('Y-m-d',time() + 86400);
+			    $expriestimee = date('Y-m-d',time() + 172800);
+				$condition[] = "{$followTable}.expries <= '{$expriestimee}' and {$followTable}.expries > '{$expriestimes}'";
+				break;
+			case 4://近三天
+			    $expriestimes = date('Y-m-d',time() + 172800);
+			    $expriestimee = date('Y-m-d',time() + 259200);
+				$condition[] = "{$followTable}.expries <= '{$expriestimee}' and {$followTable}.expries > '{$expriestimes}'";
+				break;
+			case 5://近七天
+			    $expriestimes = date('Y-m-d',time() + 518400);
+			    $expriestimee = date('Y-m-d',time() + 604800);
+				$condition[] = "{$followTable}.expries <= '{$expriestimee}' and {$followTable}.expries > '{$expriestimes}'";
+				break;
+			case 6://已超期
+			    $expriestime = date('Y-m-d',time());
+				$condition[] = "{$followTable}.expries < '{$expriestime}'";
+				break;
+		}
+
+		//通过已发布和未发布状态筛选 by houxiaopeng 20150527
+		switch ((int) $_GET['taskstate']) {
+			case 1://未发布
+				$condition[] = "{$taskTable}.audit_state >= 4 and {$followTable}.giveup_option = 0 and case when {$taskTable}.mode in(11,12) then {$taskTable}.state > 4 else {$taskTable}.state <= 2 end";
+				break;
+			case 2://已发布
+				$condition[] = "{$followTable}.giveup_option = 0 and case when {$taskTable}.mode in(11,12) then {$taskTable}.audit_state >= 4 else {$taskTable}.audit_state < 4 end and case when {$taskTable}.mode in(11,12) then {$taskTable}.state = 3 else {$taskTable}.state = 2 end";
+				break;
+		}
+
+		//是否禁止搜索引擎
+		if ((int) $_GET['was_nosearch']) {
+			$condition["{$taskTable}.was_nosearch"] = 1;
+		}
+		//是否隐藏交稿
+		if ((int) $_GET['was_showorks']) {
+			$condition["{$taskTable}.was_showorks"] = 1;
+		}
+		//任务推广
+		if ((int) $_GET['was_promotion']) {
+			$condition["{$taskTable}.was_promotion"] = 1;
+		}
+		
+		//受理状态
+		switch ((int) $_GET['astatus']) {
+			case 1://正常
+				$condition[] = "{$followTable}.expries > ".date('Y-m-d', $this->_time);
+				break;
+			case 2://超期
+				$condition[] = "{$followTable}.expries <= ".date('Y-m-d', $this->_time)." and {$followTable}.expries != '1970-01-01'";
+				break;
+			case 3: //今日需要跟进,跟进中
+                $condition[] = "({$followTable}.expries >=".date('Y-m-d', $this->_time)." or {$followTable}.expriestime = 0)";
+				break;
+			case 4://以后要跟进
+				$condition[] = "{$followTable}.expries >". date('Y-m-d', $this->_time);
+				break;
+			case 5: //今日需要跟进,跟进中
+				$condition["{$followTable}.expries"] = date('Y-m-d', $this->_time);
+				break;
+		}
+
+		if ($own == 1 && in_array($this->_usergroupid, array(106, 72)) && $type == 2) {
+			$_GET['atype'] = 1;
+		}
+
+		//订单类型
+		switch ($_GET['otype']) {
+			case 1://悬赏选人
+				$condition["{$taskTable}.mode"] = 10;
+				$condition["{$taskInfoTable}.ispic"] = 2;
+				break;
+			case 2://悬赏比稿
+				$condition["{$taskTable}.mode"] = 10;
+				$condition[] = "{$taskInfoTable}.ispic!=2";
+				break;
+			case 3://雇佣
+				$condition[] = "{$taskTable}.mode in (11,12)";
+				break;
+			case 4://招标
+				$condition[] = "({$taskTable}.mode = 13 or ({$taskTable}.mode = 10 and {$taskInfoTable}.ispic=2))";
+				break;
+		}
+
+		//之前意向
+		switch ($_GET['mode']) {
+			case 1://悬赏(单人)
+			case 2://悬赏(多人)
+			case 3://悬赏(计件)
+				$condition["{$taskTable}.mode"] = 10;
+				$condition["{$taskTable}.allot"] = (int) $_GET['mode'];
+				break;
+			case 4://服务
+				$condition["{$taskTable}.mode"] = 11;
+				break;
+			case 5://雇佣
+				$condition["{$taskTable}.mode"] = 12;
+				break;
+			case 6://招标
+				$condition["{$taskTable}.mode"] = 13;
+				break;
+		}
+
+		//分类
+		if ($_GET['cat1']) {
+			$condition["{$taskTable}.category1id"] = (int) $_GET['cat1'];
+		}
+		if ($_GET['cat2']) {
+			$condition["{$taskTable}.category2id"] = (int) $_GET['cat2'];
+		}
+		if ($_GET['cat3']) {
+			$condition["{$taskTable}.category_id"] = (int) $_GET['cat3'];
+		}
+
+        //是否放弃
+		switch ($_GET['gstatus']){
+			case 1:
+				$condition[] = "({$followTable}.giveup_status!=2 or {$followTable}.giveup_status is null)";
+				break;
+			case 2:
+				$condition[] = "{$followTable}.giveup_status=2";
+				break;
+		}
+		
+		$condition[] = "mk_task.open_state=0";
+
+		switch ($type) {
+			case 1://所有
+				break;
+			case 3://未发布
+				$condition[] = "({$taskTable}.audit_state=5 or ({$taskTable}.state=2 and {$taskTable}.audit_state<4 and {$taskTable}.works_num <5 ) or ({$taskTable}.state=2 and {$taskTable}.works_num >=5)) and {$followTable}.giveup_option = 0";
+				break;
+			case 8://预约
+				$condition[] = "{$followTable}.giveup_status=0 and {$followTable}.expriestime > 0 and {$taskTable}.open_state = 0 and case when {$taskTable}.mode in(11,12) then {$taskTable}.state >= 3 else {$taskTable}.state <= 2 end";
+				break;
+			case 6://未成交
+				$condition[] = "{$taskTable}.state=3";
+				break;
+			case 7://已结束
+				$condition[] = "{$taskTable}.state=4";
+				$condition[] = "{$taskInfoTable}.refund_type < 2";
+				break;
+			default:
+				$condition[] = "{$taskTable}.mode in (10,11,12,13)";
+				break;
+		}
+
+		//json = 1时，供统计表使用 20150810
+		//跟进状态
+		switch ((int) $_GET['fstatus']) {
+			case 1:
+			    $mTaskSign = new zbj_model_mk_tasksign();
+			    $taskSignTable = $mTaskSign->tableName();
+				$leftjoin[$taskSignTable] = "{$taskSignTable}.task_id=mk_task.task_id";
+
+				$items || $items = "DISTINCT {$taskTable}.task_id,mk_task_outsource.task_id as out_id";
+				$condition[] = "{$taskSignTable}.alternative_num > 0";
+				$condition[] = "{$taskSignTable}.eliminate_num = '0'";
+				$condition[] = "{$taskTable}.state>=2 ";
+				break;
+			case 2:
+				$condition[] = "{$taskTable}.state=2 ";
+				$condition[] = "{$taskTable}.works_num >=5 ";
+				break;
+			case 3:
+				$condition[] = "{$taskTable}.state=2";
+				$condition[] = "{$taskTable}.audit_state<4";
+				$condition[] = "{$taskTable}.works_num <5";
+				break;
+			case 4:
+				$condition[] = "{$taskTable}.audit_state=5";
+				$condition[] = "{$taskInfoTable}.option NOT like '%\"abandonreason\";i:2%'";
+
+				break;
+			case 5:
+				$condition[] = "{$taskTable}.audit_state in (4,5)";
+				$condition[] = "{$taskInfoTable}.option like '%\"abandonreason\";i:2%'";
+				break;
+		}
+
+		//派单状态 1派单中 2 派单完成 3 未派单
+    	switch ((int) $_GET['recstatus']) {
+			case 1:
+			    $condition[] = "{$taskOpisTable}.recmd_status = 1 ";
+				break;
+			case 2:
+				$condition[] = "{$taskOpisTable}.recmd_status = 2 ";
+				break;
+			case 3:
+				$condition[] = "{$taskOpisTable}.recmd_status = 0 ";
+				break;
+        }
+
+		if(strtotime($_GET['ect']) > strtotime("+6 month {$_GET['sct']}")){
+            return $this->printmsg('最大只支持6个月内的数据查询!');
+        }
+
+		//搜索半年以后创建的任务，优化搜索条件
+		$createymds = date('Y-m-d 00:00:00',time() - 15552000);
+		$condition[] = "{$taskTable}.createymd >= '" . $createymds . "'";
+
+		if(empty($_GET['sct']) && empty($_GET['ect'])){
+			$_GET['sct'] = $createymds;
+		}
+
+		//搜索2015-01-25号以后创建的任务，优化搜索条件
+        //if(empty($_GET['sct']) && empty($_GET['ect'])){
+        //    $condition[] = "{$taskTable}.createymd >= '" . date('Y-m-d',strtotime('-3 days')) . "'";
+        //}else{
+        //    $condition[] = "{$taskTable}.createymd >= '2015-01-25'";
+        //}
+
+		if (!$orderby) {
+			$orderby = "order by {$taskTable}.task_id desc";
+		}
+
+        $result['items'] = "{$taskTable}.task_id,{$taskTable}.title,{$taskTable}.amount,{$taskTable}.hosted,{$taskTable}.mode,{$taskTable}.manager_name,{$taskTable}.createtime,{$taskTable}.endtime,{$taskTable}.user_id,{$taskTable}.ext_selectime,{$followTable}.expriestime,{$followTable}.giveup_status,{$taskTable}.hosted_amount,{$taskTable}.works_num,{$taskTable}.category_id,{$taskTable}.state,{$taskTable}.is_sysselect,{$taskTable}.allot,{$followTable}.top_order_tag,{$followTable}.follow_id,{$followTable}.reservation_group,{$taskOpisTable}.recmd_status,{$taskInfoTable}.rec_num";
+		$result['condition'] = $condition;
+		$result['orderby'] = $orderby;
+		$result['leftjoin'] = $leftjoin;
+
+		return $result;
+	}
+
+	/**
+	 * 最小最大时间
+	 * 传入参数 $begin开始时间,$end结束时间,$datetype时间类型
+	 * 返回搜索条件 $time_begin_end
+	 */
+	private function TimeBeginEnd($begin,$end,$datetype){
+		$time_begin_end = '';
+		if(zbj_lib_BaseUtils::chkdate($begin)){
+	        $begin = zbj_lib_BaseUtils::getStr($begin);
+            $time_begin_end = "{$datetype} >= '{$begin}'";
+        }
+        if(zbj_lib_BaseUtils::chkdate($end)){
+	        $end = zbj_lib_BaseUtils::getStr($end);
+            $time_begin_end = "{$datetype} <= '{$end}'";
+        }
+        if($begin > $end){
+	    	$timestart = $end;
+            $timeend = $begin;
+	    }else{
+            $timestart = $begin;
+            $timeend = $end;
+	    }
+	    if(zbj_lib_BaseUtils::chkdate($begin) && zbj_lib_BaseUtils::chkdate($end)){
+            $time_begin_end = "{$datetype} >= '{$timestart}' and {$datetype} <= '{$timeend}'";
+	    }
+	    return $time_begin_end;
+	}
+
+
+
+	/**
+	 * @abstract 预约数据数组
+	 * @param $key预约数组的key
+	 */
+	private function GetReservationValueArray($key){
+		if($key > 5 || $key <= 0) return false;
+		$reservation_key_value = array(
+		    1 => '给雇主梳理需求',
+		    2 => '查看投标情况',
+		    3 => '查看雇主登陆情况,是否及时关注订单',
+		    4 => '关注雇主是否有意向服务商',
+		    5 => '关注服务商对项目跟进情况',
+		    6 => '系统自动建立预约'
+		);
+		return $reservation_key_value[$key];
+	}
+
+	/**
+	 * 放弃跟进列表
+	 */
+	public function pageGiveUpList($inPath){
+		define('PAGE_SIZE', 30);
+		$this->tplvar['title'] = '订单库-放弃库';
+	
+		//define('DEBUG',1);
+		$condition = array();
+		$condition[] = "mk_task.createymd >='2015-01-25'";
+		$condition['mk_task_info.pub_type'] = 9;
+
+		$urlparams = $this->getUrlParams($inPath);
+		$page = $urlparams["page"] ? ($urlparams["page"]) : 1;
+
+		//放弃列表排序20150727
+		$o = $_GET['o']; //排序条件
+		$ud = (int) $_GET['ud']; //升降序
+		$orderarray = array();
+
+		if ($o) {
+			switch ($o) {
+				case 'amount':
+					$orderarray[] = "mk_task.amount " . ($ud == 1 ? 'desc' : 'asc');
+					break;
+				case 'giveuptime':
+					$orderarray[] = "giveuptime " . ($ud == 1 ? 'desc' : 'asc');
+					break;
+			}
+		}
+		if(!empty($orderarray)){
+			$orderby = 'order by '.implode(',',$orderarray);
+		}
+		
+		$gid = zbj_lib_BaseUtils::getStr($_GET['gid'],'int');
+		$uid = zbj_lib_BaseUtils::getStr($_GET['uid'],'int');
+		
+		if($_GET['own']) {
+			$uid = $this->_userid;
+		}
+		//通过分组查交易顾问ID，再通过交易顾问ID组查找任务 20150409 by houxiaopeng
+		if($uid == 0 && $gid){
+			//获取分组下的交易顾问ID
+			$manager_id_list = zbj_lib_BaseUtils::apicall('cpuser', 'GetUserByGroupID', array(
+							'gid' => $gid,
+						));
+			if(!empty($manager_id_list['data'])){
+				foreach($manager_id_list['data'] as $k=>$v){
+					$manager_id_lists[] = $v['user_id'];
+				}
+				$manager_id_list_str = implode(',',$manager_id_lists);
+			}
+	    }
+        if($manager_id_list_str) $uid = $manager_id_list_str;
+		if($uid){
+			$condition[] = "mk_task.manager_id in ($uid)";
+		}elseif($uid == 0 && $gid == 0){
+			$condition[] = "mk_task.manager_id in (".join(',', $this->manager_list).")";
+		}elseif(!$uid && !$manager_id_list_str && $gid !== 0){
+			$condition['mk_task.manager_id'] = 0;
+		}
+
+        //放弃原因 20150823
+		if(is_array($_GET['giveupoption']) && !empty($_GET['giveupoption'])){
+			$giveupoption = zbj_lib_BaseUtils::getStr($_GET['giveupoption'],'int');
+			$giveup_option_str = implode(',',$giveupoption);
+			$giveup_option_str = trim($giveup_option_str,',');
+			$condition[] = "mk_follow_giveupreason.giveupreason_key in({$giveup_option_str})";
+		}
+
+        //跟进不足3小时，跟进满3小时
+        if($_GET['followtype'] == 1){
+        	//跟进不足3小时
+        	$condition[] = "mk_follow.giveuptime < 10800 + mk_follow.first_effect_follow_time";
+        }elseif($_GET['followtype'] == 2){
+        	//跟进满3小时
+        	$condition[] = "mk_follow.giveuptime >= 10800 + mk_follow.first_effect_follow_time";
+        }
+
+		$sht = zbj_lib_BaseUtils::getStr($_REQUEST['sht'],'string');
+		$eht = zbj_lib_BaseUtils::getStr($_REQUEST['eht'],'string');
+		if($sht){
+			$condition[] = " giveupymd >= '{$sht}' ";
+		}
+		if($eht){
+			$condition[] = " giveupymd <= '{$eht}' ";
+		}
+		if($_GET['timetype'] == '1'){
+			//提交时间
+			if ($_GET['sct']) {
+				$condition[] = "mk_task.createtime >=" . strtotime($_GET['sct']);
+			}
+			if ($_GET['ect']) {
+				$condition[] = "mk_task.createtime <=" . strtotime($_GET['ect']);
+			}
+		}
+		if($_GET['timetype'] == '2' || $_GET['timetype'] == '3'){
+			$condition[] = '1=2'; //不支持按选标时间和成交时间查询
+		}
+
+		$state = zbj_lib_BaseUtils::getStr($_GET['state'],'int')?zbj_lib_BaseUtils::getStr($_GET['state'],'int'):0;
+		if(-1 == $state){
+			$condition[] = 'giveup_status != 0';
+		}elseif(0 == $state){
+			$condition['giveup_status'] = 1;
+		}elseif(1 == $state){
+			$condition['giveup_status'] = 2;
+		}else{
+			$condition['giveup_status'] = 3;
+		}
+		
+		$mode = zbj_lib_BaseUtils::getStr($_GET['mode'],'int')?zbj_lib_BaseUtils::getStr($_GET['mode'],'int'):0;
+		switch ($mode) {
+			case 0:
+				break;
+			case 1:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 1;
+				break;
+			case 2:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 2;
+				break;
+			case 3:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 3;
+				break;
+			case 4:
+				$condition['mk_task.mode'] = 12;
+				break;
+			case 5:
+				$condition['mk_task.mode'] = 11;
+				break;
+			case 6:
+				$condition['mk_task.mode'] = 13;
+				break;
+			default:
+				break;
+		}
+
+		//bidstate 未选标已选标
+		if($_GET['bidstate'] == 1){
+			//1未选标
+			$condition[] = "mk_task.state <= 2";
+		}elseif($_GET['bidstate'] == 2){
+			//2已选标
+			$condition[] = "mk_task.state >= 3";
+		}
+
+		//行业
+		$module_id = zbj_lib_BaseUtils::getStr($_REQUEST['module_id']);
+		if ($module_id) {
+			if (-1 != $module_id) {
+				$s_module = new service_module($module_id);
+				$categories = $s_module->getCategoryIdStrByModuleId();
+			} else {
+				$s_module = new service_module();
+				$categories = $s_module->getCategoryIdStrByModuleId(0, false);
+			}
+			$condition[] = "category_id IN ({$categories})";
+		}
+		$leftjoin = array(
+			'mk_task' => 'mk_task.task_id = mk_follow.task_id',
+			'mk_task_info'=>'mk_task_info.task_id=mk_task.task_id',
+			'mk_follow_extends'=>'mk_follow.follow_id=mk_follow_extends.follow_id',
+			//20150528 by houxiaopeng 放弃表分表
+			'mk_follow_giveupreason'=>'mk_follow.follow_id=mk_follow_giveupreason.follow_id'
+		);
+
+		$item = array('mk_follow.task_id as task_id', 'title', 'mk_task.state','mk_task.manager_name as manager_name', 'giveup_option', 'giveuptime', 'amount', 'expriestime', 'expries', 'giveup_status', 'mk_follow.remark', 'mk_follow_extends.giveup_remark', 'mk_follow_giveupreason.giveupreason_key');
+		
+		$m_follow = zbj_model_api::get('model_mk_follow');
+		$m_follow->setLimit(PAGE_SIZE);
+		$m_follow->setPage($page);
+		//$m_follow->setCount(true);
+		$task_list = $m_follow->select($condition, $item, '', $orderby, $leftjoin);
+		$task_list_count = $m_follow->selectOne($condition, "count(DISTINCT mk_follow.task_id) as count", '', $orderby, $leftjoin);
+		if($_GET['json'] == '1'){
+            $leftjoin['mk_follow_giveupreason'] = 'mk_follow.follow_id=mk_follow_giveupreason.follow_id and mk_follow.giveup_option=mk_follow_giveupreason.giveupreason_key';
+			if($_GET['json_bat'] == 1){
+				//$condition
+				$task_list = $m_follow->select($condition, 'giveup_option,sum(1) as p, sum(mk_task.amount) as c', 'group by mk_follow.task_id', $orderby, $leftjoin)->items;
+				if($task_list){
+					foreach($task_list as $key=>&$value){
+						$value['c'] = number_format($value['c']);
+					}
+				}
+
+				$this->cache->set($this->cache_key, $task_list, 3600);
+
+				echo json_encode($task_list);
+				exit();
+			}
+			$totlePrice = $m_follow->selectOne($condition, 'sum(mk_task.amount) as c', 'group by mk_follow.task_id', '', $leftjoin);
+			$totlePrice = $totlePrice['c'];
+			$totlePrice = number_format($totlePrice);
+			$data = array();
+			$data['price'] = $totlePrice;
+			$data['count'] = (int)$task_list->totalSize;
+
+			$this->cache->set($this->cache_key, $data, 3600);
+
+			echo json_encode($data);
+			exit();
+		}
+		$s_cpoption=new service_cpoption();
+		$optionstr=$s_cpoption->getFullItems();
+        foreach($task_list->items as $k=>$v){
+        	$task_id_array[] = $v['task_id'];
+            $task_list_res[$v['task_id']]['task_id'] = $v['task_id'];
+            $task_list_res[$v['task_id']]['title'] = $v['title'];
+            $task_list_res[$v['task_id']]['manager_name'] = $v['manager_name'];
+            $task_list_res[$v['task_id']]['giveup_option'] = $v['giveup_option'];
+            $task_list_res[$v['task_id']]['giveuptime'] = $v['giveuptime'];
+            $task_list_res[$v['task_id']]['amount'] = $v['amount'];
+            $task_list_res[$v['task_id']]['expriestime'] = $v['expriestime'];
+            $task_list_res[$v['task_id']]['expries'] = $v['expries'];
+            $task_list_res[$v['task_id']]['giveup_status'] = $v['giveup_status'];
+            $task_list_res[$v['task_id']]['remark'] = $v['remark'];
+            $task_list_res[$v['task_id']]['giveup_remark'] = $v['giveup_remark'];
+            $task_list_res[$v['task_id']]['giveupreason_key'][$k] = $v['giveupreason_key'];
+            $task_list_res[$v['task_id']]['state'] = $v['state'];
+            //$task_list_res[$v['task_id']]['giveup_str'] .= $optionstr[$v['giveupreason_key']].'<br>';
+		}
+        if(!empty($task_id_array)){
+        	$task_id_str = implode(',',$task_id_array);
+        	$task_id_str = trim($task_id_str,',');
+        	$giveupreason_obj = zbj_model_api::get('zbj_model_mk_followgiveupreason');
+        	$giveupreason_res = $giveupreason_obj->select("task_id in({$task_id_str})",'task_id,giveupreason_key')->items;
+            if(!empty($giveupreason_res)){
+                foreach($giveupreason_res as $k=>$v){
+                	if($v['giveupreason_key'] == $giveupoption){
+                		$task_list_res[$v['task_id']]['giveup_str'] .= "<span class='optionstr'>".$optionstr[$v['giveupreason_key']]."</span><br>";
+                	}else{
+                	    $task_list_res[$v['task_id']]['giveup_str'] .= $optionstr[$v['giveupreason_key']].'<br>';
+                    }
+                }
+            }
+        }
+
+        //联系不上雇主，3小时未联系标记
+        if($task_id_str){      
+            $mk_task_extends = zbj_model_api::get('zbj_model_mk_taskextends');
+            $mk_task_extends_res = $mk_task_extends->select("task_id in({$task_id_str})",'task_id,first_effect_follow_time,giveuptime,giveuptype')->items;
+        }
+        if($mk_task_extends_res){
+            foreach($mk_task_extends_res as $k=>$v){
+                if($v['giveuptime'] > 0 && $v['giveuptime'] - $v['first_effect_follow_time'] < 10800){
+                    $v['giveuptimetype'] = 1;
+                }else{
+                    $v['giveuptimetype'] = 0;
+                }
+                $task_list_res[$v['task_id']]['giveuptimetype'] = $v['giveuptimetype'];
+                $task_list_res[$v['task_id']]['giveuptype'] = $v['giveuptype'];
+            }
+        }
+
+		$this->tplvar['task_list']=$task_list_res;
+		
+		$s_cpoption=new service_cpoption(61);
+		$this->tplvar['fulloptions']=$s_cpoption->getItems();
+		$this->tplvar['fulloptions'] = zbj_lib_BaseUtils::indexArray($this->tplvar['fulloptions'], 'item_id', 'name');
+		$this->tplvar['total']=$task_list_count['count'];
+
+		$this->tplvar['pagebar']=$this->PageBar($task_list_count['count'], PAGE_SIZE, $page, $inPath, 'style4', $_SERVER['QUERY_STRING']);
+		
+		$usergroups = new zbj_model_cp_usergroups();
+//		$this->tplvar['groups'] = $usergroups->select("pid=164 or group_id in (22,106,44,141)", '`group_id`,`name`')->items;
+		$s_cpallot = new service_cpallot();
+		$this->tplvar['groups'] = $s_cpallot->getAllotGroup(1);
+		//
+		$sConfig = new service_config();
+		$types = array(
+			8 => '预约',
+			1 => '所有订单',
+			2 => '待受理',
+			3 => '已受理，跟进中',
+			// 4 => '已发布，投标不足5个',
+			// 5 => '已投标足5个，未选标',
+			6 => '已选标，未成交',
+			7 => '已成交',
+		);
+		$this->tplvar['types'] = $types;
+		$this->tplvar['mygroup'] = $this->_usergroupid;
+		//行业
+		$s_module = new service_module();
+		$this->tplvar['modules'] = $s_module->getModule();
+
+		$this->tplvar['manager_list'] = $this->params['manager_list'];
+
+		$s_option=new service_cpoption(61);
+		$group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$this->tplvar['group_list'] = $group_lists['data'];
+		$this->tplvar['giveupoption'] = $giveupoption;
+		return $this->render('wjtask/giveUpList.html', $this->tplvar);
+	}
+
+	/**
+	 * 发布原因列表
+	 */
+	public function pagePubReasonList($inPath){
+		define('PAGE_SIZE', 30);
+		$this->tplvar['title'] = '订单库-发布原因库';
+		
+		$condition = array();
+
+		$urlparams = $this->getUrlParams($inPath);
+		$page = $urlparams["page"] ? ($urlparams["page"]) : 1;
+		
+		$gid = zbj_lib_BaseUtils::getStr($_GET['gid'],'int');
+		$uid = zbj_lib_BaseUtils::getStr($_GET['uid'],'int');
+		$type = zbj_lib_BaseUtils::getStr($_GET['type'],'int');
+
+	    $pubreasonoption = intval($_GET['pubreasonoption']);
+
+		/*if($pubreasonoption == 4){
+			$pubreasonoptions = 0;
+		}elseif($pubreasonoption != 0){
+            $pubreasonoptions = $pubreasonoption;
+		}*/
+		if($pubreasonoption != 0) $pubreasonoptions = $pubreasonoption;
+		
+		if($_GET['own']) {
+			$uid = $this->_userid;
+		}
+		//通过分组查交易顾问ID，再通过交易顾问ID组查找任务 20150409 by houxiaopeng
+		if($uid == 0 && $gid){
+			//获取分组下的交易顾问ID
+			$manager_id_list = zbj_lib_BaseUtils::apicall('cpuser', 'GetUserByGroupID', array(
+							'gid' => $gid,
+						));
+			if(!empty($manager_id_list['data'])){
+				foreach($manager_id_list['data'] as $k=>$v){
+					$manager_id_lists[] = $v['user_id'];
+				}
+				$manager_id_list_str = implode(',',$manager_id_lists);
+			}
+	    }
+        if($manager_id_list_str) $uid = $manager_id_list_str;
+		if($uid){
+			$condition[] = "mk_task.manager_id in ($uid)";
+		}elseif($uid == 0 && $gid == 0){
+			$condition[] = "mk_task.manager_id in (".join(',', $this->manager_list).")";
+		}elseif(!$uid && !$manager_id_list_str && $gid !== 0){
+			$condition['mk_task.manager_id'] = 0;
+		}
+
+		if($pubreasonoption){
+			$condition['mk_task_pubreason.pubreason_key'] = $pubreasonoptions;
+		}
+		$sht = zbj_lib_BaseUtils::getStr($_REQUEST['sht'],'string');
+		$eht = zbj_lib_BaseUtils::getStr($_REQUEST['eht'],'string');
+		if($sht){
+			$condition[] = " mk_task_pubreason.createymd >= '{$sht}' ";
+		}
+		if($eht){
+			$condition[] = " mk_task_pubreason.createymd <= '{$eht}' ";
+		}
+		if($_GET['timetype'] == '1'){
+			//提交时间
+			if ($_GET['sct']) {
+				$condition[] = "mk_task.createtime >=" . strtotime($_GET['sct']);
+			}
+			if ($_GET['ect']) {
+				$condition[] = "mk_task.createtime <=" . strtotime($_GET['ect']);
+			}
+		}
+		if($_GET['timetype'] == '2' || $_GET['timetype'] == '3'){
+			$condition[] = '1=2'; //不支持按选标时间和成交时间查询
+		}
+
+		$mode = zbj_lib_BaseUtils::getStr($_GET['mode'],'int')?zbj_lib_BaseUtils::getStr($_GET['mode'],'int'):0;
+
+		//改为只取招标需求
+		switch ($mode) {
+			case 0:
+				break;
+			case 1:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 1;
+				break;
+			case 2:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 2;
+				break;
+			case 3:
+				$condition['mk_task.mode'] = 10;
+				$condition['allot'] = 3;
+				break;
+			case 4:
+				$condition['mk_task.mode'] = 12;
+				break;
+			case 5:
+				$condition['mk_task.mode'] = 11;
+				break;
+			case 6:
+				$condition['mk_task.mode'] = 13;
+				break;
+			default:
+				break;
+		}
+
+		$condition['mk_task_extends.recmd_type'] = $type == 0?1:0;
+		//行业
+		$module_id = zbj_lib_BaseUtils::getStr($_REQUEST['module_id']);
+		if ($module_id) {
+			if (-1 != $module_id) {
+				$s_module = new service_module($module_id);
+				$categories = $s_module->getCategoryIdStrByModuleId();
+			} else {
+				$s_module = new service_module();
+				$categories = $s_module->getCategoryIdStrByModuleId(0, false);
+			}
+			$condition[] = "category_id IN ({$categories})";
+		}
+	
+		$leftjoin = array(
+			'mk_task' => 'mk_task.task_id = mk_task_pubreason.task_id',
+			'mk_task_extends' => 'mk_task_extends.task_id = mk_task_pubreason.task_id',
+		);
+
+		$item = array('mk_task.task_id','mk_task.title', 'mk_task_pubreason.manager_name','mk_task.amount', 'mk_task_pubreason.createtime','mk_task_pubreason.pubreason_key','mk_task_pubreason.pubreason_value');
+		$orderby = 'ORDER BY mk_task_pubreason.createymd DESC';
+		$groupby = 'group by mk_task.task_id';
+		$mk_task_pubreason = zbj_model_api::get('zbj_model_mk_taskpubreason');
+		$mk_task_pubreason->setLimit(PAGE_SIZE);
+		$mk_task_pubreason->setPage($page);
+		$mk_task_pubreason->setCount(true);
+		$pubreason_list = $mk_task_pubreason->select($condition, $item, $groupby, $orderby, $leftjoin);
+        //发布原因库
+		$optionstr = array(
+				'1' => '3次未联系上雇主',
+				'2' => '价格完全低于市场行情',
+				'3' => '长尾需求',
+				'4' => '筛选后无可派单服务商'
+			);
+
+        foreach($pubreason_list->items as $k=>$v){
+        	$task_id_array[] = $v['task_id'];
+            $task_list_res[$v['task_id']]['task_id'] = $v['task_id'];
+            $task_list_res[$v['task_id']]['title'] = $v['title'];
+            $task_list_res[$v['task_id']]['manager_name'] = $v['manager_name'];
+            $task_list_res[$v['task_id']]['amount'] = $v['amount'];
+            $task_list_res[$v['task_id']]['createtime'] = $v['createtime'];
+		}
+
+		if(!empty($task_id_array)){
+        	$task_id_str = implode(',',$task_id_array);
+        	$task_id_str = trim($task_id_str,',');
+        	$pubreason_obj = zbj_model_api::get('zbj_model_mk_taskpubreason');
+        	$pubreason_res = $pubreason_obj->select("task_id in({$task_id_str})",'task_id,pubreason_key,pubreason_value')->items;
+            if(!empty($pubreason_res)){
+
+				//派单类型和状态
+				$recmd_types =$recmd_statuses = array();
+				if(!empty($task_id_array)){
+					$task_extends_model = zbj_model_api::get("zbj_model_mk_taskextends");
+					$task_opis_model = zbj_model_api::get("zbj_model_mk_taskopis");
+					$condi = array(
+						' task_id in ('.implode(",",$task_id_array).')'
+					);
+					$recmd_types = $task_extends_model->select($condi,"task_id,recmd_type")->items;
+					$recmd_statuses = $task_opis_model->select($condi,"task_id,recmd_status")->items;
+					if(is_array($recmd_types) && !empty($recmd_types)){
+						$recmd_types = zbj_lib_BaseUtils::indexArray($recmd_types,"task_id");
+					}
+					if(is_array($recmd_statuses) && !empty($recmd_statuses)){
+						$recmd_statuses = zbj_lib_BaseUtils::indexArray($recmd_statuses,"task_id");
+					}
+				}
+
+                foreach($pubreason_res as $k=>$v){
+                	/*if($v['pubreason_key'] == 0){
+		            	if(4 == $pubreasonoption){
+		            		$task_list_res[$v['task_id']]['pubreason_str'] .= "<span class='optionstr'>".$v['pubreason_value']."</span><br>";
+		            	}else{
+		            		$task_list_res[$v['task_id']]['pubreason_str'] .= $v['pubreason_value'].'<br>';
+		            	}
+		            }else{*/
+	            	if(intval($v['pubreason_key']) == $pubreasonoption){
+	            		$task_list_res[$v['task_id']]['pubreason_str'] .= "<span class='optionstr'>".$optionstr[$v['pubreason_key']]."</span><br>";
+	            	}else{
+	            		$task_list_res[$v['task_id']]['pubreason_str'] .= $optionstr[$v['pubreason_key']].'<br>';
+	            	}
+		            //}
+
+					//派单类型
+					$task_list_res[$v['task_id']]['recmd_type'] = $recmd_types[$v['task_id']]['recmd_type'];
+					$task_list_res[$v['task_id']]['recmd_status'] = $recmd_statuses[$v['task_id']]['recmd_status'];
+                }
+            }
+
+        }
+
+        //联系不上雇主，3小时未联系标记
+        if($task_id_str){      
+            $mk_task_extends = zbj_model_api::get('zbj_model_mk_taskextends');
+            $mk_task_extends_res = $mk_task_extends->select("task_id in({$task_id_str})",'task_id,first_effect_follow_time,giveuptime,giveuptype')->items;
+        }
+        if($mk_task_extends_res){
+            foreach($mk_task_extends_res as $k=>$v){
+                if($v['giveuptime'] > 0 && $v['giveuptime'] - $v['first_effect_follow_time'] < 10800){
+                    $v['giveuptimetype'] = 1;
+                }else{
+                    $v['giveuptimetype'] = 0;
+                }
+                $task_list_res[$v['task_id']]['giveuptimetype'] = $v['giveuptimetype'];
+                $task_list_res[$v['task_id']]['giveuptype'] = $v['giveuptype'];
+            }
+        }
+
+		$this->tplvar['task_list']=$task_list_res;
+
+		$this->tplvar['total']=$pubreason_list->totalSize;
+
+		$this->tplvar['pagebar']=$this->PageBar($pubreason_list->totalSize, PAGE_SIZE, $page, $inPath, 'style4', $_SERVER['QUERY_STRING']);
+		
+		$usergroups = new zbj_model_cp_usergroups();
+//		$this->tplvar['groups'] = $usergroups->select("pid=164 or group_id in (22,106,44,141)", '`group_id`,`name`')->items;
+		$s_cpallot = new service_cpallot();
+		$this->tplvar['groups'] = $s_cpallot->getAllotGroup(1);
+		//
+		$sConfig = new service_config();
+		$types = array(
+			8 => '预约',
+			1 => '所有订单',
+			2 => '待受理',
+			3 => '已受理，跟进中',
+			// 4 => '已发布，投标不足5个',
+			// 5 => '已投标足5个，未选标',
+			6 => '已选标，未成交',
+			7 => '已成交',
+		);
+		$this->tplvar['types'] = $types;
+		$this->tplvar['mygroup'] = $this->_usergroupid;
+		//行业
+		$s_module = new service_module();
+		$this->tplvar['modules'] = $s_module->getModule();
+
+		$this->tplvar['manager_list'] = $this->params['manager_list'];
+
+		$s_option=new service_cpoption(61);
+		$group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$this->tplvar['group_list'] = $group_lists['data'];
+
+		$tpl = $type == 10?"wjtask/pubReasonList.html":'wjtask/recommendlist.html';
+		return $this->render($tpl, $this->tplvar);
+	}
+
+	/**
+	 * 任务退款组长审核
+	 * @param unknown $inPath
+	 * @return Ambigous <string, void, boolean, mixed, unknown>
+	 */
+	public function pageauditrefund($inPath){
+		define('PAGE_SIZE', 30);
+		$this->tplvar['title'] = '订单库-关闭库';
+
+		$urlparams=$this->getUrlParams($inPath);
+		$condition = array();
+		$condition[] = "mk_task.createymd >='2015-01-25'";
+		$condition['mk_task_info.pub_type']=9;
+
+		$condition['open_state']=1;
+		$page = $urlparams["page"] ? intval($urlparams["page"]) : 1; //页数
+
+        //关闭列表排序20150727
+		$o = $_GET['o']; //排序条件
+		$ud = (int) $_GET['ud']; //升降序
+		$orderarray = array();
+
+		if ($o) {
+			switch ($o) {
+				case 'amount':
+					$orderarray[] = "mk_task.amount " . ($ud == 1 ? 'desc' : 'asc');
+					break;
+			}
+		}
+		if(!empty($orderarray)){
+			$orderby = 'order by '.implode(',',$orderarray);
+		}
+
+		//行业
+		$module_id = zbj_lib_BaseUtils::getStr($_REQUEST['module_id']);
+		if ($module_id) {
+			if (-1 != $module_id) {
+				$s_module = new service_module($module_id);
+				$categories = $s_module->getCategoryIdStrByModuleId();
+			} else {
+				$s_module = new service_module();
+				$categories = $s_module->getCategoryIdStrByModuleId(0, false);
+			}
+			
+			$condition[] = "category_id IN ({$categories})";
+		}
+
+		$uid = intval($_GET['uid']);
+		//分组ID
+		$gid = zbj_lib_BaseUtils::getStr($_GET['gid'],'int');
+		$giveupoption = intval($_GET['giveupoption']);
+		if($_GET['own']) {
+			$uid = $this->_userid;
+		}
+        
+        //通过分组ID搜索到用户ID集合，通过用户ID集合搜索任务 by houxiaopeng 20150409
+        if($uid == 0 && $gid){
+			//获取分组下的交易顾问ID
+			$manager_id_list = zbj_lib_BaseUtils::apicall('cpuser', 'GetUserByGroupID', array(
+							'gid' => $gid,
+						));
+			if(!empty($manager_id_list['data'])){
+				foreach($manager_id_list['data'] as $k=>$v){
+					$manager_id_lists[] = $v['user_id'];
+				}
+				$manager_id_list_str = implode(',',$manager_id_lists);
+			}
+	    }
+		if($manager_id_list_str) $uid=$manager_id_list_str;
+
+		if($uid){
+			$condition[] = "mk_task.manager_id in ($uid)";
+		}elseif($uid == 0 && $gid == 0){
+			$condition[] = "mk_task.manager_id in (".join(',', $this->manager_list).")";
+		}elseif(!$uid && !$manager_id_list_str && $gid !== 0){
+			$condition['mk_task.manager_id'] = 0;
+		}
+
+		if($_GET['timetype'] == '1'){
+			//提交时间
+			if ($_GET['sct']) {
+				$condition[] = "mk_task.createtime >=" . strtotime($_GET['sct']);
+			}
+			if ($_GET['ect']) {
+				$condition[] = "mk_task.createtime <=" . strtotime($_GET['ect']);
+			}
+		}
+
+		if($_GET['timetype'] == '2' || $_GET['timetype'] == '3'){
+			$condition[] = '1=2'; //不支持按选标时间和成交时间查询
+		}
+		
+		$leftjoin = array(
+						'mk_task_opis'=>'mk_task_opis.task_id=mk_task.task_id',
+						'mk_task_info'=>'mk_task_info.task_id=mk_task.task_id',
+						'mk_refund_info'=>'mk_refund_info.task_id=mk_task.task_id'
+						);
+
+		if($_GET['timetype'] == '4'){
+			//关闭时间
+			if ($_GET['sct']) {
+				$condition[] = "mk_task_extends.close_time >=" . strtotime($_GET['sct']);
+			}
+			if ($_GET['ect']) {
+				$condition[] = "mk_task_extends.close_time <=" . strtotime($_GET['ect']);
+			}
+			$leftjoin['mk_task_extends'] = 'mk_task_extends.task_id=mk_task.task_id';
+		}
+		
+		if($giveupoption){
+			$condition['mk_task_opis.refused'] = $giveupoption;
+		}
+		switch($_GET['end_state']){
+			case 1:
+				$condition[] = "mk_refund_info.amount is null";
+				break;
+			case 2:
+				$condition[] = "mk_refund_info.amount >0";
+				break;
+		}
+
+		
+		
+		$m_mk_task=new zbj_model_mk_task();
+		$m_mk_task->setLimit(PAGE_SIZE);
+		$m_mk_task->setCount(true);
+		$m_mk_task->setPage($page);
+		$list=$m_mk_task->select($condition,'mk_task.task_id,title,mk_task_opis.refund_option,mk_task.amount,mk_task.createtime as addtime,mk_task_opis.refused,mk_task.manager_name',null,$orderby,$leftjoin);
+		if($_GET['json'] == '1'){
+			if($_GET['json_bat'] == '1'){
+				$json_list=$m_mk_task->select($condition,'mk_task_opis.refused, sum(1) as p, sum(mk_task.amount) as c',null,"group by mk_task_opis.refused",$leftjoin)->items;
+				if($json_list){
+					foreach($json_list as $key=>&$value){
+						$value['c'] = number_format($value['c']);
+					}
+				}
+
+				$this->cache->set($this->cache_key, $json_list, 3600*2);
+				echo json_encode($json_list);
+				exit();
+			}
+			$totlePrice = $m_mk_task->selectOne($condition, 'sum(mk_task.amount) as c', '', '', $leftjoin);
+			$totlePrice = $totlePrice['c'];
+			$totlePrice = number_format($totlePrice);
+			$data = array();
+			$data['price'] = $totlePrice;
+			$data['count'] = (int)$list->totalSize;
+
+			$this->cache->set($this->cache_key, $data, 3600);
+			echo json_encode($data);
+			exit();
+		}
+
+		$s_cpoption=new service_cpoption(6);
+		$this->tplvar['fulloptions']=$s_cpoption->getItems();
+		$this->tplvar['fulloptions'] = zbj_lib_BaseUtils::indexArray($this->tplvar['fulloptions'], 'item_id', 'name');
+
+		if($list){
+			$sLog = new service_log();
+			foreach($list->items as $k=>&$v){
+				$task_id_str = implode(',',$task_id_array);
+        	    $task_id_str = trim($task_id_str,',');
+				$oRemark = $sLog->getTaskLastRemark($v['task_id']);
+				$v['memo'] = $oRemark['content'];
+				$task_list_res[$v['task_id']] = $v;
+			}
+		}
+
+		//联系不上雇主，3小时未联系标记
+        if($task_id_str){      
+            $mk_task_extends = zbj_model_api::get('zbj_model_mk_taskextends');
+            $mk_task_extends_res = $mk_task_extends->select("task_id in({$task_id_str})",'task_id,first_effect_follow_time,giveuptime,giveuptype')->items;
+        }
+        if($mk_task_extends_res){
+            foreach($mk_task_extends_res as $k=>$v){
+                if($v['giveuptime'] > 0 && $v['giveuptime'] - $v['first_effect_follow_time'] < 10800){
+                    $v['giveuptimetype'] = 1;
+                }else{
+                    $v['giveuptimetype'] = 0;
+                }
+                $task_list_res[$v['task_id']]['giveuptimetype'] = $v['giveuptimetype'];
+                $task_list_res[$v['task_id']]['giveuptype'] = $v['giveuptype'];
+            }
+        }
+
+		$this->tplvar['tktask']=$task_list_res;
+		$this->tplvar['total']=$list->totalSize;
+		$this->tplvar['pagebar']=$this->PageBar($list->totalSize, PAGE_SIZE, $page, $inPath,'style4',$_SERVER['QUERY_STRING']);
+// 		$usergroups = new zbj_model_cp_usergroups();
+//		$this->tplvar['groups'] = $usergroups->select("pid=164 or group_id in (22,106,44,141)", '`group_id`,`name`')->items;
+		$s_cpallot = new service_cpallot();
+		$this->tplvar['groups'] = $s_cpallot->getAllotGroup(1);
+		//
+		$sConfig = new service_config();
+		$types = array(
+			8 => '预约',
+			1 => '所有订单',
+			2 => '待受理',
+			3 => '已受理，跟进中',
+			// 4 => '已发布，投标不足5个',
+			// 5 => '已投标足5个，未选标',
+			6 => '已选标，未成交',
+			7 => '已成交',
+		);
+		unset($types[9]);
+		$this->tplvar['types'] = $types;
+		$this->tplvar['mygroup'] = $this->_usergroupid;
+		
+		//行业
+		$s_module = new service_module();
+		$this->tplvar['modules'] = $s_module->getModule();
+		$this->tplvar['manager_list'] = $this->params['manager_list'];
+		$group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$this->tplvar['group_list'] = $group_lists['data'];
+
+		return $this->render('wjtask/auditrefund.html', $this->tplvar);
+	}
+
+	public function pageTongji()
+	{
+		$this->params['title'] = '订单库-统计台';
+
+		$sConfig = new service_config();
+		$types = array(
+			8 => '预约',
+			1 => '所有订单',
+			2 => '待受理',
+			3 => '已受理，跟进中',
+			// 4 => '已发布，投标不足5个',
+			// 5 => '已投标足5个，未选标',
+			6 => '已选标，未成交',
+			7 => '已成交',
+		);
+		unset($types[9]);
+		$this->params['types'] = $types;
+		$this->params['mygroup'] = $this->_usergroupid;
+
+		$s_cpoption=new service_cpoption(6);
+		$this->params['close_r']=$s_cpoption->getItems();
+		$this->params['close_r'] = zbj_lib_BaseUtils::indexArray($this->params['close_r'], 'item_id', 'name');
+
+		$s_cpoption=new service_cpoption(61);
+		$this->params['give_r']=$s_cpoption->getItems();
+		$this->params['give_r'] = zbj_lib_BaseUtils::indexArray($this->params['give_r'], 'item_id', 'name');
+        $group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$this->params['group_list'] = $group_lists['data'];
+
+		return $this->render('wjtask/tongji.html', $this->params);
+	}
+
+    public function pageTaskcase(){
+		if($_GET['own']==1&&$_GET['noupdatehistory']==1){//我的任务面板
+			$this->params['stopLoad']=0;
+			$this->holdrefresh();
+			if($this->params['stopLoad']==1){
+				return $this->render("new/taskpane/taskpane.html", $this->params);
+			}
+		}
+
+        $this->params['title'] = '订单库-任务面板';
+        $sConfig = new service_config();
+        $cache = new zbj_lib_cache('memcache');
+        $cache_key = 'task.zhubajie.com.app.controller.crontab.managersummary.getManagerSummary';
+
+        $types = array(
+            8 => '预约',
+            1 => '所有订单',
+            2 => '待受理',
+            3 => '跟进中未选标',
+            // 4 => '已发布，投标不足5个',
+            // 5 => '已投标足5个，未选标',
+            6 => '已选标未成交',
+            7 => '已成交',
+        );
+        unset($types[9]);
+        $this->params['groupid'] = $this->_usergroupid;
+        $this->params['userid'] = $this->_userid;
+        $this->params['types'] = $types;
+        $this->params['managersummary'] = $cache->get($cache_key);
+        $group_lists = zbj_lib_BaseUtils::apicall('cpuser', 'GetGroupList', array(
+						'pid' => '153',
+					));
+		$this->params['group_list'] = $group_lists['data'];
+		$this->params['group_list'][]=array(
+			'group_id'=>'386',
+			'name'=>'建筑工程取经团',
+		);
+		$this->params['group_list'][]=array(
+			'group_id'=>'453',
+			'name'=>'悬赏项目',
+		);
+		
+		//检测盲抢池数量
+		$taskAllotPoolModule = zbj_model_api::get('zbj_model_mk_taskallotpool');
+		$condi[] = 'allotstate = 0 and needallot = 2';
+		$condi[] = "next_chktime > '" . (time()-28*60) . "'";
+		$grabTaskArray = $taskAllotPoolModule->select($condi, 'task_id')->items;
+		$this->params['canGrabNum']=0;
+		if($grabTaskArray){
+			$this->params['canGrabNum']=count($grabTaskArray);
+		}
+		//检测是否可抢
+		$checkGrab=new controller_task_taskajax();
+		$sGrab=new zbj_service_randgrab($userData);
+		$canGrab=$checkGrab->checkCanGrab();
+		if($canGrab===true){
+			$this->params['canGrab']=1;
+		}
+        return $this->render("new/taskpane/taskpane.html", $this->params);
+    }
+
+	/*
+	 *hold refresh
+	 *lsTMango
+	 */
+	private function holdrefresh(){
+		//var_dump($_SERVER);
+		$cache = new zbj_lib_cache('memcache');
+		//$cache = new zbj_lib_cache('file');
+		$cache_key = 'boss.zhubajie.com.app.controller.wjtask.taskcase.refresh.totalnum.userid='.$this->_userid;
+		$cacheData=$cache->get($cache_key);
+		//$cacheData=$cache->del($cache_key);
+		if($cacheData){
+			$cacheData[time()]=$_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
+			if(time()<$cacheData['nextRefreshTime']){//hold
+				$this->params['stopLoad']=1;
+				$this->params['stopLoadNotice']="大仙休息下，为了节省服务器资源，".($cacheData['nextRefreshTime']-time())."秒后再刷新吧!～(●'◡'●)";
+				return;
+			}
+			if( (time()-$cacheData['preRefreshTime'])<=1 ){//刷新小于5s
+				$cacheData['nextRefreshTime']=time()+10;
+				$cacheData['preRefreshTime']=time();
+				$cache->set($cache_key,$cacheData,10);
+				$this->params['stopLoad']=1;
+				$this->params['stopLoadNotice']="大仙手速太快啦，为了节省服务器资源，10秒后再刷新吧!～(●'◡'●)";
+				return;
+			}
+			$cacheData['preRefreshTime']=time();
+			$cacheData['refreshNum']=$cacheData['refreshNum']+1;
+			$cache->set($cache_key,$cacheData,7);
+		}
+		if(!$cacheData){
+			$setData['userid']=$this->_userid;
+			$setData['preRefreshTime']=time();
+			$cache->set($cache_key,$setData,9);
+		}
+		return true;
+	}
+
+}

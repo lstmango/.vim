@@ -1,0 +1,252 @@
+<?php
+
+use \MessageQueue\Logger\LoggerSlave as Logger;
+
+use com\zhubajie\task\interfaces\EventSystemServiceClient;
+use com\zhubajie\task\dataobject\eventsystem\EventDTO;
+use com\zhubajie\task\dataobject\eventsystem\ListenerDTO;
+
+/**
+ * 交易系统-事件分发处理器
+ * @author lidacheng
+ */
+class consumer_dispatcher extends \MessageQueue\Consumer\Action{
+	public $queue_name = 'TASKMSG_201502260001';// 消息队列名
+   
+	public $process_num = 4; // 消费进程数量
+
+	public $biz_id = '201502260001'; // 业务ID
+	
+	public $exchange = 'message';
+	
+	public $routkey = 'task.message';
+	
+	static $subscriber = array();
+	
+	public function __construct(){
+		// T6测试环境
+		if(zbj_lib_Constant::DOMAIN == 'zbj.com'){
+			$this->queue_name 	= 'T6-TASKMSG_201504130001';
+			$this->biz_id 		= '201504130001';
+			$this->exchange 	= 'message.t6';
+			$this->routkey 		= 'task.message.t6';
+		}
+	}
+	
+	
+	/**
+	 * 入口
+	 * */
+	public function consume(\MessageQueue\Message $message){
+		if(zbj_lib_Constant::DOMAIN!='zhubajie.com'){
+			$log = sprintf('[%s][dispatch]:%s', date('Y-m-d H:i:s'), serialize($message));
+			Logger::info($log);unset($log);
+		}
+		
+		try{
+			if(strtolower($message->exchangeName) != $this->exchange && 
+				strtolower($message->routingKey) != $this->routkey){ // 不支持
+				throw new Exception('[dispatch]:unsupport biz!');
+			}
+			
+			$body = json_decode($message->content, true);
+			if(empty($body['body'])){
+				throw new Exception('[dispatch]:body is empty');
+			}
+			if(strlen($body['event']) == 0){
+				throw new Exception('[dispatch]:not found event');
+			}
+			$body['event'] = strtolower($body['event']);
+			
+			$subscriber = $this->getSubscriber($body['event']);
+			if(empty($subscriber)){
+				throw new Exception('[dispatch]:not found subscriber');
+			}
+			
+			$this->dispatch($body,$subscriber);
+		}catch(Exception $e){
+			$errmsg[] = $e->getMessage();
+		}
+		
+		
+		if(!empty($errmsg)){
+			$body['body']['_retry'] = $body['retry']>0?(int)$body['retry']:(int)$body['body']['_retry'];
+			$body['body']['_retry'] += 1;
+			
+			// 重试2次
+			if((int)$body['body']['_retry'] < 2){
+				// 不能采用 ConsumeResult::RETRY; 无法对失败次数计数，防止队列堵塞
+				sleep(2);
+				$errmsg[] = 'retry';
+				$message->content = json_encode($body);
+				try{
+					// 重新建对象，不然AMQP会连接超时关闭
+					$invoker = new \MessageQueue\Publisher\Invoker();
+					$result = $invoker->publish($message);
+					if(false == $result){
+						throw new Exception('failed');
+					}
+				}catch(Exception $e1){
+					$errmsg[] = $e1->getMessage();
+				}
+				unset($invoker);
+				
+			}else{ // 失败 写入延迟重试数据 后期换成定时执行的计划任务
+				$insert = array(
+					'nexttime'	=> time() + $body['body']['_retry']*60,
+					'task_id'	=> (int)$body['body']['task_id'],
+					'exchange'	=> $this->exchange,
+					'router'	=> $this->routkey,
+					'data'		=> serialize($body),
+					'state'		=> $body['body']['_retry']>=8?2:0,
+					'dotime'	=> 0,
+					'msg'		=> @end($errmsg),
+				);
+				$mqdelay = zbj_model_api::get('zbj_model_mk_mqdelay');
+				$mqdelay->insert($insert);
+				unset($mqdelay,$insert);
+				
+				// 释放所有数据库对象
+				zbj_model_api::destroy();
+			}
+			
+			$log = sprintf('[%s][dispatch]Err:%s  data:%s', date('y-m-d H:i:s'), implode(' ',$errmsg),serialize($message));
+			Logger::info($log);
+		}
+		
+		unset($message,$body,$subscriber,$callback,$log,$result);
+		
+		return \MessageQueue\Consumer\ConsumeResult::SUCCESS;
+	}
+	
+	
+	/**
+	 * 事件分发
+	 * @return bool
+	 * */
+	protected function dispatch($body,$subscriber){
+		$body = (array)$body;
+		$subscriber = (array)$subscriber;
+		
+		$errored = array();
+		foreach($subscriber as $subscribe){
+			if(empty($subscribe) || !is_string($subscribe)) continue;
+			$back = zbj_lib_Api::taskEventDispatcher($body['body'],$body['event'],$subscribe);
+			if($back === false){
+				$errored[] = "{$subscribe}->{$body['event']}[".zbj_lib_Api::getError().']';
+			}
+		}
+		
+		if(!empty($errored)){
+			$log = sprintf('[%s][dispatch]Err:%s  data:%s', date('y-m-d H:i:s'), implode('|',$errored),serialize($body['body']));
+			Logger::info($log);
+		}
+		if(count($subscriber) == count($errored)){
+			throw new Exception('[dispatch]:dispatch failed');
+		}
+		
+		unset($subscriber,$body,$errored,$log);
+		return true;
+	}
+
+	/**
+	 * 加载事件的订阅者
+	 * @param	string	$event
+	 * @return array
+	 * */
+	protected function getSubscriber($event){
+		if(empty($event)) return false;
+		
+		if(!empty(self::$subscriber)){
+			return self::$subscriber[$event];
+		}
+		
+		// 重新加载
+		self::$subscriber = array();
+		
+		$files = $this->getAllConfigFile();
+		
+		foreach($files as $xml_path){
+			// load xml
+            $xml = simplexml_load_file($xml_path);
+            if($xml === FALSE) {
+                throw new Exception("Config Load Failed ({$xml_path})", -1);
+            }
+            
+            $children = $xml->children(); 
+            $children = (array)$children;
+            if(empty($children)) continue;
+            if(!is_array($children['phpclass'])){
+            	$children['phpclass'] = array($children['phpclass']);
+            }
+           
+            foreach($children['phpclass'] as $phpclass) {
+                $classobj = $phpclass->attributes();
+                $classname = (string)$phpclass['name'];
+                
+                foreach($phpclass->method as $methodobj){
+	                $method = $methodobj->attributes();
+	                $methodname = (string)$method['name'];
+	                
+	                foreach($methodobj->event as $evt){
+	                	$evt = strtolower((string)$evt);
+	                	if(empty(self::$subscriber[$evt])){
+	                		self::$subscriber[$evt] = array();
+	                	}
+	                	$invoke = strtolower($classname.'::'.$methodname);
+	                	if(!in_array($invoke,self::$subscriber[$evt])){
+	                		self::$subscriber[$evt][] = $invoke;
+	                	}
+	                }
+                }
+            }
+            unset($xml,$children);
+		}
+		
+		if(isset(self::$subscriber[$event]) && !empty(self::$subscriber[$event])){
+			return self::$subscriber[$event];
+		}
+		
+		return false;
+	}
+		
+	/**
+	 * 获取所有配置文件
+	 * @return array
+	 * */
+	protected function getAllConfigFile(){
+		
+		$_config = array();
+		$basedir = dirname(__FILE__).'/config/';
+		/*
+		$files = @scandir($basedir);
+		$files = (array)$files;
+		*/
+		$_config = array(
+            $basedir.'agreement.xml',
+			$basedir.'allot.xml',
+			$basedir.'invoice.xml',
+			$basedir.'job.xml',
+			$basedir.'recmd.xml',
+			$basedir.'task.xml',
+			$basedir.'taskfollow.xml',
+			$basedir.'taskmsg.xml',
+			$basedir.'userbidnum.xml',
+			$basedir.'works.xml',
+			$basedir.'user.xml',
+			$basedir.'evaluation.xml',
+			$basedir.'grab.xml',
+		);
+		/*
+		foreach($files as $file){
+			$namearray = explode('.', $file);
+			if(count($namearray)>0){
+				$fileext = end($namearray);
+			}
+			if(is_dir($file) || strtolower($fileext)!='xml') continue;
+			$_config[] = $basedir.$file;
+		}
+		unset($files,$basedir);*/
+		return $_config;
+	}
+}

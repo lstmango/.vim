@@ -1,0 +1,398 @@
+<?php
+/**
+ * 订单分配系统待分配任务池子
+ * @author lidacheng
+ */
+class zbj_service_taskallotpool extends zbj_components_baseservice {
+	
+	protected $id;
+	protected $marter_table = 'zbj_model_mk_taskallotpool';
+	
+	/**
+	 * 构造函数
+	 */
+	public function __construct($id=0) {
+		parent::__construct();
+		$this->id = $id;
+	}
+	
+	/**
+	 * 将需求加入待分配池子
+	 * @param	object	$srvTask
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function pushToAllotPool(&$srvTask){
+		if(empty($srvTask) || !is_object($srvTask)){ 
+			$this->setError(0,'传递的需求对象异常');
+			return false;
+		}
+		
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		
+		if($task['open_state']!=0 || $task['manager_id']!=0){
+			$this->setError(0,'需求已关闭或已分配交易顾问');
+			return false;
+		}
+		// 不需分配
+		$srvAlloter = new zbj_service_taskalloter();
+		$dimensions = $srvAlloter->checkTaskNeedAllot($srvTask,false);
+		if(!is_array($dimensions) || $dimensions[0]['dimension_id']<=0){
+			return true;
+		}
+		$config = $dimensions[0]['config'];
+		$delaytime = $config['allot_type']==378?intval($config['extend']):0; // 延迟分钟
+		$delaytime <= 0 && $delaytime = 0;
+		
+		$basechktime = $this->_time+5+($delaytime*60); // 秒
+		
+		$prestr = '添加到';
+		$srvAllotLog = new zbj_service_taskallotlog();
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$srvTask->set('isaudit',-1); // 池子标识
+			if($srvTask->save() === false){
+				throw new Exception('更新待分配标识失败');
+			}
+			
+			$data = array(
+				'needallot'	=> 1,
+				'allotstate'	=> 0,
+				'allottime'		=> 0,
+			);
+			
+			$this->setId($task['task_id']);
+			$taskpool = $this->get();
+			
+			//添加
+			if(empty($taskpool['task_id'])){
+				$this->setId(0);
+				$data['task_id'] = $task['task_id'];
+				$data['createtime'] = $this->_time;
+				$data['next_chktime']	= $basechktime;
+				$data['begin_chktime']	= $basechktime;
+				if($task['amount']<=0) $data['next_chktime'] += 120; // 0元需求延迟2分钟
+			}else{
+				$prestr = '更新';
+				if($task['amount']<=0){
+					if($taskpool['next_chktime']<$this->_time){
+						$data['next_chktime']	= $basechktime+120; // 0元需求延迟2分钟
+						$data['begin_chktime']	= $basechktime;
+					}
+				}else{
+					$data['next_chktime']	= $basechktime; 
+					$data['begin_chktime']	= $basechktime;
+				}
+			}
+
+			$this->set($data);
+			if($this->save() === false){
+				throw new Exception($prestr.'待分配池子失败');
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$srvAllotLog->addTaskAllotLog($task['task_id'],array($e->getMessage()));
+			return false;
+		}
+		
+		$srvAllotLog->addTaskAllotLog($task['task_id'],array($prestr.'待分配池子成功'));
+		return true;
+	}
+
+	/*
+	 *获取任务权重值
+	 */
+	private function _get_task_weights($task){
+		echo 123;
+		var_dump($task);
+		die();
+	}
+
+	
+	
+	/**
+	 * 将需求从待分配池子里释放出来，不需进行分配
+	 * @param	object	$srvTask
+	 * @param	string	$reason
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function releaseFromAllotPool(&$srvTask,$reason=''){
+		if(empty($srvTask) || !is_object($srvTask)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		
+		$srvAllotLog = new zbj_service_taskallotlog();
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$srvTask->set('isaudit',1); // 重置池子标识
+			if($srvTask->save() === false){
+				throw new Exception('更新待分配标识失败');
+			}
+		
+			$this->setId($task['task_id']);
+			$this->set('needallot',0); // 不需分配
+			$this->set('allotstate',0);
+			if($this->save() === false){
+				throw new Exception('从待分配池子释放需求失败');
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$srvAllotLog->addTaskAllotLog($task['task_id'],array($e->getMessage()));
+			return false;
+		}
+		
+		$srvAllotLog->addTaskAllotLog($task['task_id'],array('已从池子释放'.$reason));
+		
+		return true;
+	}
+	
+	
+	/**
+	 * 分配失败，将需求重新放入池子
+	 * 		如果是晚上的需求，会直接放入到第二天的延迟分配池子当中
+	 * @param	object		$srvTask
+	 * @param	bool		$isdelay	是否延迟系统调用
+	 * @return	bool
+	 * */
+	public function repushToAllotPool(&$srvTask,$isdelay=false){
+		if(empty($srvTask) || !is_object($srvTask)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		
+		$nowhour = date('H',time());
+		$nowdate = date('Y-m-d');
+		
+		$srvAllotLog = new zbj_service_taskallotlog();
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$this->setId($task['task_id']);
+			$taskpool = $this->get();
+			if(empty($taskpool['task_id'])){
+				throw new Exception('在待分配池子内没有找到该需求');
+			}
+			
+			if($isdelay){ // 延迟系统调用，重置参数
+				$isaudit = -1;
+				$updata = array(
+					'needallot'		=> 1,
+					'allotstate'	=> 0,
+					'next_chktime'		=> $this->_time+5,
+					'begin_chktime'		=> $this->_time+5,
+				);
+			#2015-09-29由晚上11点改为晚上10点
+			}else if(($nowhour>=22 || $nowhour<9) && ($nowdate==$task['createymd'])){
+				$isaudit = -2; // 无人上班的时间段，直接进第二天的延迟分配池子
+				$updata = array(
+					'needallot'		=> 0,
+					'allotstate'	=> 0,
+					'next_chktime'		=> 0,
+					'begin_chktime'		=> 0,
+				);
+			}else if($taskpool['next_chktime']-$taskpool['begin_chktime']>600){ // 已在池子中超过10分钟
+				#2015-09-29由晚上8点改为晚上10点
+				if(($nowhour >= 22 || $nowhour<9) && ($nowdate==$task['createymd'])){
+					$isaudit = -2; // 进第二天的延迟分配池子
+					$updata = array(
+						'needallot'		=> 0,
+						'allotstate'	=> 0,
+						'next_chktime'		=> 0,
+						'begin_chktime'		=> 0,
+					);
+				}else{	#改为盲抢	2015-9-7
+					$isaudit = 1;
+					$updata = array(
+						'needallot'		=> 2,//盲抢
+						'allotstate'	=> 0,
+						'next_chktime'		=> $this->_time,
+					);
+				}
+				/*
+				 *}else{	// 完全释放，交给审核
+				 *    $isaudit = 1;
+				 *    $updata = array('allotstate' => 2);
+				 *}
+				 */
+				
+			}else{ // 正常延迟
+				$isaudit = -1;
+				$updata = array(
+					'allotstate'	=> 0, // 分配失败，标识为0后正常重试
+					'next_chktime' 	=> $this->_time+120,
+				);
+			}
+
+			//判断需求是否为商机需求且为重要或紧急
+			if($srvTask->isBusinessImportant()){
+				$isaudit = -1;
+				$updata = array();
+				$updata['needallot'] = 1;
+				$updata['allotstate'] = 0;
+				$updata['next_chktime'] = $this->_time+30;
+				
+				if($nowhour>=23 || $nowhour<9){
+					$isaudit = -2; // 无人上班的时间段，直接进第二天的延迟分配池子
+					$updata = array(
+						'needallot'		=> 0,
+						'next_chktime'		=> 0,
+					);
+				}
+			}
+			
+			if($task['isaudit']!=$isaudit){
+				$srvTask->set('isaudit',$isaudit); // 池子标识
+				if($srvTask->save() === false){
+					throw new Exception('更新待分配标识失败');
+				}
+			}
+		
+			if($this->set($updata) === false){
+				throw new Exception('设置参数失败');
+			}
+			if($this->save() === false){
+				throw new Exception('更新池子失败');
+			}
+			
+			$this->_commit('mk');	
+			
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$srvAllotLog->addTaskAllotLog($task['task_id'],array($e->getMessage()));
+			return false;
+		}
+		switch($isaudit){
+			case 1:
+				$log = '放弃分配，交由审核系统处理';
+				break;
+			case -2:
+				$log = '需第二天延迟分配';
+				break;
+			default:
+				$log = '已重新放入池子';
+				break;
+		}
+		if($updata['needallot']==2){
+			$log='放弃分配，进入盲抢池';
+		}
+		if($isaudit==1 || $isaudit==-2){
+			$srvAllotLog->addTaskAllotLog($task['task_id'],array($log));
+		}
+        //自动分配审核顾问
+        if($isaudit == 1 && $updata['allotstate'] == 2){
+            if(zbj_lib_Api::taskVerifyManager($task['task_id']) !== true){
+                throw new Exception(zbj_lib_Api::getError());
+            }
+        }
+		
+		return true;
+	}
+	
+	/**
+	 * 将池子中的需求推到分配系统进行分配
+	 * @param	int	$limit
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function pushPoolTaskToAlloter($limit=30){
+		$limit = intval($limit);
+		($limit>50||$limit<=0) && $limit = 20;
+
+		$taskpoolModel = $this->model();
+		$taskpoolModel->setLimit($limit);
+		
+		$nowtime = time();
+		$condition = array(
+			'needallot'		=> 1,
+			'allotstate'	=> 0,
+		);
+		$condition[] = "next_chktime<={$nowtime}";
+		$datalist = $taskpoolModel->select($condition,'task_id','','order by next_chktime asc')->items;
+		$datalist = (array)$datalist;
+		
+		$taskids = array();
+		foreach($datalist as $row){
+			$tid = intval($row['task_id']);
+			$tid>0 && $taskids[] = $tid;
+		}
+		if(empty($taskids)) return true;
+                
+                //商机需求不改检查时间
+                $taskInfoModel = zbj_model_api::get('zbj_model_mk_taskinfo');
+                $condi[] = 'task_id in (' . implode(',',$taskids) . ')';
+                $condi[] = 'task_source = 10';
+                $item = 'task_id';
+                $business = $taskInfoModel->select($condi, $item)->items;
+                
+                $newTaskIds = $taskids;
+                if(!empty($business)){
+                    foreach($business as $val){
+                        $bIds[] = $val['task_id'];
+                    }
+                    $newTaskIds = array_diff($taskids, $bIds);
+                }
+		
+		// 先全部更新为下次执行时间，防止重复执行
+		$upall = array(
+			'next_chktime'	=> $nowtime + 80,
+		);
+                
+                if(!empty($newTaskIds)){
+                    $result = $taskpoolModel->update('task_id in('.implode(',',$newTaskIds).')',$upall);
+                    if($result === false){
+                            return false;
+                    }
+                }
+		
+		$updata = array('allotstate' => 1); // 先标识为成功，当分配失败后会标识成0
+		foreach($taskids as $tid){
+			
+			try{
+				$this->_beginTransaction('mk');
+				
+				if($taskpoolModel->update(array('task_id'=>$tid),$updata) === false){
+					throw new Exception('推送需求到分配系统失败');
+				}
+				if(zbj_lib_Api::taskNeedAllotManager($tid,1) !== true){
+					throw new Exception(zbj_lib_Api::getError());
+				}
+			
+				$this->_commit('mk');	
+			}catch(Exception $e){
+				$this->_rollBack('mk');
+			}
+		}
+		return true;
+	}
+	
+}

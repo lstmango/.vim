@@ -1,0 +1,829 @@
+<?php
+/**
+ * 任务面板
+ * @date 2015.3.7 by houxiaopeng
+ */
+class controller_consultant extends components_basepage {
+	public $url;
+	
+	private function init($inPath){
+		$this->url = $this->getUrlParams($inPath);
+	}
+
+	/**
+	 * 雇主任务面板
+	 * $inPath传入参数页面地址
+	 * 返回一个页面 consultant/consultant.html
+	 */
+	function pageconsultant($inPath){
+		//判断是否ajax请求
+	    if (!zbj_lib_BaseUtils::isAjax()) {
+			return 'no ajax';
+		}
+		return 123;
+		$this->init($inPath);
+		//type订单类型 1、受理订单 2、联系雇主梳理需求 3、未发布，还未联系上雇主 4、有新的报价方案待审核 5、已派单，1天内0投标 6、已派单，1天内不足5投标 7、选标期过1/2未选标 8、雇主有备选 9、雇主到期未选标 10、双方有争议发生 11、工期过1/2 12、工期截止前3天
+		$type = trim(zbj_lib_BaseUtils::getStr($this->url['type'],'int'));
+		if(!$type){
+			return '缺少订单类型参数';
+		}
+		if(!$this->_userid){
+            return '交易顾问未登录';
+		}
+		//初始化总预算，总条数
+		$result = array();
+		$result['allamount'] = 0;
+		$result['totalSize'] = 0;
+		//任务类型
+		$result['type'] = $type;
+		//时间查询类型time_type 1.提交时间 2.选标时间 3.成交时间
+		$time_type = trim(zbj_lib_BaseUtils::getStr($_GET['timetype'],'int'));
+		$mk_task = zbj_model_api::get('zbj_model_mk_task');
+
+		//取最近2015-03-09的数据
+		$time_ymd = '2015-03-09';
+		//查询条件
+		$tk = 'mk_task.';
+		$fl = 'mk_follow.';
+		$opi = 'mk_task_opis.';
+		$sig = 'mk_task_sign.';
+		$rec = 'mk_recommend.';
+		$quo = 'mk_works_quote.';
+		$ext = 'mk_task_extends.';
+		//管理员ID搜索条件
+		$manager_id = trim(zbj_lib_BaseUtils::getStr($_GET['uid'],'int'));
+		//分组ID
+		$gid = trim(zbj_lib_BaseUtils::getStr($_GET['gid'],'int'));
+		if($manager_id == 0 && $gid){
+			//获取分组下的交易顾问ID
+			$manager_id_list = zbj_lib_BaseUtils::apicall('cpuser', 'GetUserByGroupID', array(
+							'gid' => $gid,
+						));
+			if(!empty($manager_id_list['data'])){
+				foreach($manager_id_list['data'] as $k=>$v){
+					$manager_id_lists[] = $v['user_id'];
+				}
+				$manager_id_list_str = implode(',',$manager_id_lists);
+			}
+			$result['group_mark'] = 1;
+	    }
+
+	    //如果组ID和服务商ID都为空，则取登陆的交易顾问ID
+	    if(is_null($_GET['uid']) && is_null($_GET['gid'])){
+	    	$manager_id=$this->_userid;
+	    }
+        //如果筛选过则取全部数据
+		if($_GET['uid'] == 0 && $_GET['gid'] == 0 && !is_null($_GET['uid']) && !is_null($_GET['gid'])) {
+			$allotSrv = new zbj_service_taskalloter();
+		    $manager_id_array = $allotSrv->getAllotDimensionManagers(0,false,false);
+		    if(!empty($manager_id_array)){
+                $manager_id = implode(',',$manager_id_array);
+		    }else{
+		    	$manager_id = 0;
+		    }
+		    $result['group_mark'] = 1;
+		}
+		if($manager_id_list_str) $manager_id=$manager_id_list_str;
+		//分组下没有交易顾问的情况
+		if(!$manager_id && !$manager_id_list_str && $gid !== 0) $manager_id=-1;
+		//如果type为13,14,15则取登陆交易顾问的用户ID
+		if(in_array($type,array(13,14,15))) $manager_id=$this->_userid;
+		//起始时间搜索条件,时间查询类型time_type 1.提交时间 2.选标时间 3.成交时间
+	    switch($time_type){
+	    	case 1:
+	    	$time_begin_end = $this->TimeBeginEnd($_GET['sct'],$_GET['ect'],'createymd');
+	    	break;
+	    	case 2:
+	    	$time_begin_end = $this->TimeBeginEnd($_GET['ssltt'],$_GET['esltt'],'startymd');
+	    	break;
+	    	case 3:
+	    	$time_begin_end = $this->TimeBeginEnd($_GET['sdt'],$_GET['edt'],'endymd');
+	    	break;
+	    	default:
+	    	$time_begin_end = '';
+	    	break;
+	    }
+		//组合基础搜索条件
+		$condition = "{$tk}manager_id in({$manager_id}) and {$tk}open_state=0 {$time_begin_end} and {$tk}createymd > '{$time_ymd}'";
+        //user_ids雇主ID
+        $item = "{$tk}task_id,{$tk}title,{$tk}amount,{$tk}createtime,{$tk}manager_name,{$tk}user_id as user_ids,{$tk}hosted_amount,{$tk}amount";
+        $orderby = '';
+        $leftjoin = array();
+        //组合搜索条件
+		switch($type){
+			//受理订单
+			case 1:
+			$condition .= " and {$fl}giveup_option = 0 and (({$tk}audit_state=4 and {$fl}issys = 1 and {$tk}mode in(10,13,11,12) and case when {$tk}mode in(11,12) then {$tk}state >= 3 else {$tk}state <= 2 end) or {$opi}follow_tag = 1)";
+			$item .= ",{$fl}allottime,{$fl}top_order_tag,{$fl}allottime";
+			$orderby = "order by {$tk}createtime asc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_opis'=>"{$tk}task_id={$opi}task_id"
+			);
+			break;
+			//联系雇主梳理需求
+			case 2:
+			$condition .= " and {$tk}audit_state in(4,5) and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$tk}mode in(10,13) and {$tk}state <= 2";
+		    $item .= ",{$fl}dateline,{$fl}top_order_tag,{$fl}expriestime";
+			$orderby = "order by {$fl}dateline asc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//未发布，还未联系上雇主 
+			case 3:
+			$condition .= " and {$tk}audit_state >= 4 and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$tk}mode in(10,13,11,12) and case when {$tk}mode in(11,12) then {$tk}state >= 3 else {$tk}state <= 2 end";
+		    $item .= ",{$fl}dateline,{$fl}top_order_tag,{$fl}expriestime";
+			$orderby = "order by {$fl}dateline asc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//有新的报价方案待审核
+			case 4:
+			$condition .= " and {$quo}auditstate = 0 and {$tk}mode in(10,13)";
+		    $item .= ",{$quo}nickname,{$quo}quote_id,{$quo}user_id";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_works_quote'=>"{$tk}task_id={$quo}task_id"
+			);
+			break;
+			//已派单，1天内0投标
+			case 5:
+			$oneday = time() - 86400;
+			$condition .= " and audit_state < 4 and state = 2 and {$tk}createtime <= {$oneday} and {$tk}works_num = 0 and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$tk}mode in(10,13)";
+			$item .= ",{$fl}top_order_tag";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//已派单，1天内不足3投标
+			case 6:
+			$oneday = time() - 86400;
+			$item .= ",{$fl}top_order_tag";
+			//$condition .= " and {$tk}createtime <= {$oneday} and {$rec}id > 0 and {$tk}works_num < 5 and {$tk}works_num > 0";
+			$condition .= " and audit_state < 4 and state = 2 and {$tk}createtime <= {$oneday} and {$tk}works_num < 3 and {$tk}works_num > 0 and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$tk}mode in(10,13)";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//选标期过1/2未选标 
+			case 7:
+			//计算选标期已经过半 7天 3.5天时间
+			$time = time() + 302400;
+			$nowdate = date('Y-m-d');
+			$condition .= " and {$tk}endymd < '{$nowdate}' and {$tk}state < 3 and {$tk}hosted >= 0 and {$tk}ext_selectime < {$time} and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$tk}audit_state < 4 and {$tk}mode in(10,13)";
+		    $item .= ",{$fl}dateline,{$fl}top_order_tag";
+			$orderby = "order by {$fl}dateline asc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//雇主有备选
+			case 8:
+			$condition .= " and {$sig}alternative_num > 0 and {$tk}state < 3 and {$tk}hosted >= 0 and {$tk}mode in(10,13)";
+			$item .= ",{$fl}dateline";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+				    'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_sign'=>"{$tk}task_id={$sig}task_id"
+			);
+			break;
+			//雇主到期未选标
+			case 9:
+			$endtime = time() - 604800;
+			$condition .= " and {$tk}mode in(10,13) and {$tk}hosted >= 0 and {$tk}state<3 and {$fl}giveup_option = 0 and {$fl}issys = 0 and case when {$tk}ext_selectime=0 then {$tk}endtime < {$endtime} else {$tk}ext_selectime < ".time()." end"; 
+			$item .= ",{$fl}top_order_tag";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//双方有争议发生
+			case 10:
+			$condition .= " and {$opi}report_type != '' and {$tk}mode in(10,13)"; 
+			$item .= ",{$fl}dateline";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+				    'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_opis'=>"{$tk}task_id={$opi}task_id"
+			);
+			break;
+			//工期过1/2
+			case 11:
+			$condition .= " and {$tk}state = 3 and {$sig}success_num > 0 and {$tk}mode in(10,13)";
+		    $item .= ",{$sig}nickname,{$sig}user_id,{$fl}dateline";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+				    'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_sign'=>"{$tk}task_id={$sig}task_id"
+			);
+			break;
+			//工期截止前3天
+			case 12:
+			$condition .= " and {$tk}state = 3 and {$sig}success_num > 0 and {$tk}mode in(10,13)";
+		    $item .= ",{$sig}nickname,{$sig}user_id";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_task_sign'=>"{$tk}task_id={$sig}task_id"
+			);
+			break;
+			//今日预约
+			case 13:
+			$nowtime = date('Y-m-d',time());
+			$condition .= " and {$tk}hosted >= 0 and {$fl}giveup_option = 0 and {$fl}issys = 0 and {$fl}expries = '{$nowtime}' and {$tk}mode in(10,13,11,12) and case when {$tk}mode in(11,12) then {$tk}state >= 3 else {$tk}state <= 2 end";
+		    $item .= ",{$fl}expriestime,{$fl}top_order_tag";
+			$orderby = "order by {$f1}expriestime desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//新订单受理
+			case 14:
+			/*$condition .= " and {$tk}mode in(10,13,11,12) and {$tk}audit_state in(4) and {$fl}issys = 1";
+			$item .= ",{$fl}top_order_tag";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);*/
+            $condition .= " and {$fl}giveup_option = 0 and (({$tk}audit_state=4 and {$fl}issys = 1 and {$tk}mode in(10,13,11,12) and case when {$tk}mode in(11,12) then {$tk}state >= 3 else {$tk}state <= 2 end) or {$opi}follow_tag = 1)";
+			$item .= ",{$fl}allottime,{$fl}top_order_tag,{$fl}allottime as expriestime,{$tk}user_id";
+			$orderby = "order by {$tk}createtime desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_opis'=>"{$tk}task_id={$opi}task_id"
+			);
+			break;
+			//有新的报价方案待审核toptitle
+			case 15:
+			$condition .= " and {$quo}auditstate = 0 and {$tk}mode in(10,13)";
+		    $item .= ",{$quo}nickname,{$quo}quote_id,{$quo}user_id";
+			$orderby = "order by {$tk}task_id desc";
+			$leftjoin = array(
+					'mk_works_quote'=>"{$tk}task_id={$quo}task_id"
+			);
+			break;
+			//20150815新增自动预约项
+			//二次跟进（3小时）投满3个标
+			case 16:
+			$nowtime = date('Y-m-d',time());
+			$stime = time() - 10800;
+			$etime = time() - 43200;
+			$condition .= " and {$tk}hosted >= 0 and {$fl}giveup_option = 0 and {$fl}manager_id = 1 and {$fl}expries >= '2015-01-01' and {$tk}mode != 11 and {$tk}mode != 12 and {$tk}state <= 2";
+		    $item .= ",{$fl}expriestime,{$fl}top_order_tag";
+			$orderby = "order by {$f1}expriestime desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//投标数小于3
+			case 17:
+			$nowtime = date('Y-m-d',time());
+			$stime = time() - 10800;
+			$etime = time() - 43200;
+			$condition .= " and {$tk}hosted >= 0 and {$fl}giveup_option = 0 and {$fl}manager_id = 1 and {$fl}expries >= '2015-01-01' and {$tk}mode != 11 and {$tk}mode != 12 and {$tk}state <= 2";
+		    $item .= ",{$fl}expriestime,{$fl}top_order_tag";
+			$orderby = "order by {$f1}expriestime desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id"
+			);
+			break;
+			//12小时投标数小于3
+			case 18:
+			$nowtime = date('Y-m-d',time());
+			$etime = time() - 43200;
+			$condition .= " and {$tk}hosted >= 0 and {$fl}giveup_option = 0 and {$fl}manager_id = 2 and {$fl}expries >= '2015-01-01' and {$tk}mode != 11 and {$tk}mode != 12 and {$tk}state <= 2";
+		    $item .= ",{$fl}expriestime,{$fl}top_order_tag";
+			$orderby = "order by {$f1}expriestime desc";
+			$leftjoin = array(
+					'mk_follow'=>"{$tk}task_id={$fl}task_id",
+					'mk_task_extends'=>"{$tk}task_id={$ext}task_id"
+			);
+			break;
+		}
+
+		//搜素数据
+		$consultant = $mk_task->select($condition,$item,'',$orderby,$leftjoin);
+		//各种状态跳转页面判断
+        if($type == 13 || $type == 14 || $type == 15){
+        	$urldata = 'consultant/toptitle.html';
+        }else{
+            $urldata = 'new/taskpane/ajax/taskpanetb.html';
+        }
+        
+        //如果未查询到数据则提示暂无需要处理的订单
+		if(!$consultant->items){
+			$result['consultant'] = array();
+        	return $this->render($urldata, $result);
+		}
+		
+		foreach($consultant->items as $k=>$v){
+			//计算总计预算
+			$allamount += $v['amount'];
+			//计算已提交时间
+	        if(!$v['allottime']) $consultant->items[$k]['createymd'] = zbj_lib_BaseUtils::intervalTime2str(time() - $v['createtime'],$accuracy = "second");
+	        if($v['allottime']) $consultant->items[$k]['createymd'] = zbj_lib_BaseUtils::intervalTime2str(time() - $v['allottime'],$accuracy = "second");
+			//计算最近联系时间
+			$consultant->items[$k]['expries'] = $this->expriestime($v['dateline']);
+			//跟进时间计算
+	        if($type == 13){
+	        	$consultant->items[$k]['followtime'] = date('H:i:s',$v['expriestime']);
+	        }
+            //未发布，还未联系上雇主,组合ID和任务数组,方便查找task_info表
+            $all_task_id[$v['task_id']] = $v['task_id']; 
+            $task_no_manager[$v['task_id']] = $consultant->items[$k];
+
+		}
+
+		//如果未搜索到数据则直接返回，暂无需要处理的订单
+		if(empty($all_task_id)){
+			$result['consultant'] = array();
+        	return $this->render($urldata, $result);
+		}
+		//去掉效果保障数据下放弃的任务订单，
+		unset($v);
+		unset($k);
+	    $m_effect_pro = zbj_model_api::get('model_mk_effectprotection');
+	    $all_task_id_strs = implode(',',$all_task_id);
+        $m_effect_pro_res = $m_effect_pro->select("task_id in({$all_task_id_strs}) and giveup_status = 1","task_id",'','order by task_id desc')->items;
+        if($m_effect_pro_res){
+	        foreach($m_effect_pro_res as $k=>$v){
+	            $all_task_id_pro[$k] = $v['task_id']; 
+	            unset($task_no_manager[$v['task_id']]);
+	            unset($all_task_id[$v['task_id']]);
+	        }
+        }
+        $abandonreason_result = $task_no_manager;
+        
+        //如果类型为,8，雇主有备选，去掉放弃的任务
+        unset($v);
+		unset($k);
+        if(in_array($type,array(4,8,10,11,12,15)) && !empty($all_task_id)){
+	        $mk_follow = zbj_model_api::get('model_mk_follow');
+		    $all_task_id_strs = implode(',',$all_task_id);
+		    $all_task_id_strs = trim($all_task_id_strs,',');
+	        $mk_follow_res = $mk_follow->select("task_id in({$all_task_id_strs})","task_id,top_order_tag,giveup_option",'','order by task_id desc')->items;
+	        if($mk_follow_res){
+		        foreach($mk_follow_res as $k=>$v){
+		        	if($v['giveup_option'] > 0 && $type != 4 && $type != 15){
+			            $all_task_id_pro[$k] = $v['task_id']; 
+			            unset($abandonreason_result[$v['task_id']]);
+			            unset($task_no_manager[$v['task_id']]);
+			            unset($all_task_id[$v['task_id']]);
+		            }else{
+		            	if($abandonreason_result[$v['task_id']]['task_id'] == $v['task_id']){
+		            		$abandonreason_result[$v['task_id']]['top_order_tag'] = $v['top_order_tag'];
+		            		$task_no_manager[$v['task_id']]['top_order_tag'] = $v['top_order_tag'];
+		            	}
+		            }
+		        }
+	        }
+        }
+
+        //有新的报价方案待审核,去掉已中标的情况
+	    if(($type == 4 || $type == 15) && !empty($all_task_id)){
+	    	$all_task_id_strs = implode(',',$all_task_id);
+	    	$all_task_id_strs = trim($all_task_id_strs,',');
+            $twork = new zbj_model_mk_works();
+            $tworkquote = new zbj_model_mk_worksquote();
+		    $tworkinfo = $twork->select('task_id in('.$all_task_id_strs.') and issuccess=1','task_id,works_id')->items;
+            $tworkquoteinfo = $tworkquote->select('task_id in('.$all_task_id_strs.') and auditstate = 0','task_id,works_id')->items;
+
+            if($tworkinfo){
+                foreach($tworkinfo as $k=>$v){
+                    $tworkinfos[$v['works_id']] = $v['works_id'];
+                }
+            }
+
+		    if($tworkquoteinfo){
+		    	foreach($tworkquoteinfo as $kk=>$vv){
+		    		if((int)$vv['works_id'] == (int)$tworkinfos[$vv['works_id']]){
+		    			$tworkquoteinfos[$vv['task_id']] = 1;
+		    		}else{
+		    			$tworkquoteinfos[$vv['task_id']] = 0;
+		    		}
+		    	}
+		    }
+		    
+		    if(!empty($tworkquoteinfos)){
+		    	foreach($tworkquoteinfos as $kkk=>$vvv){
+		    		if($vvv == 1){
+		    			unset($abandonreason_result[$kkk]);
+			            unset($task_no_manager[$kkk]);
+			            unset($all_task_id[$kkk]);
+		    		}
+		    	}		    	
+		    }
+ 
+	    }    
+
+        //计算派单次数和个数
+        if(empty($all_task_id)){
+        	$result['consultant'] = array();
+        	return $this->render($urldata, $result);
+        }
+        if($type == 5 || $type == 6 || $type == 8 || $type == 9){
+        	$m_recommend = zbj_model_api::get('model_mk_recommend');
+        	$all_task_id_strs = implode(',',$all_task_id);
+            $m_recommend_res = $m_recommend->select("task_id in({$all_task_id_strs})","count(task_id) as num,task_id",'group by task_id','order by task_id desc')->items;
+            if($m_recommend_res){
+	            foreach($m_recommend_res as $k=>$v){
+	            	if($v['task_id'] == $abandonreason_result[$v['task_id']]['task_id']){
+		                //计算派单次数
+		                $abandonreason_result[$v['task_id']]['numbertimes'] = ceil($v['num']/20);
+		                //派单数
+		                $abandonreason_result[$v['task_id']]['num'] = $v['num'];
+	                }
+	            }
+            }
+        }
+		//未发布，还未联系上雇主 
+		if($type == 3){
+			if(empty($all_task_id)){
+				$result['consultant'] = array();
+        	    return $this->render($urldata, $result);
+			}
+			unset($abandonreason_result);
+			$task_info = zbj_model_api::get('zbj_model_mk_taskinfo');
+			$all_task_id_str = implode(',',$all_task_id);
+			$task_info_array = $task_info->select("task_id in({$all_task_id_str})","*",'','order by task_id desc')->items;
+            foreach($task_info_array as $k=>$v){
+            	$option = unserialize($v['option']);
+            	$abandonreason = $option['abandonreason'];
+                //如果从task_info表里取到$option['abandonreason'] = 2，属于未联系到雇主情况，
+            	if($abandonreason == 2){
+            		$abandonreason_result[$v['task_id']] = $task_no_manager[$v['task_id']];
+            	}
+            }
+        }
+
+        //type = 10双方有争议发生,增加中标服务商名称,type = 5,6的时候去除掉已经选标的
+        if($type == 10 || $type == 5 || $type == 6){
+        	$task_sign = zbj_model_api::get('zbj_model_mk_tasksign');
+            $all_task_id_str = implode(',',$all_task_id);
+            $task_sign_array = $task_sign->select("task_id in({$all_task_id_str}) and success_num > 0","nickname,task_id,user_id",'','order by task_id desc')->items;
+            if(!empty($task_sign_array)){
+            	if($type == 10){
+            		//只有双方有争议的才显示
+            		$mb_report_sql = "((o_type = 1  and o_bel_id in($all_task_id_str)) or (o_type = 2 and o_id in($all_task_id_str))) and (type between 14 and 23) and state<3";
+		            $mb_report = zbj_model_api::get('zbj_model_mb_report');
+		            $mb_report_res = $mb_report->select($mb_report_sql,'o_type,o_id,o_bel_id')->items;
+		            unset($abandonreason_result);
+		            if($mb_report_res){
+		            	foreach($mb_report_res as $k=>$v){
+		            		if($v['o_type'] == 1){
+		            			$abandonreason_result[$v['o_bel_id']] = $task_no_manager[$v['o_bel_id']];
+		            		}
+		            		if($v['o_type'] == 2){
+		            			$abandonreason_result[$v['o_id']] = $task_no_manager[$v['o_id']];
+		            		}
+		            	}
+		            	foreach($task_sign_array as $k=>$v){
+		            		if($v['task_id'] == $abandonreason_result[$v['task_id']]['task_id']){
+				                $abandonreason_result[$v['task_id']]['nickname'] = $v['nickname'];
+				                $abandonreason_result[$v['task_id']]['user_id'] = $v['user_id'];
+			                }
+		                }
+		            }
+		        //type = 5,6的时候去除掉已经选标的
+	            }elseif($type == 5 || $type == 6){
+	            	foreach($task_sign_array as $k=>$v){
+		                unset($abandonreason_result[$v['task_id']]);
+		            }
+	            }
+            }
+        }
+
+        //工期过1/2,工期截止前3天
+        if($type == 11 || $type == 12){
+            $works_quote = zbj_model_api::get('zbj_model_mk_worksquote');
+            $all_task_id_str = implode(',',$all_task_id);
+            $dataymd = date('Y-m-d');
+            $dataymds = date('Y-m-d',time() + 259200);
+            if($type == 11){
+                $conditions = "task_id in({$all_task_id_str}) and day / 2 < {$dataymd} - beginymd and state = 1";
+            }elseif($type == 12){
+            	$conditions = "task_id in({$all_task_id_str}) and endymd < {$dataymds} and endymd > {$dataymd} and state = 1";
+            }
+            $works_quote_array = $works_quote->select("$conditions","task_id",'','order by task_id desc')->items;
+            unset($abandonreason_result);
+            if($works_quote_array){
+	            foreach($works_quote_array as $k=>$v){
+	                $abandonreason_result[$v['task_id']] = $task_no_manager[$v['task_id']];
+	            }
+            }
+        }
+
+        //新订单待受理
+        if($type == 14 && !empty($abandonreason_result)){
+        	foreach($abandonreason_result as $k=>$v){
+        		$user_id_array[] = $v['user_id'];
+        		$task_id_array[] = $v['task_id'];
+        	}
+
+        	if($user_id_array){
+                $user_id_str = implode(',',$user_id_array);
+                $user_id_str = trim($user_id_str,',');
+        	}
+
+        	if($task_id_array){
+                $task_id_str = implode(',',$task_id_array);
+                $task_id_str = trim($task_id_str,',');
+        	}
+
+        	$mb_info = zbj_model_api::get('zbj_model_mb_info');
+        	$mb_info_array = $mb_info->select("user_id in({$user_id_str})","user_id,nickname,mobile")->items;
+        	if($mb_info_array){
+        		foreach($mb_info_array as $k=>$v){
+            	    $result['mbinfo'][$v['user_id']] = $v;
+                }
+        	}
+            
+
+            //商机标识
+            $mk_task_info = zbj_model_api::get('zbj_model_mk_taskinfo');
+            $mk_task_info_array = $mk_task_info->select("task_id in({$task_id_str})","task_id,task_source")->items;
+            if($mk_task_info_array){
+            	foreach($mk_task_info_array as $kk=>$vv){
+            	    $abandonreason_result[$vv['task_id']]['task_source'] = $vv['task_source'];
+                }
+            }
+        }
+
+        //16 17 18 3小时12小时跟进
+        if(in_array($type,array(16,17,18)) && !empty($abandonreason_result)){
+        	foreach($abandonreason_result as $k=>$v){
+        		$task_id_array[] = $v['task_id'];
+        	}
+        	if($task_id_array){
+                $task_id_str = implode(',',$task_id_array);
+                $task_id_str = trim($task_id_str,',');
+        	}
+        	//添加派单状态
+            $mk_task_opis = zbj_model_api::get('zbj_model_mk_taskopis');
+            $mk_task_opis_res = $mk_task_opis->select("task_id in({$task_id_str})","task_id,recmd_status")->items;
+            if($mk_task_opis_res){
+            	foreach($mk_task_opis_res as $k=>$v){
+            		$abandonreason_result[$v['task_id']]['recmd_status'] = $v['recmd_status'];
+            	}
+            }
+            
+            //判断投标数
+            $mk_task_info = zbj_model_api::get('zbj_model_mk_taskinfo');
+            $mk_task_info_res = $mk_task_info->select("task_id in({$task_id_str})","task_id,`option`")->items;
+
+            if($mk_task_info_res){
+            	foreach($mk_task_info_res as $k=>$v){
+            		if($v['option']){
+			            $option = unserialize($v['option']);
+			            $avaliable_num = $option['works']['avaliable_num'];
+			            //判断选标小于3则把16里边的数据删掉
+                        if($type == 16 && $avaliable_num < 3){
+                            unset($abandonreason_result[$v['task_id']]);
+                        }
+			            //判断选标大于等于3则把17 18里边的数据删掉
+			            if(in_array($type,array(17,18)) && $avaliable_num >= 3){
+                            unset($abandonreason_result[$v['task_id']]);
+                        }
+                        //12小时投标数小于三需要记录投标数
+                        if($type == 18 && $avaliable_num < 3){
+                            $abandonreason_result[$v['task_id']]['rec_num'] = $avaliable_num;
+                        }
+		            }else{
+		            	if($type == 16){
+		            		unset($abandonreason_result[$v['task_id']]);
+		            	}
+		            	if($type == 18){
+		            		$abandonreason_result[$v['task_id']]['rec_num'] = 0;
+		            	}
+		            }
+            	}
+            }
+        }
+
+        //重新组合数据
+        if(!empty($abandonreason_result)){
+        	//类型为3的，删除之前的总金额，重新统计
+        	unset($allamount);
+        	$consultant->items = $abandonreason_result;
+        	foreach($abandonreason_result as $k=>$v){
+                $allamount += $v['amount'];
+            }
+            $consultant->pageSize = count($consultant->items);
+        }else{
+        	$result['consultant'] = array();
+        	return $this->render($urldata, $result);
+        }
+        $result['now'] = time();
+		$result['consultant'] = $consultant->items;
+		$result['allamount'] = $allamount;
+		$result['totalSize'] = $consultant->pageSize;
+
+		return $this->render($urldata, $result);
+	}
+
+    /**
+	 * 雇主任务面板
+	 * 传入参数 $begin开始时间,$end结束时间,$datetype时间类型
+	 * 返回搜索条件 $time_begin_end
+	 */
+	private function TimeBeginEnd($begin,$end,$datetype){
+		$time_begin_end = '';
+		if(!zbj_lib_BaseUtils::chkdate($begin) && !zbj_lib_BaseUtils::chkdate($end)) return $time_begin_end;
+		$tk = 'mk_task.';
+		if(zbj_lib_BaseUtils::chkdate($begin)){
+	        $begin = zbj_lib_BaseUtils::getStr($begin);
+            $time_begin_end = "and {$tk}{$datetype} >= '{$begin}'";
+        }
+        if(zbj_lib_BaseUtils::chkdate($end)){
+	        $end = zbj_lib_BaseUtils::getStr($end);
+            $time_begin_end = "and {$tk}{$datetype} <= '{$end}'";
+        }
+        if($begin > $end && $end){
+	    	$timestart = $end;
+            $timeend = $begin;
+	    }else{
+            $timestart = $begin;
+            $timeend = $end;
+	    }
+	    if(zbj_lib_BaseUtils::chkdate($begin) && zbj_lib_BaseUtils::chkdate($end)){
+            $time_begin_end = "and {$tk}{$datetype} >= '{$timestart}' and {$tk}{$datetype} <= '{$timeend}'";
+	    }
+	    return $time_begin_end;
+	}
+
+    /**
+	 * 计算最近联系时间
+	 * 传入参数 $expriestimes跟进时间
+	 * 返回搜索条件 $time_begin_end
+	 */
+	private function expriestime($expriestimes){
+	    //计算最近联系时间
+	    $expries = '';
+		if(!empty($expriestimes)){
+            $expriestime = floor((time() - $expriestimes)/3600);
+            if($expriestime < 0){
+                $expries = '刚刚';
+            }else if($expriestime==0){
+            	$expries = floor((time() - $expriestimes)/60).'分前';
+            }else if($expriestime<24){
+            	$expries = $expriestime.'小时前';
+            }else{
+            	$day = floor($expriestime/24);
+            	if($day == 1){
+            		$expries = '昨天';
+            	}else{
+            		$expries = $day.'天前';
+            	}
+            }
+        }
+        return $expries;
+    }
+
+    /**
+	 * 需求待审核数量
+	 */
+	public function pageTaskAuditNum($inPath) {
+
+	    $condition['manager_id2'] = $this->_userid;
+		$condition[] = 'audit_state in (0,3)';
+
+		$condition[] = 'state<3';
+		$condition[] = 'isaudit>=0';
+		$condition[] = 'manager_id=0';
+		$condition[] = 'open_state=0';
+		$condition[] = 'mk_task_info.refund_state=0';
+		$condition[] = 'mk_task_opis.nopass = 0';
+
+		$day60 = date('Y-m-d',strtotime('-60 day'));
+	    $condition[] = "createymd>='{$day60}'";
+
+		// 要求只能看到5分钟以前的需求
+		$fiveminago = time() - 800;
+		$condition[] = "createtime<{$fiveminago}";
+	
+		if($_REQUEST['debug']){
+			define('DEBUG', 1);
+		}
+
+		$mTask = new zbj_model_mk_task();
+
+		$leftjoin =array(
+				    'mk_task_info'=>'mk_task_info.task_id=mk_task.task_id',
+                    'mk_task_opis'=>'mk_task_opis.task_id=mk_task.task_id'
+				);
+
+		$tlist = $mTask->select($condition, 'count(*) as num', '', '',$leftjoin,array('type'=>'query','dbinfo'=>'co_market'));
+
+		$params['total'] = $tlist->items[0]['num'];
+
+		return $this->render('consultant/taskauditnum.html', $params);
+	}
+
+	/*
+	 *盲抢
+	 */
+	public function pageGrabtask($inPath){
+		//判断是否ajax请求
+	    if (!zbj_lib_BaseUtils::isAjax()) {
+			#return 'no ajax';
+		}
+		$checkResult=$this->checkIdentity();
+	}
+
+	private function _getUserId(){
+		#$userId= zbj_lib_BaseUtils::getStr($this->_userid,'int');
+		$userId = 90; //del
+		return $userId;
+	}
+	/*
+	 *验证是否交易顾问
+	 */
+	private function checkIdentity(){
+        #$userId = zbj_lib_BaseUtils::getStr($this->_userid,'int');
+		$userId=$this->_getUserId();
+		var_dump($userId);
+		$allot=new zbj_service_taskalloter();
+		$allManager=$allot->getAllManager(false);
+		$manages = array();
+		foreach($allManager as $manage){
+			$mid = intval($manage['manager_id']);
+			$mid>0 && $manages[] = $mid;
+		}
+		if(!in_array($userId,$manages)){
+			return $this->printmsg("您不是交易顾问，无法认领失败~", 0);
+		}
+		return true;
+	}
+
+	/*
+	 *检测选标率
+	 */
+	private function checkSelectRate(){
+		$this->_getSelectedSummary();
+	}
+
+    /**
+     * 已选标
+     */
+    private function _getSelectedSummary($uid = '', $gid = '', $list = array())
+    {
+        $uid = $this->_getUids($uid, $gid);
+
+        $mWork = new zbj_model_mk_works();
+        $mTask = new zbj_model_mk_task();
+        $join = array(
+            'mk_task'=>'mk_task.task_id=mk_works.task_id',
+            'mk_task_extends'=>'mk_task_extends.task_id=mk_task.task_id'
+        );
+
+        $condi = array();
+        $condi[] = $this->_optManagerId('mk_task.manager_id', $uid);
+        $condi[] = 'mk_task.state >= 3';
+        $condi[8] = 'case when mk_task_extends.giveuptime > 0 then mk_task_extends.giveuptime >= 10800 + mk_task_extends.first_effect_follow_time else mk_task.state >= 3 end and mk_task_extends.giveuptype != 1';
+        
+		$count  = 0;
+		$amount = 0;
+		$distinct = 'DISTINCT';
+
+		$condi[4] = "mk_works.select_ymd >= '{$this->stime}'";
+		$condi[5] = "mk_works.select_ymd <= '{$this->etime}'";
+		$condi[3] = 'mk_task.mode = 13';
+
+		$data = $mWork->selectOne($condi, "count({$distinct} mk_task.task_id) as count,sum(mk_task.hosted_amount) as amount",'', '', $join, array('dbinfo'=>$this->dbinfo));
+		$count += $data['count'];
+		$amount += $data['amount'];
+
+		$condi[4] = "mk_task.hosted_date >= '{$this->stime}'";
+		$condi[5] = "mk_task.hosted_date <= '{$this->etime}'";
+		$condi[3] = 'mk_task.mode in (11,12)';
+		$condi[6] = "mk_task.hosted_amount > 0";
+
+		$data = $mTask->selectOne($condi, 'count(1) as count,sum(mk_task.hosted_amount) as amount','', '', array('mk_task_extends'=>'mk_task_extends.task_id=mk_task.task_id'), array('dbinfo'=>$this->dbinfo));
+
+		$count += $data['count'];
+		$amount += $data['amount'];
+
+		$condi[4] = "mk_works.select_ymd >= '{$this->stime}'";
+		$condi[5] = "mk_works.select_ymd <= '{$this->etime}'";
+		$condi[3] = 'mk_task.mode = 10';
+		unset($condi[6]);
+
+		$mWork->setCount(false);
+		$data = $mWork->select($condi, 'mk_task.task_id,mk_task.hosted_amount','', '', $join, array('dbinfo'=>$this->dbinfo))->items;            
+
+		if($data){
+			$task_ids = array();
+			foreach($data as $val){
+				if($val['task_id'] && !in_array($val['task_id'], $task_ids)) {
+					$task_ids[] = $val['task_id'];
+					$amount += $val['hosted_amount'];
+					$count += 1;
+				}
+			}
+		}
+		return array('count'=>$count, 'amount'=>$amount);
+    }
+}

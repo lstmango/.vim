@@ -1,0 +1,388 @@
+<?php
+
+use com\zhubajie\task\interfaces\WorkTaskStepServiceClient;
+use com\zhubajie\task\dataobject\worktaskstep\WorkStateDTO;
+use com\zhubajie\task\dataobject\worktaskstep\WorkTaskStepDTO;
+
+use com\zhubajie\task\interfaces\WorkQuoteServiceClient;
+use com\zhubajie\task\dataobject\workquote\QuoteAuditDTO;
+
+/**
+ * 异步任务-需求子系统
+ * @author lidacheng
+ */
+use \MessageQueue\Logger\LoggerSlave as Logger;
+
+class consumer_service_job extends components_baseservice{
+	
+	//当前业务主数据表
+	protected $marter_table = 'zbj_model_mk_workstaskstep';
+	
+	public function __construct($id=0){
+		parent::__construct();
+		$this->setId($id);
+		
+		zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET,10);
+	}
+		
+	/**
+	 * 检查服务商是否有联系雇主
+	 * @param	$data
+	 * @throw Exception
+	 * */
+	public function checkContactBuyer($data){
+		$data['works_id'] = intval($data['works_id']);
+		
+		if($data['works_id'] <= 0){
+			throw new Exception('传递的稿件数据异常');
+		}
+		
+		return $this->checkAndEliminateWork($data['works_id'],10);
+	}
+		
+	/**
+	 * 检查服务商是否已经提交报价方案
+	 * @param	$data
+	 * @throw Exception
+	 * */
+	public function checkPostedQuote($data){
+		$data['works_id'] = intval($data['works_id']);
+		if($data['works_id'] <= 0){
+		    throw new Exception('传递的稿件数据异常');
+		}
+		$condition = array(
+			'works_id='.intval($data['works_id']),
+			'dotype=20',
+		);
+		$worktask = $this->model()->selectOne($condition);
+		if(empty($worktask['step_id'])){
+			throw new Exception('没有找到该稿件的任务['.$workid.']');
+		}
+		if($worktask['roletype']>0){
+			return true;
+		}
+		$srvTask = new zbj_service_task($worktask['task_id']);
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$worktask['task_id']}不存在]");
+		}
+		
+		// 检查是否需要报价方案
+		$need = array(1); // 需要的
+		try{
+			$wbapi = new com\zhubajie\task\interfaces\WorkBenchServiceClient(NULL);
+			zbj_lib_ApiClient::build($wbapi);
+			
+			$back = $wbapi->getTmplByCategoryID($task['category2id']);
+			if($back->msg->success != true){
+				throw new Exception($back->msg->message);
+			}
+			// 不需要报价方案
+			if(!in_array($back->tplid,$need)){
+				$this->checkHoldAndEliminateWork($data['works_id'],20);
+			}
+			else{
+				return $this->checkAndEliminateWork($data['works_id'],20);
+			}
+		}catch(Exception $e){
+			throw new Exception($e->getMessage());
+		}
+
+	}
+		
+	/**
+	 * 检查服务商是否已经修改报价方案
+	 * @param	$data
+	 * @throw Exception
+	 * */
+	public function checkEditedQuote($data){
+		$data['works_id'] = intval($data['works_id']);
+		
+		if($data['works_id'] <= 0){
+			throw new Exception('传递的稿件数据异常');
+		}
+				
+		return $this->checkAndEliminateWork($data['works_id'],21);
+	}
+			
+	/**
+	 * 自动审核通过报价方案
+	 * @param	int	$workid
+	 * @param	int	$dotype
+	 * @throw Exception
+	 * */
+	public function autoPassQuote($data){
+		$data['quote_id'] = intval($data['quote_id']);
+		
+		if($data['quote_id'] <= 0){
+			throw new Exception('传递的报价方案数据异常');
+		}
+		
+		$srvQuote = new zbj_service_worksquote($data['quote_id']);
+		$quote = $srvQuote->get();
+		if(empty($quote['task_id'])){
+			throw new Exception('获取报价方案信息失败');
+		}
+		if($quote['auditstate'] != 0 || $quote['state']!=0){
+			return true;
+		}
+		
+		$srvTask = new zbj_service_task($quote['task_id']);
+		$srvTask = $srvTask->init();
+		if($srvTask->get('manager_id')!=0){
+			return true;
+		}
+		
+		try{
+			$api = new WorkQuoteServiceClient(NULL);
+			zbj_lib_ApiClient::build($api);
+			
+			$audit = array(
+				'quote_id'		=> $data['quote_id'],
+				'auditstate'	=> 1, // 审核通过
+				'manager_id'	=> 1,
+				'manager_name'	=> 'sys',
+			);
+			$auditDTO = new QuoteAuditDTO($audit);
+			
+			$back = $api->audit($auditDTO);
+			if($back->success != true){
+				throw new Exception($back->message);
+			}
+		}catch(Exception $e){
+			throw new Exception($e->getMessage());
+		}
+		return true;
+	}
+
+	/**
+	 * 检查是否填跟单记录并设置稿件为淘汰
+	 * @param	int	$workid
+	 * @param	int	$dotype
+	 * @throw Exception
+	 * */
+	private function checkHoldAndEliminateWork($workid,$dotype){
+		$condition = array(
+			'works_id='.intval($workid),
+			'dotype='.intval($dotype),
+		);
+		$worktask = $this->model()->selectOne($condition);
+		if(empty($worktask['step_id'])){
+			throw new Exception('没有找到该稿件的任务['.$workid.']');
+		}
+		//加入验证是否填跟单记录
+		//$data['_d']=1;
+		$data['appid']='trade';
+		$data['service']='FollowSecondService';
+		$data['method']='query';
+		$paramArray['data']=array(
+			'taskId'=>$worktask['task_id'],
+			'worksId'=>$workid
+		);
+		$data['param']=json_encode($paramArray);
+		$apiHttp=new zbj_lib_ApiHttpClient($data);
+		$jsonList=$apiHttp->execute();
+
+		$result = json_decode($jsonList,1);
+		if( $result['success']==true && !empty($result['data']) ){
+			throw new Exception("该需求已进行二次跟进");
+		}
+
+		if($worktask['roletype']>0){
+			return true;
+		}
+		
+		$srvTask = new zbj_service_task($worktask['task_id']);
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$worktask['task_id']}不存在]");
+		}
+		
+		$srvWork = new zbj_service_works($workid);
+		$work = $srvWork->get('*');
+		if(empty($work['works_id'])){
+			throw new Exception("稿件[{$workid}不存在]");
+		}
+			
+		try{
+				// 需求已选标、关闭，稿件已被淘汰、中标  则当前任务被视为无效
+				$invalid = ($task['mode']==13 && $task['state']>=3) || $task['open_state']!=0 || $work['iseliminate']!=0 || 
+							$work['issuccess']==1 || $work['open_state']!=0 || $work['ft_invalid']==21;
+				
+				$api = new WorkTaskStepServiceClient(NULL);
+				zbj_lib_ApiClient::build($api);
+				
+				$workDTO = new WorkStateDTO();
+				$workDTO->works_id = $workid;
+				$workDTO->done = $invalid?2:0; // 2为无效的任务
+				$workDTO->roletype = 3;
+				
+				$msg = '二次跟进未填跟单记录';
+				$result = $api->setPubQuoteState($workDTO);
+			if($result->success != true && $result->code!=9999){ // code=9999表示已经执行过了
+				throw new Exception($result->message,$result->code);
+			}
+		}catch(Exception $e){
+			throw new Exception($e->getMessage());
+		}
+			
+		try{
+			$this->_beginTransaction('mk');
+			$this->_beginTransaction('mb');
+			
+			// 设置稿件为不合格
+			if($workDTO->done == 0){
+			//	$srvWork->setTransaction(false);
+				if($srvWork->setEliminate(1,'sys') == false){
+					throw new Exception('系统设置稿件不合格失败');
+				}
+				$srvTask->addTaskActionLog("{$msg} 系统将{$workid}投标设置为不合格", 0);
+			
+				$event = 'seller.unpost.quote';
+				
+				$msgparam = array('task_id'=>$task['task_id'],'seller_id'=>$work['user_id'],'work_id'=>$workid);
+				zbj_lib_Api::throwTaskEvent($msgparam,$event);
+				
+			}
+			
+			$this->_commit('mk');	
+			$this->_commit('mb');
+			
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->_rollBack('mb');
+			throw new Exception($e->getMessage());
+		}
+		
+		return true;
+	}
+		
+	/**
+	 * 检查并设置稿件为淘汰
+	 * @param	int	$workid
+	 * @param	int	$dotype
+	 * @throw Exception
+	 * */
+	private function checkAndEliminateWork($workid,$dotype){
+		$condition = array(
+			'works_id='.intval($workid),
+			'dotype='.intval($dotype),
+		);
+		$worktask = $this->model()->selectOne($condition);
+		if(empty($worktask['step_id'])){
+			throw new Exception('没有找到该稿件的任务['.$workid.']');
+		}
+		if($worktask['roletype']>0){
+			return true;
+		}
+		
+		$srvTask = new zbj_service_task($worktask['task_id']);
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$worktask['task_id']}不存在]");
+		}
+		
+		// 检查是否需要报价方案
+		if($dotype==20 || $dotype==21){
+			$need = array(1); // 需要的
+			try{
+				$wbapi = new com\zhubajie\task\interfaces\WorkBenchServiceClient(NULL);
+				zbj_lib_ApiClient::build($wbapi);
+				
+				$back = $wbapi->getTmplByCategoryID($task['category2id']);
+				if($back->msg->success != true){
+					throw new Exception($back->msg->message);
+				}
+				// 不需要报价方案
+				if(!in_array($back->tplid,$need)){
+					return true;
+				}
+			}catch(Exception $e){
+				throw new Exception($e->getMessage());
+			}
+		}
+		
+		$srvWork = new zbj_service_works($workid);
+		$srvWork = $srvWork->init();
+		$work = $srvWork->get('*');
+		if(empty($work['works_id'])){
+			throw new Exception("稿件[{$workid}不存在]");
+		}
+			
+		try{
+			// 需求已选标、关闭，稿件已被淘汰、中标  则当前任务被视为无效
+			$single = (in_array($task['mode'],array(11,12,13)) || ($task['mode']==10 && $task['allot']==1));
+			$invalid = ($single && $task['state']>=3) || $task['open_state']!=0 || $work['iseliminate']!=0 || 
+						$work['issuccess']==1 || $work['open_state']!=0 || $work['ft_invalid']==21;
+			
+			$api = new WorkTaskStepServiceClient(NULL);
+			zbj_lib_ApiClient::build($api);
+			
+			$workDTO = new WorkStateDTO();
+			$workDTO->works_id = $workid;
+			$workDTO->done = $invalid?2:0; // 2为无效的任务
+			$workDTO->roletype = 3;
+			
+			switch($dotype){
+				case 10:
+					$msg = '超时未联系雇主';
+					$result = $api->setContactBuyerState($workDTO);
+					break;
+				case 20:
+					$msg = '超时未提交报价方案';
+					$result = $api->setPubQuoteState($workDTO);
+					break;
+				case 21:
+					$msg = '超时未修改报价方案';
+					$result = $api->setEditQuoteState($workDTO);
+					break;
+				default:
+					throw new Exception('不支持的计划任务');
+			}
+			if($result->success != true && $result->code!=9999){ // code=9999表示已经执行过了
+				throw new Exception($result->message,$result->code);
+			}
+		}catch(Exception $e){
+			throw new Exception($e->getMessage());
+		}
+			
+		try{
+			$this->_beginTransaction('mk');
+			$this->_beginTransaction('mb');
+			
+			// 设置稿件为不合格
+			if($workDTO->done == 0){
+			//	$srvWork->setTransaction(false);
+				if($srvWork->setEliminate(1,'sys') == false){
+					throw new Exception('系统设置稿件不合格失败');
+				}
+				$srvTask->addTaskActionLog("{$msg} 系统将{$workid}投标设置为不合格", 0);
+			
+				if($dotype == 10){
+					$event = 'seller.uncontact.buyer';
+				}else if($dotype == 20){
+					$event = 'seller.unpost.quote';
+				}else if($dotype == 21){
+					$event = 'seller.unedit.quote';
+				}
+				
+				$msgparam = array('task_id'=>$task['task_id'],'seller_id'=>$work['user_id'],'work_id'=>$workid);
+				zbj_lib_Api::throwTaskEvent($msgparam,$event);
+				
+			}
+			
+			$this->_commit('mk');	
+			$this->_commit('mb');
+			
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->_rollBack('mb');
+			throw new Exception($e->getMessage());
+		}
+		
+		return true;
+	}
+}

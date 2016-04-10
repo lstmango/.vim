@@ -1,0 +1,26 @@
+<form class="form-horizontal form dialog" method="post" action="{/$smarty.server.REQUEST_URI/}">
+	<div class="control-group">
+		<label class="control-label" for="tags">售前客服</label>
+		<div class="controls">
+			<select name="allotchange">
+<!-- {/foreach from=$allot_config item=item key=gid/} -->
+				<optgroup label="{/$item.group_name/}">
+<!-- 					{/foreach from=$item.managers item=manager/} -->
+						<option value="{/$item.group_id/}:{/$manager.manager_id/}">{/$manager.manager_name/}&nbsp;{/if $isOnline/}({/$isOnline[$manager['user_id']]/}){//if/}</option>
+<!-- 					{//foreach/} -->
+				</optgroup>
+<!-- {//foreach/} -->
+			</select>
+			<span class="help-inline">请确保只要求调任务时才进行此操作。选择一个您要调换的客服。</span>
+		</div>
+   	</div>
+</form>
+<script>
+ajaxform($('form.dialog'));
+$('select[name=allotchange] option').each(function (index,items){
+	user=$(this).attr('value').split(':');
+	if(user[1]=='{/$manager_id/}'){
+		$('select[name=allotchange]').val($(this).attr('value'));
+	}
+});
+</script>

@@ -1,0 +1,815 @@
+<?php
+/*
+ *订单分配系统-抢商机
+ *lsTMango
+ *2015-10-26
+ */
+class zbj_service_randgrabbschance extends zbj_components_baseservice {
+	protected $marter_table = 'zbj_model_mk_allotgrabpool';
+	private $userId;
+	//盲抢池任务
+	private $taskArray=array();
+	//待检测任务
+	private $checkTask=array();
+	//防御式code
+	private $totalCycleNum=50;
+	private $cycleNum=0;
+	private $noData=array('noTask'=>1);
+
+
+	/*
+	 *构造函数
+	 */
+	public function __construct($initData) {
+        error_reporting(0);
+		if($initData){
+			foreach($initData as $initKey=>$initValue){
+				$this->$initKey=$initValue;
+			}
+		}
+		$stime=date("Y-m-01") ;
+		$etime=date("Y-m-d") ;
+		$this->stime=$stime;
+		$this->etime=$etime;
+        $this->dbinfo = 'market';
+	}
+
+	/*
+	 *盲抢
+	 */
+	public function doGrab(){
+		//检验用户是否在线
+		//$this->checkManagerIsOnline();
+		//验证是否交易顾问
+		$checkResult=$this->checkIdentity();
+		if($checkResult!==true){
+			return $checkResult;
+		}
+		/*
+		 *#已在入口验证
+		 *#检测选标率
+		 *$this->checkSelectRate();
+		 *#检测当前交易顾问是否有跟进订单
+		 *$this->checkFollowTask();
+		 */
+		//设置交易顾问栏目
+		$setCategory=$this->_get_cate_array();
+		if($setCategory!==true){
+			return $setCategory;
+		}
+		//获取盲抢池订单
+		return $this->getRandGrabPoolTask();
+	}
+
+	/*
+	 *获取交易顾问栏目
+	 */
+	public function _get_cate_array(){
+        $allotUserDemMode = zbj_model_api::get('zbj_model_mk_allotuserbsdimension');
+        $leftjoin = array(
+            'mk_allot_user_bsdimension as a_u_b'=>'a_u_b.bsdimension_id = a_b.bsdimension_id',
+        );
+		$condi[]="a_u_b.manager_id=".$this->userId;
+		$getUserDim=$allotUserDemMode->_db->select('mk_allot_bsdimension as a_b',$condi,"a_b.bsdimension_id",'', '', $leftjoin)->items;
+		if(!$getUserDim){
+			$this->printDebug($getUserDim, 'grabBsChance|'.__FUNCTION__.'|getUserDim' );
+			return $this->noData;
+		} 
+
+		$bsdimensionIds = array();
+		foreach($getUserDim as $dimValue){
+			$did = intval($dimValue['bsdimension_id']);
+			$did>0 && $bsdimensionIds[] = $did;
+		}
+		$bsdimensionIds=array_unique($bsdimensionIds);
+		if(!$bsdimensionIds){
+			$this->printDebug($bsdimensionIds, 'grabBsChance|'.__FUNCTION__.'|bsdimensionIds' );
+			return $this->noData;
+		} 
+		$this->bsdimensionIds=$bsdimensionIds;
+		return true;
+			
+	}
+	/*
+	 *从盲抢池中随机取出一个符合规则订单
+	 */
+	private function getRandGrabPoolTask(){
+		$grabTaskArray=$this->getCanGrabArray();
+		if(!$grabTaskArray){
+			//return zbj_lib_BaseUtils::jsonp("暂时没有合适的订单哦，稍后再来试试吧！(●'◡'●)",1,0);
+			$this->printDebug($grabTaskArray, 'grabBsChance|'.__FUNCTION__.'|grabTaskArray' );
+			return $this->noData;
+		}
+		$taskIdArray = array();
+		foreach($grabTaskArray as $tValue){
+			$tid = intval($tValue['task_id']);
+			$tid>0 && $taskIdArray[] = $tid;
+		}
+		$this->taskIdArray=$taskIdArray;
+		$this->printDebug($taskIdArray, 'grabBsChance|'.__FUNCTION__.'|taskIdArray',0);
+		return $this->getRandCycleTask();
+	}
+
+	/*
+	 *获取可抢订单
+	 */
+	public function getCanGrabArray(){
+		$taskAllotPoolModule = zbj_model_api::get('zbj_model_mk_allotgrabpool');
+		$condi[] = 'type = 2 and status = 0';
+		//$condi[] = "createtime > '" . (time()-28*60) . "'";
+		$grabTaskArray = $taskAllotPoolModule->select($condi, 'task_id','','order by weights asc')->items;
+		return $grabTaskArray;
+	}
+
+	/*
+	 *执行认领功能
+	 */
+	private function doGrabTask(){
+		$taskId=$this->returnTaskId;
+		$taskAllotPoolModule = zbj_model_api::get('zbj_model_mk_bstoct');
+		$srvTask=$taskAllotPoolModule->selectOne('bs_to_ct_id='.$taskId);
+		$allUserModule = zbj_model_api::get('zbj_model_mk_allotuser');
+		$manager=$allUserModule->selectOne('manager_id='.$this->userId);
+		$toManager['filter']= 'grab';
+		$toManager['log']= '分配顾问【'.$manager['manager_name'].'】成功【主动认领】';
+		$toManager['manager']['manager_id']= $this->userId;
+		//再验证将更改验证方式
+		$condi[] = 'task_id='.$taskId;
+		$condi[] = 'type=2';
+		$lastCheckPoolType = $taskAllotPoolModule->selectOne($condi, 'needallot,allotstate');
+		//再循环
+		if( in_array($lastCheckPoolType['allotstate'],array(1,2)) ){
+			$this->unsetPublcVar();
+			return $this->getRandCycleTask();
+		}
+		$grabData['task_id']=$taskId;
+		$grabData['manager_id']=$this->userId;
+		$grabData['type']=2;
+		$insertBack=$this->insertAllotGrab($grabData);
+		//该订单已被抢
+		if(!$insertBack){//待优化
+			$this->unsetPublcVar();
+			return $this->getRandCycleTask();
+		}
+
+		$srvAlloter = new zbj_service_allot_bsallot();
+		$allot_back=$srvAlloter->doAllot($srvTask,$toManager);
+		$rError=$srvAlloter->getError();
+		if($allot_back==true){
+			return zbj_lib_BaseUtils::jsonp("恭喜您成功抢到商机订单一枚！(●'◡'●) 订单号：",1,1,array('task_id'=>$taskId,'type'=>2));
+		}
+		else{
+			$condition=array(
+				'task_id'  => $taskId,
+				'type'  => 2,
+			);
+			$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+			$delResult=$taskAllotGrabModule->delete($condition);				
+			return zbj_lib_BaseUtils::jsonp("需求认领失败!",1,0);
+		}
+	}
+
+	/*
+	 *记录抢单
+	 */
+	public function insertAllotGrab($data){
+		$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+		if(empty($data['task_id']) || empty($data['manager_id']) || empty($data['type']) ){
+			//return zbj_lib_BaseUtils::jsonp("参数传递错误!",1,0);
+			return false;
+		}
+		$data = array(
+			'task_id'	=> $data['task_id'],
+			'manager_id'		=> $data['manager_id'],
+			'type'		=> $data['type'],
+			'createtime'	=> time(),
+		);
+		$back = $taskAllotGrabModule->insert($data);
+		return $back;
+	}
+	
+	/*
+	 *取符合规则的订单
+	 */
+	private function getRandCycleTask(){
+		$this->printDebug($this->taskIdArray, 'grabBsChance|'.__FUNCTION__.'|taskIdArray',0);
+		$taskIdArray=$this->taskIdArray;
+		if(!$this->taskArray && $taskIdArray){
+			$taskModule = zbj_model_api::get('zbj_model_mk_bstoct');
+			if( count($taskIdArray)>1 ){
+				$taskIds=implode($taskIdArray,',');
+				$condi[] = 'b.bs_to_ct_id in ('.$taskIds.')';
+			}
+			else{
+				$condi[] = 'b.bs_to_ct_id = '.$taskIdArray[0];
+			}
+			$leftjoin = array(
+				'mk_bstoct_contacts as b_c'=>'b_c.ct_id = b.ct_id',
+			);
+			$item='b_c.ct_mobile,b.bs_to_ct_id,b.config_id,b.follow_uid,b.ordertime,b.allottime,b.status';
+			$taskArray = $taskModule->_db->select('mk_bstoct as b',$condi,$item,null,null,$leftjoin)->items;
+			if(!$taskArray){
+				//return zbj_lib_BaseUtils::jsonp("数据获取失败！请稍后再试～(●'◡'●)",1,0);
+				$this->printDebug($taskArray, 'grabBsChance|'.__FUNCTION__.'|taskArray1');
+				return $this->noData;
+			}
+
+			//取交易顾问分配维度栏目
+			foreach($taskArray as $tKey=>$tValue){
+				if(!in_array($tValue['config_id'],$this->bsdimensionIds)){
+					unset($taskArray[$tKey]);
+				}
+			}
+			if(!$taskArray){
+				//return zbj_lib_BaseUtils::jsonp("数据获取失败！请稍后再试～(●'◡'●)",1,0);
+				$this->printDebug($taskArray, 'grabBsChance|'.__FUNCTION__.'|taskArray2');
+				return $this->noData;
+			}
+			$this->taskArray=$taskArray;
+		}
+		elseif($this->taskArray){
+			$taskArray=$this->taskArray;
+		}
+		if(count($taskArray)<=0){
+			//return zbj_lib_BaseUtils::jsonp("1暂时没有合适的订单哦，稍后再来试试吧！(●'◡'●)",1,0);
+			$this->printDebug($taskArray, 'grabBsChance|'.__FUNCTION__.'|taskArray3');
+			return $this->noData;
+		}
+		#改为按权重值分配
+		$this->printDebug($taskArray, 'grabBsChance|'.__FUNCTION__.'|mark1');
+		for($i=0;$i<count($this->taskIdArray);$i++){
+			$weigthtsId=array_pop($taskIdArray);
+			foreach($taskArray as $temTaskKey=>$temTaskArray){
+				if($weigthtsId == $temTaskArray['bs_to_ct_id']){
+					$this->delKey=$temTaskKey;
+					$this->checkTask=$temTaskArray;
+					$this->weightsId=$weigthtsId;
+					break 2;
+				}
+			}
+		}
+		$checkResult=$this->checkTaskGrabRule();
+		$cycleNum=$this->cycleNum;
+		$cycleNum++;
+		$this->cycleNum=$cycleNum;
+		if($checkResult===true){
+			$this->returnTaskId=$this->checkTask['bs_to_ct_id'];
+			return $this->doGrabTask();
+		}
+		else{
+			$this->removeGrabPool($this->checkTask['bs_to_ct_id']);
+			$this->unsetPublcVar();
+			if($cycleNum>=$this->totalCycleNum){
+				//return zbj_lib_BaseUtils::jsonp("当前抢单人数太多，请稍后再试～(●'◡'●)",1,0);
+				return $this->noData;
+			}
+			return $this->getRandCycleTask();
+		}
+	}
+
+	/*
+	 *从去除的数据中不符合规则的订单
+	 */
+	private function unsetPublcVar(){
+		unset($this->taskArray[$this->delKey]);
+		$delKey = array_keys($this->taskIdArray,$this->weightsId);
+		unset($this->taskIdArray[$delKey[0]]);
+		if( count($taskArray)<=0 ){
+			//return zbj_lib_BaseUtils::jsonp("0暂时没有合适的订单哦，稍后再来试试吧～(●'◡'●)",1,0);
+		}
+	}
+
+	/*
+	 *从盲抢池中释放，不符合条件的需求
+	 */
+	public function removeGrabPool($taskId){
+		$this->printDebug('del'.$taskId, 'grabBsChance|'.__FUNCTION__,0);
+		try{
+			$this->_beginTransaction('mk');
+			$taskGrabPool = zbj_model_api::get('zbj_model_mk_allotgrabpool');
+			$condition['task_id']=$taskId;
+			$condition['type']=2;
+			$updateData['status']=2;
+			$saveResult = $taskGrabPool->update($condition,$updateData);
+
+			$taskAllotPoolModule = zbj_model_api::get('zbj_model_mk_allotpool');
+			$condi['task_id']=$taskId;
+			$condi['type']=2;
+			$update['allotstate']=2;
+			$updateResult = $taskAllotPoolModule->update($condi,$update);
+			if (!$saveResult || !$updateResult){
+				throw new Exception('从盲抢池中移除失败「主动认领」'.$taskAllotPoolModule->getError());
+			}
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$taskAllotLog=new zbj_service_allot_bspool();
+			$taskAllotLog->addLog2($taskId,$e->getMessage(),30,2);
+			return false;
+		}
+		return true;
+	}
+
+	/*
+	 *验证是否符合盲抢规则
+	 */
+	private function checkTaskGrabRule(){
+		$checkTask=$this->checkTask;
+		if(!$checkTask){
+			//return zbj_lib_BaseUtils::jsonp("待检测任务获取失败！请稍后再试～(●'◡'●)",1,0);
+			return false;
+		} 
+		if($checkTask['status']==0 && $checkTask['ordertime']==0 && $checkTask['allottime']==0 && $checkTask['follow_uid']==0){
+			return true;
+		}
+		return false;
+	}
+
+	/*
+	 *检测当天投标数量
+	 */
+	public function checkGrabTotalNum(){
+		$todayTime=strtotime(date('Y-m-d'));
+		$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+		$condi[] = 'manager_id='.$this->userId;
+		$condi[] = 'createtime>='.$todayTime;
+		$condi[] = 'status=1';
+		$grabArray = $taskAllotGrabModule->select($condi)->items;
+		if($grabArray && count($grabArray)>=10){
+			return false;
+		}
+		return true;
+	}
+
+	/*
+	 *检测是否有待跟进订单
+	 */
+	private function checkFollowTask(){
+		$taskAllotRoleModule = zbj_model_api::get('zbj_model_mk_taskallotrole');
+		$condi[] = 'manager_id ='.$this->userId;
+		$allotRole = $taskAllotRoleModule->selectOne($condi, 'need_follow_num');
+		if(!$allotRole){
+			return zbj_lib_BaseUtils::jsonp("获取待受理订单数量失败～(●'◡'●)",1,0);
+		}
+		$need_follow_num=$allotRole['need_follow_num'];
+		if($need_follow_num>0){
+			return zbj_lib_BaseUtils::jsonp("您当前有待受理订单，请先处理已分配给你的订单再来认领哦！(●'◡'●)",1,0);
+		}
+		return true;
+	}
+
+	/*
+	 *检验用户是否在线
+	 */
+	private function checkManagerIsOnline(){
+		$allotUserMode = zbj_model_api::get('zbj_model_mk_allotuser');
+		$getUserInfo=$allotUserMode->selectOne('manager_id='.$this->userId);
+		if(!$getUserInfo){
+			return zbj_lib_BaseUtils::jsonp("获取用户数据失败～(●'◡'●)",1,0);
+		}
+		else if($getUserInfo['status']!=1){
+			return zbj_lib_BaseUtils::jsonp("该账户已锁定～(●'◡'●)",1,0);
+		}
+		else if($getUserInfo['isonline']!=1){
+			return zbj_lib_BaseUtils::jsonp("请上线后再抢订单～(●'◡'●)",1,0);
+		}
+		$this->printDebug($getUserInfo,'grabBsChance|'.__FUNCTION__,0);
+		return true;
+	}
+
+	/*
+	 *验证是否交易顾问
+	 */
+	private function checkIdentity(){
+		$userId=$this->userId;
+        $allotUserBsdimensionModule = zbj_model_api::get('zbj_model_mk_allotuserbsdimension');
+		$getUserDim=$allotUserBsdimensionModule->select('manager_id='.$userId)->items;
+		if(!$getUserDim){
+			$this->printDebug($getUserDim,'grabBsChance|'.__FUNCTION__);
+			return $this->noData;
+			//return zbj_lib_BaseUtils::jsonp("您的账号暂未配置主动认领-商机权限，无法认领订单～(●'◡'●)",1,0);
+		}
+		return true;
+	}
+
+	/*
+	 *检测选标率
+	 */
+	public function checkSelectRate($data){
+		return true;
+		$sDate=strtotime('2015-10-01 00:00:00');
+		$eDate=strtotime('2015-10-08 23:59:59');
+		if(time()>=$sDate && time()<=$eDate){
+			return true;
+		}
+
+		if(!$this->userGroupid && $this->from!='bosscheck'){
+			return zbj_lib_BaseUtils::jsonp("参数传递错误!",1,0);
+		}
+		elseif(!$this->userGroupid && $this->from=='bosscheck'){
+			if($this->xdebug==1){
+				var_dump('参数传递错误!');
+			}
+			return false;
+		}
+		//设置选标率
+		$this->selectRate=$this->_get_group_select_rate();
+
+        $cache = new zbj_lib_cache('memcache');
+        $cache_key = 'task.zhubajie.com.app.controller.crontab.managersummary.getManagerSummary';
+		$cacheData=$cache->get($cache_key);
+		$userCacheData=$cacheData['manager'][$this->userGroupid][$this->userId];
+		if($this->xdebug==1){
+			var_dump($this->userGroupid);
+			var_dump($this->userId);
+			var_dump($cache_key);
+			//var_dump($userCacheData);
+		}
+		if($userCacheData && $userCacheData['allot']['amount']){
+			$allotCount=$userCacheData['allot']['amount'];
+		}
+		else{
+			$allotCount=$this->_getAllotSummary($this->userId);
+			//$allotCount=$this->_getAllotSummary('',$this->userGroupid);
+			$allotCount=$allotCount['amount'];
+		}
+		if($userCacheData && $userCacheData['selected']['amount']){
+			$selectCount=$userCacheData['selected']['amount'];
+		}
+		else{
+			//$selectCount=$this->_getSelectedSummary('',$this->userGroupid);
+			$selectCount=$this->_getSelectedSummary($this->userId);
+			$selectCount=$selectCount['amount'];
+		}
+		if($allotCount<=0 && $this->from!='bosscheck'){
+			return zbj_lib_BaseUtils::jsonp("您当前选标率过低，无法认领订单～(●'◡'●)",1,0);
+		}
+		elseif($allotCount<=0 && $this->from=='bosscheck'){
+			if($this->xdebug==1){
+				var_dump($selectCount);
+				var_dump($allotCount);
+				var_dump($this->selectRate);
+				var_dump("您当前选标率过低，无法认领订单～(●'◡'●)");
+			}
+			return false;
+		}
+		$selectRate=round( $selectCount/$allotCount,2 );
+		if($selectRate<$this->selectRate && $this->from!='bosscheck'){
+			return zbj_lib_BaseUtils::jsonp("您当前选标率过低，无法认领订单～(●'◡'●)",1,0);
+		}
+		elseif($selectRate<$this->selectRate && $this->from=='bosscheck'){
+			if($this->xdebug==1){
+				var_dump($selectCount);
+				var_dump($allotCount);
+				var_dump($this->selectRate);
+				var_dump("您当前选标率过低，无法认领订单～(●'◡'●)");
+			}
+			return false;
+		}
+		return true;
+	}
+
+    private function _getUids($uid, $gid){
+        if(empty($gid) && empty($uid)){
+            return false;
+        }
+        if(empty($uid) && $gid){
+            $uid = $this->_getUserIdBygid($gid, true);
+        }
+        if(!is_array($uid)){
+            $uid = array($uid);
+        }
+        $uid = array_filter($uid);
+        if(empty($uid)) {
+            return false;
+        }
+        return $uid;
+    }
+
+    /**
+     * 根据分组ID查成员ID
+     */
+    private function _getUserIdBygid($gid, $uid_only = false)
+    {
+        $cpuser = new zbj_model_cp_user();
+
+        $r = $cpuser->select(array('group_id' => $gid))->items;
+
+        if($uid_only){
+            $r = zbj_lib_BaseUtils::indexArray($r, 'user_id', 'user_id');
+            return array_keys($r);
+        }
+        return $r;
+    }
+
+    private function _optManagerId($fields, $uids)
+    {
+        if(empty($uids)){
+            return "1 ("; //排除所有直接跑错
+        }
+        if(count($uids) == 1){
+            return "{$fields} = '{$uids[0]}'";
+        }
+        return sprintf("{$fields} in (%s)", join(',', $uids));
+    }
+
+	/*
+     *已选标
+	 */
+    private function _getSelectedSummary($uid = '', $gid = '')
+    {
+        $uid = $this->_getUids($uid, $gid);
+        if(!$uid) return false;
+
+        $mWork = new zbj_model_mk_works();
+        $mTask = new zbj_model_mk_task();
+
+        $join = array(
+            'mk_task'=>'mk_task.task_id=mk_works.task_id',
+            'mk_task_info'=>'mk_task_info.task_id=mk_task.task_id'
+        );
+
+        $condi = array();
+        $condi[] = $this->_optManagerId('mk_task.manager_id', $uid);
+        $condi[] = 'mk_task.state >= 3';
+        
+        $count  = 0;
+        $amount = 0;
+
+        $condi[4] = "mk_works.select_ymd >= '{$this->stime}'";
+        $condi[5] = "mk_works.select_ymd <= '{$this->etime}'";
+        $condi[3] = 'mk_task.mode = 13';
+        $condi[7] = 'mk_works.issuccess = 1';
+        
+        $data = $mWork->selectOne($condi, 'count(1) as count,sum(mk_task.hosted_amount) as amount','', '', $join, array('dbinfo'=>$this->dbinfo));
+        $count += $data['count'];
+        $amount += $data['amount'];
+
+        $condi[4] = "mk_task.hosted_date >= '{$this->stime}'";
+        $condi[5] = "mk_task.hosted_date <= '{$this->etime}'";
+        $condi[3] = 'mk_task.mode in (11,12)';
+        $condi[6] = "mk_task.hosted_amount > 0";
+        unset($condi[7]);
+
+        $data = $mTask->selectOne($condi, 'count(1) as count,sum(mk_task.hosted_amount) as amount','', '', array('mk_task_info'=>'mk_task_info.task_id=mk_task.task_id'), array('dbinfo'=>$this->dbinfo));
+
+        $count += $data['count'];
+        $amount += $data['amount'];
+
+        $condi[4] = "mk_works.select_ymd >= '{$this->stime}'";
+        $condi[5] = "mk_works.select_ymd <= '{$this->etime}'";
+        $condi[3] = 'mk_task.mode = 10';
+        $condi[7] = 'mk_works.issuccess = 1';
+        unset($condi[6]);
+
+        $mWork->setCount(false);
+        $data = $mWork->select($condi, 'mk_task.task_id,mk_task.hosted_amount,mk_task_info.refund_amount','', '', $join, array('dbinfo'=>$this->dbinfo))->items;            
+
+        if($data){
+            $task_ids = array();
+            foreach($data as $val){
+                if($val['task_id'] && !in_array($val['task_id'], $task_ids)) {
+                    $task_ids[] = $val['task_id'];
+                    $amount += $val['hosted_amount'];
+                    $count += 1;
+                }
+            }
+        }
+        return array('count'=>$count, 'amount'=>$amount);
+        
+    }
+	/*
+     *查分配 
+	 */
+    private function _getAllotSummary($uid = '', $gid = '', $list = array())
+    {
+        $uid = $this->_getUids($uid, $gid);
+
+        $mTask = new zbj_model_mk_task();
+        $condi = array();
+        $condi[] = $this->_optManagerId('mk_task.manager_id', $uid);
+        $condi[] = "mk_task.open_state = 0";
+        $condi[] = "mk_task.createymd >= '{$this->stime}'";
+        $condi[] = "mk_task.createymd <= '{$this->etime}'";
+
+		$data = $mTask->selectOne($condi, 'count(1) as count,sum(mk_task.amount) as amount','','','',array('dbinfo'=>$this->dbinfo));
+        return $data;
+    }
+
+	/*
+	 *将池子中的需求推到审核系统进行分配
+	 */
+	public function releaseFromGrabPoolToVerify($limit=30){
+		$limit = intval($limit);
+		($limit>50||$limit<=0) && $limit = 20;
+
+		$this->_beginTransaction('mk');
+		$taskpoolModel= zbj_model_api::get('zbj_model_mk_taskallotpool');
+		$taskpoolModel->setLimit($limit);
+		
+		$nowtime = time();
+		$condition = array(
+			'needallot'		=> 2,
+			'allotstate in (0,2)',
+		);
+		$condition[] = "next_chktime <= '" . (time()-30*60) . "' and next_chktime>='".(time()-30*24*3600)."'";
+
+		$datalist = $taskpoolModel->select($condition,'task_id','','order by next_chktime asc')->items;
+		$datalist = (array)$datalist;
+		
+		$taskids = array();
+		foreach($datalist as $row){
+			$tid = intval($row['task_id']);
+			$tid>0 && $taskids[] = $tid;
+		}
+		if(empty($taskids)) return true;
+                
+		$upall = array(
+			'needallot'		=> 3,
+			'allotstate'	=> 0,
+		);
+
+		$taskAllotLog=new zbj_service_taskallotlog();
+		foreach($taskids as $logTaskid){
+			$checkAddLogResult=$taskAllotLog->addTaskAllotLog($logTaskid,array("移除盲抢池，进行审核处理"));
+			if(!$checkAddLogResult){
+				$this->_rollBack('mk');
+			}
+		}
+
+		$result = $taskpoolModel->update('task_id in('.implode(',',$taskids).')',$upall);
+		if($result === false){
+			$this->_rollBack('mk');
+			return false;
+		}
+		$this->_commit('mk');
+
+		foreach($taskids as $tid){
+			if(zbj_lib_Api::taskVerifyManager($tid) !== true){
+				throw new Exception(zbj_lib_Api::getError());
+			}
+		}
+		return true;
+	}
+
+	/*
+	 *设置各小组对应的选标率
+	 */
+	private function _get_group_select_rate(){
+		if(!$this->userGroupid){
+			return zbj_lib_BaseUtils::jsonp("参数传递错误!",1,0);
+		}
+		if(in_array($this->userGroupid,array(405,434,438))){//网建
+			return 0.19;
+		}
+		elseif(in_array($this->userGroupid,array(510,408))){//文案
+			return 0.28;
+		}
+		elseif( $this->userGroupid==437 ){//专业设计
+			return 0.19;
+		}
+		elseif( in_array($this->userGroupid,array(494,443)) ){//APP
+			return 0.05;
+		}
+		elseif( $this->userGroupid==404 ){//平面设计
+			return 0.35;
+		}
+		return 0.1;
+	}
+
+	/*
+	 *获取可抢订单数量
+	 */
+	public function getCanGrabNum($data){
+		$grabTaskArray=$this->getCanGrabArray();
+		if($grabTaskArray){
+			$taskIdArray = array();
+			foreach($grabTaskArray as $tValue){
+				$tid = intval($tValue['task_id']);
+				$tid>0 && $taskIdArray[] = $tid;
+			}
+			if( count($taskIdArray)>1 ){
+				$taskIds=implode($taskIdArray,',');
+				$condi[] = 'b.bs_to_ct_id in ('.$taskIds.')';
+			}
+			else{
+				$condi[] = 'b.bs_to_ct_id = '.$taskIdArray[0];
+			}
+			$leftjoin = array(
+				'mk_bstoct_contacts as b_c'=>'b_c.ct_id = b.ct_id',
+			);
+			$item='b.base_cat3,b.bs_to_ct_id';
+			$taskModule = zbj_model_api::get('zbj_model_mk_bstoct');
+			$taskArray = $taskModule->_db->select('mk_bstoct as b',$condi,$item,null,null,$leftjoin)->items;
+			if($taskArray){
+				//统计
+				foreach($taskArray as $tValue){
+					$cateArrayNum[$tValue['base_cat3']]=intval($cateArrayNum[$tValue['base_cat3']])+1;
+				}
+			}
+		}
+		$this->printDebug($taskArray,'grabBsChance|'.__FUNCTION__.'|taskArray',0);
+		//格式化
+		foreach($data as $moduleKey=>$moduleValue){
+			if($moduleValue['category_id']){
+				foreach($moduleValue['category_id'] as $cateValue){
+					 if($taskArray){
+						 $data[$moduleKey]['num']+= intval($cateArrayNum[$cateValue]);
+					 }
+				}
+			}
+		}
+		$data[count($data)]['module_name']='商机-其他';
+		$data[count($data)-1]['num']=intval($cateArrayNum[0]);
+		return $data;
+
+	}
+
+	public function printDebug($data,$dataKey='',$noData=1){
+		if($this->xdebug==1){
+			if($noData){
+				if($dataKey!=''){
+					$this->noData[$dataKey]=$data;
+					var_dump($this->noData);
+				}
+				else{
+					$this->noData[]=$data;
+					var_dump($this->noData);
+				}
+			}
+			else{
+				if($dataKey!=''){
+					var_dump(array($dataKey=>$data));
+				}
+				else{
+					var_dump($data);
+				}
+			}
+		}
+	}
+
+	/*
+	 *获取三级栏目
+	 */
+	private function _get_configid_cateid(){
+		$cate[104]=array(1282,1282,1284,165,1145,1278,1475,267,1470,857,1262,1269,287,1270,1265,286,1266,1421,1370,1371,1372,196,1367,1369,1365,195,1362,1297,1295,180,1301,1300,1298,1299,178,172,176,1290,1288,1287,1416,1420,1417,1413,1424,1418);
+		$cate[105]=array(1329,1328,1327,319,1271,892,891,1296,1294,1303,85,1247,1245,1542,1248,1538,1541,1540,1539,1545,1544,1546,1251,1250,1249,1226,1231,1229,1228,1230,1537,1227,1535,1225,1385,1386,1384,1547,1243,1244);
+		$cate[106]=array(1381,1375,1378,1330,365,368,367,1333,1332,413,1443);
+		$cate[107]=array(1340,382,1337,1331,1339);
+		$cate[108]=array(1430,1368,1363,1004,1212,231,1419,235,1423,1382,1426,1429,1134,131,123,120,126,1428,129,168,162,161,1431,177,170,1425,203,173,1286,1448);
+		$cate[109]=array(1430,1368,1363,1004,1212,231,1419,235,1423,1382,1426,1429,1134,131,123,120,126,1428,129,168,162,161,1431,177,170,1425,203,173,1286,1448);
+		$cate[110]=array(1517,1465,1515,1518,1512,1516,1498,1513,1514,1520,1519,1527,1522,1525,493,1466,1526,1524,1469,1467,1523,1468,1508,1507,1504,1505,1510,348,1506,1498,1493,1491,1497,1496,1490,1494,1498,1495,1492,1502,1500,1503,1501,350);
+		$cate[111]=array(1347,1349);
+	}
+
+	/*
+	 *商机盲抢池任务堆积分配[禁止调用]
+	 */
+	public function allotGrabpoolBschance($initData=array()){
+		$totalNum=intval($initData['totalNum']);
+		if($totalNum<=0){
+			return '参数错误';
+		}
+		$grabTaskArray=$this->getCanGrabArray();
+		if(!$grabTaskArray){
+			return 'no data';
+		}
+		$cache = new zbj_lib_cache('memcache');
+		$allotTaskId=array();
+		foreach($grabTaskArray as $bsValue){
+			$grabData['task_id']=$bsValue['task_id'];
+			$grabData['manager_id']=-1;
+			$grabData['type']=2;
+			$insertBack=$this->insertAllotGrab($grabData);
+			if($insertBack){
+				$allotTaskId[]=$bsValue['task_id'];
+			}
+		}
+		if(!$allotTaskId){
+			return 'no data2';
+		}
+		$cachekey2= 'bschance.zhubajie.allot.grabpool.manager_total_num';
+		$cache->set($cachekey2,$totalNum,86400);
+		foreach($allotTaskId as $task_id){
+			$data['task_id']=$task_id;
+			$data['source']=3;
+			$zbjAllotBsCheck=new zbj_service_allot_bscheck();
+			$result=$zbjAllotBsCheck->bsRandPoolAllot($data);
+			if($result==false){
+				$condition=array(
+					'task_id'  => $task_id,
+					'type'  => 2,
+				);
+				$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+				$delResult=$taskAllotGrabModule->delete($condition);				
+				if(!$delResult){
+					var_dump($task_id.'清除盲抢标记失败');
+				}
+			}
+			var_dump($task_id);
+			var_dump($result);
+		}
+		
+		return true;
+	}
+}

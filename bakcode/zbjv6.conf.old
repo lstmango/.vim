@@ -1,0 +1,144 @@
+#task.t6.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name task.t6.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/trade;
+#rewrite_log on;
+#error_log /var/log/nginx/rule.log notice;
+
+	access_log   /var/log/nginx/trade.log;
+	location / {
+		include /data/www/html/zbjv6/trade/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#loc.boss.t6.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name loc.boss.t6.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/boss_t6;
+
+	access_log   /var/log/nginx/boss.log;
+	location / {
+		include /data/www/html/zbjv6/boss_t6/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#loc.u.t6.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name loc.u.t6.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/ucenter;
+
+	access_log   /var/log/nginx/ucenter.log;
+	location / {
+		include /data/www/html/zbjv6/ucenter/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#order.php.api.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name order.php.api.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/zbj_order;
+
+	access_log   /var/log/nginx/zbj_order.log;
+	location / {
+		include /data/www/html/zbjv6/zbj_order/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#trade.php.api.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name trade.php.api.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/zbj_trade;
+
+	access_log   /var/log/nginx/zbj_trade.log;
+	location / {
+		include /data/www/html/zbjv6/zbj_trade/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#user.php.api.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name user.php.api.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/zbj_user;
+
+	access_log   /var/log/nginx/zbj_user.log;
+	location / {
+		include /data/www/html/zbjv6/zbj_user/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#reward.php.api.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name reward.php.api.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/zbj_reward;
+
+	access_log   /var/log/nginx/zbj_reward.log;
+	location / {
+		include /data/www/html/zbjv6/zbj_reward/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#boss.php.api.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name boss.php.api.zbj.com;
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/zbj_boss;
+
+	access_log   /var/log/nginx/zbj_boss.log;
+	location / {
+		include /data/www/html/zbjv6/zbj_boss/htanginx;
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}
+
+#t.t6.zbj.com
+server {
+	listen   80;
+	charset utf-8;
+	server_name t.t6.zbj.com
+	index index.html index.htm index.php;
+	root    /data/www/html/zbjv6/webstyle;
+
+	access_log   /var/log/nginx/webstyle.log;
+	location / {
+		try_files $uri $uri/ =404;
+	}
+	include /etc/nginx/cgi.conf;
+}

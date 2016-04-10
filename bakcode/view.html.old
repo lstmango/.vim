@@ -1,0 +1,1206 @@
+{/capture name="title"/}{/$task.task_id/}-{/$task.title/}{//capture/}
+{/assign var="headnav" value=1/}
+{/assign var="leftnav" value=array(10,10)/}
+{/capture name="body"/}
+<style type="text/css">
+  .touxiangall{border-radius: 5px;width: 60px;}
+  .blooncancelck-header .btn{margin: 3px 2px;}
+  .status-row{margin-bottom:4px;}
+	.status-row select{width:120px;height: auto;font-size: 12px;margin-bottom:0px;}
+  .label .icon-remove{cursor: pointer;}
+  .label a{color: white;}
+	.mint-ed-icon a {
+		background: url("http://t5.zbjimg.com/r/page/li-ico.png?a=1005") no-repeat scroll 0 0 transparent;
+		display: inline-block;
+		height: 17px;
+		width: 17px;
+	}
+.mint-ed-icon a.special, .task-icons a.special {background-position: 0 -88px; margin-right: 3px;vertical-align: bottom;}
+.vip{ display:inline-block;height: 17px;width: 17px;margin-right: 5px;vertical-align: bottom;background: url("/assets/img/vip.jpg") no-repeat scroll 0 0 transparent;}
+.block-body ul{list-style: none;margin:0;padding:0;}
+.phone{margin-top: -8px;}
+#report-modal.modal.fade{top:-400%;}
+#report-modal.modal.fade.in{top:0;}
+.t-task-ects td{
+  text-align: left;
+  padding-top: 5px;
+}
+.block-container label{
+  padding-left: 8%;
+  padding-top: 2%;
+  font-size: 12px;
+}
+.controlss{
+  padding-left: 8%;
+}
+.block-container form{
+  height: 120px;
+}
+.keywordm{
+    color: red;
+}
+#selectfws{
+  color: #fff;
+ text-shadow: 0 -1px 0 rgba(0,0,0,0.25); 
+ background-color: #006dcc; 
+background-image: -moz-linear-gradient(top,#08c,#04c);
+background-image: -webkit-gradient(linear,0 0,0 100%,from(#08c),to(#04c));
+ background-image: -webkit-linear-gradient(top,#08c,#04c); 
+background-image: -o-linear-gradient(top,#08c,#04c);
+ background-image: linear-gradient(to bottom,#08c,#04c); 
+ background-repeat: repeat-x; 
+ border-color: #04c #04c #002a80; 
+ border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); 
+}
+#shouli{
+  color: #fff;
+ text-shadow: 0 -1px 0 rgba(0,0,0,0.25); 
+ background-color: #006dcc; 
+background-image: -moz-linear-gradient(top,#08c,#04c);
+background-image: -webkit-gradient(linear,0 0,0 100%,from(#08c),to(#04c));
+ background-image: -webkit-linear-gradient(top,#08c,#04c); 
+background-image: -o-linear-gradient(top,#08c,#04c);
+ background-image: linear-gradient(to bottom,#08c,#04c); 
+ background-repeat: repeat-x; 
+ border-color: #04c #04c #002a80; 
+ border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); 
+}
+#shoulis{
+  color: #fff;
+ text-shadow: 0 -1px 0 rgba(0,0,0,0.25); 
+ background-color: #006dcc; 
+background-image: -moz-linear-gradient(top,#08c,#04c);
+background-image: -webkit-gradient(linear,0 0,0 100%,from(#08c),to(#04c));
+ background-image: -webkit-linear-gradient(top,#08c,#04c); 
+background-image: -o-linear-gradient(top,#08c,#04c);
+ background-image: linear-gradient(to bottom,#08c,#04c); 
+ background-repeat: repeat-x; 
+ border-color: #04c #04c #002a80; 
+ border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); 
+}
+.lxgzwsxq{
+  color: #fff;
+ text-shadow: 0 -1px 0 rgba(0,0,0,0.25); 
+ background-color: #006dcc; 
+background-image: -moz-linear-gradient(top,#08c,#04c);
+background-image: -webkit-gradient(linear,0 0,0 100%,from(#08c),to(#04c));
+ background-image: -webkit-linear-gradient(top,#08c,#04c); 
+background-image: -o-linear-gradient(top,#08c,#04c);
+ background-image: linear-gradient(to bottom,#08c,#04c); 
+ background-repeat: repeat-x; 
+ border-color: #04c #04c #002a80; 
+ border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); 
+}
+.control-group{
+  margin-top: 10px;
+}
+.userinfos .hd {
+  border-bottom: 1px solid #ccc;
+  padding: 0 10px;
+  height: 35px;
+  line-height: 35px;
+}
+.userinfos .hd h4 {
+  font-size: 12px;
+  line-height: 30px;  
+  margin: 0;
+}
+.userinfos .bd {
+  padding: 10px 10px 10px 15px;
+}
+.userinfos td {
+  padding: 5px 0;
+}
+.newtask th{
+  font-size: 12px;
+  line-height: 30px;
+  text-align: center;
+}
+.newtask td{
+  font-size: 12px;
+  line-height: 30px;
+  text-align: center;
+}
+.newtask td a{
+  display:block;
+  overflow:hidden;
+  width: 80px;
+  height: 30px;
+  text-align: center;
+}
+.newtask td span{
+  overflow:hidden;
+  width: 60px;
+  height: 30px;
+  text-align: center;
+}
+.newtask{
+  width:100%;
+}
+.followbtn{
+	width:60px; float:left;margin-left:50px;
+}
+
+/*右侧宽度*/
+.x-page-side .block-container {width:350px;}
+.x-page-side .newtask td a {width:120px;text-overflow: ellipsis;}
+
+.t-task-ect .offline{display:none;}
+
+</style>
+<div style="margin-left:0px;" class="span10">
+          <!--page main content start -->
+
+          <div class="main-content-container x-page-content" style="width: 1100px">
+              {/include file="wjtask/toptip.html"/}
+              <div style="padding:10px 0px 0px 10px;margin-left:0px; float: left; width: 700px" class="pull-left span7 t-page x-page-main">
+              <div class="t-page-tag t-page-tag-star">
+                <i class="j-set-top icon-set-top {/if $top_order_tag eq 1/}icon-set-top-yes{//if/}"
+                   data-toggle="tooltip"
+                   title="{/if $top_order_tag eq 1/}取消TOP订单{/else/}设为TOP订单{//if/}"
+                   data-taskid="{/$task.task_id/}"></i>
+              	<ul class="breadcrumb">
+				  <li>{/$categroy[$task.category1id]['category_name']/} <span class="divider">&gt;</span></li>
+				  <li>{/$categroy[$task.category1id]['list'][$task.category2id]['category_name']/} <span class="divider">&gt;</span></li>
+				  <li>{/$categroy[$task.category1id]['list'][$task.category2id]['list'][$task.category_id]['category_name']/}（{/$task.module_name/}）</li>
+ 				  {/if service_rcba::checkAnAccess('task', 'ajax','editcategory')/} 
+				  <li class="pull-right"><a href="/task/ajax-ac-editcategory-tid-{/$task.task_id/}" class="ajaxdialog" >编辑类目</a></li>
+ 				  {//if/} 
+				</ul>
+              </div>
+              {/*<div class="t-page-tag">
+                <span>
+                	{/section name=sec loop=$tasktag/}
+                	<span class="label label-info"><a target="_blank" href="{/geturl rule='/list/index' domain='www' data='tg='|cat:$tasktag[sec].name/}">{/$tasktag[sec].name/}</a><i class="icon-remove" style="display: none;" tid="{/$task.task_id/}" tagid="{/$tasktag[sec].tid/}" tagname="{/$tasktag[sec].name/}"></i></span>
+                	{//section/}
+                </span>
+                {/if service_rcba::checkAnAccess('task', 'ajax','edittag')/}
+                <a href="/task/ajax-ac-edittag-id-{/$task.task_id/}" class="ajaxdialog" >编辑标签</a>
+                {//if/}
+            	</div>*/}
+            	<div class="clearfix">&nbsp;</div>
+              	 <div class="pull-left user-main-header">
+              	 	<div class="pull-left">{/$task.user_id|cpface:21:'middle'/}</div>
+                  <div class="pull-left base-info" style="margin-left: 10px;">
+                      {/if $task.mode eq 10 and in_array($task.allot,array(1,2))/}
+                    <div style="font-size:16px;">
+                      <span style="font-size: 9pt;"><b><a href="{/geturl rule='/user/view' data='uid='|cat:$task.user_id/}">{/$task.user_id|user:'brand'/}</a></b>
+                      {/if service_rcba::checkAnAccess('user', 'quicklogin')/}(<a href="{/get_url rule='/user/quicklogin' data='tid='|cat:$task.task_id/}" class="ajaxdialog">登录帐号</a>){//if/}&nbsp;
+
+                          {/if $user_auth_status/}
+                          手机：&nbsp;<a href="javascript:void(0);" class="check-user-auth" tid="{/$task.task_id/}" title="点击查看" style="color:#3399FF;"><img src="/assets/img/phone.png" class="phone">&nbsp;点击查看</a>&nbsp;
+                            {/else/}
+                          手机：&nbsp;<a href="/task/permissiondeny-id-{/$task.task_id/}-type-1" class="ajaxdialog" title="点击查看" style="color:#3399FF;"><img src="/assets/img/phone.png" class="phone">&nbsp;点击查看</a>&nbsp;
+                          {//if/}
+                      </span>
+                          <br />
+                      </div>
+                      {//if/}
+                      {/if $task.mode eq 10 and in_array($task.allot,array(1,2))/}
+                           <div style="font-size:16px;display:none;">
+                      {/else/}
+                          <div style="font-size:16px">
+                      {//if/}
+                      <span style="font-size: 9pt;"><b><a href="{/geturl rule='/user/view' data='uid='|cat:$task.user_id/}">{/$task.user_id|user:'brand'/}</a></b>
+                      {/if service_rcba::checkAnAccess('user', 'quicklogin')/}(<a href="{/get_url rule='/user/quicklogin' data='tid='|cat:$task.task_id/}" class="ajaxdialog">登录帐号</a>){//if/}&nbsp;
+                      {/if $taskuser.usermobile/}
+                      		手机：&nbsp;<a href="tbivrweb://?telno={/if $taskuser_usermobile_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskuser.usermobile|mobile:'call'/}&billid={/$cp.userid/}&otherid={/$task.task_id/}" title="立即拨打，该用户来自：{/$taskuser.usermobile|mobile:'info'/}"><img src="/assets/img/phone.png" class="phone">&nbsp;{/if $taskuser_usermobile_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskuser.usermobile/}</a>&nbsp;({/if $taskuser.mobilestatus eq 1/}已认证{/else/}未认证{//if/})
+                      {/else/}
+                      	{/if in_array($task.mode,array(11,12)) and $taskorder_option.contact.phone/}
+                      	<a href="tbivrweb://?telno={/if $taskorder_option_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskorder_option.contact.phone|mobile:'call'/}&billid={/$cp.userid/}&otherid={/$task.task_id/}" title="立即拨打，该用户来自：{/$taskorder_option.contact.phone|mobile:'info'/}"><img src="/assets/img/phone.png" class="phone">&nbsp;{/if $taskorder_option_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskorder_option.contact.phone/}</a>(需求信息)
+                      	{/else/}
+                      	{/if $taskuser_info.mobile/}
+                      	<a href="tbivrweb://?telno={/if $taskuser_info_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskuser_info.mobile|mobile:'call'/}&billid={/$cp.userid/}&otherid={/$task.task_id/}" title="立即拨打，该用户来自：{/$taskuser_info.mobile|mobile:'info'/}"><img src="/assets/img/phone.png" class="phone">&nbsp;{/if $taskuser_info_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$taskuser_info.mobile/}</a>
+                      	{/else/}
+                      	用户未填写手机
+                      	{//if/}
+                      	{//if/}
+                      {//if/}&nbsp;
+                      {/if $customer.mobile/}<a href="tbivrweb://?telno={/if $customer_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$customer.mobile|mobile:'call'/}&billid={/$cp.userid/}&otherid={/$task.task_id/}" title="立即拨打，该用户来自：{/$customer.mobile|mobile:'info'/}"><img src="/assets/img/phone.png" class="phone">&nbsp;{/if $customer_address.mobilearea neq '重庆 重庆'/}0{//if/}{/$customer.mobile/}</a>(内部资料){//if/}
+                      {/if $taskuser_info.qq/}
+                      	QQ：{/$taskuser_info.qq/}
+                      {//if/}
+                      {/if $taskuser.emailstatus eq 1/}
+                      	Email：{/$taskuser.useremail/}
+                      {//if/}
+                      <a href="{/get_url rule='/task/ajax/ac-sendMsg' data='id='|cat:$task.task_id/}" class="ajaxdialog"><img src="/assets/img/sms.jpg" style="width: 25px;" /></a>
+                      </span>
+                      <br />
+                     
+                      {/if $chance.is_produced_by_chance/}
+                      <input type="hidden" name="chance_system_flag" value="1"/>
+                      <img src="http://cms.zbjimg.com/boss/task/icon_1.png"/>
+                      &nbsp;{/$chance.boss_user_nickname/}/{/$chance.boss_user_name/}&nbsp;
+                        <img src="http://cms.zbjimg.com/boss/task/icon_2.png"/>
+                      {//if/}
+                    </div>
+                    
+                    <div class="trade-info">
+						<span>
+						{/if $task.mode eq 10/}需要{/elseif $task.mode eq 13/}招标{/elseif $task.mode eq 11/}购买了
+						<a href="{/geturl rule='/user/view' data='uid='|cat:$taskorder.sl_user_id/}">{/$taskorder.sl_user_id|user:'brand'/}</a>
+						的服务{/elseif $task.mode eq 12/}雇佣了
+						<a href="{/geturl rule='/user/view' data='uid='|cat:$taskorder.sl_user_id/}">{/$taskorder.sl_user_id|user:'brand'/}</a>
+						{//if/}
+						：{/if $task.isadvc eq 1/}<span class="vip" title="金牌需求"></span>{//if/}
+						<a href="{/zbj_lib_Constant::TASK_URL/}/{/$task.task_id/}" target="_blank">
+						{/$task.title/}
+						{/if $task.category_id eq 109 and $info_option.expend.pub_from eq 'logo2013'/}
+							({/$service_pack[0].pack_name/})
+						{//if/}
+						{/if $task_opis.ht eq 1/}<img src="/assets/img/agent.png" title="经纪人委托需求"/>{//if/}
+						</a>
+						{/if $info.from_cid eq 90100/}
+						<a href="http://www.zhubajie.com/renren/" target="_blank" style="color:red;">
+							人人能专场
+						</a>
+						{//if/}
+						{/if $task.state eq 1 and $info_option.was_nosearch/}(<span class="text-error">雇主欲购买屏蔽搜索引擎，暂未付款，暂时未发布</span>){//if/}
+						{/if $hall_data.data.hall_name/}（{/$hall_data.data.hall_name/}->{/$hall_data.data.package_name/}）{//if/}						
+						</span> 
+						{/if $specialtask eq 1 and $task.catalog2id eq 18/} <span class="mint-ed-icon" style="margin-left:30px"><a class="special" title="专场需求" target="_blank" href="{/get_url domain='main' rule='/special/logo'/}"></a></span>来自<a class="link" style="color: #777777;" title="专场需求" target="_blank" href="{/get_url domain='main' rule='/special/logo'/}">Logo设计专场</a>
+						<a href="/normalfixtools/logoturn?tid={/$task.task_id/}" class="ajaxdialog">转为普通场</a>
+						{//if/}
+						<!-- 外包商 -->
+            {/if $info.waibao/} 
+            <span class="badge  bg-red" style="background:red;">包</span>外包订单
+            {//if/}
+						<!-- 优选商城专场 -->
+						{/if $info.is_mall=='2'/} 
+							{/if service_rcba::checkAnAccess('yxmall', 'MallTaskToBase')/}
+							<span class="badge  bg-red" style="background:red;">优</span>来自来自优选商城的需求
+							<a href="/yxmall/MallTaskToBase?tid={/$task.task_id/}" class="ajaxask">转为普通需求</a>
+							{//if/}
+						{/elseif $info.is_mall=='1'/}
+							<span class="badge  bg-red" style="background:#999;" title="未生效的优选需求">优</span>
+						{//if/}
+						
+						{/if $pub_source == 'kychannel'/}来自<a class="link" style="color: #777777;" title="{/$kychannel_cname/}频道需求" target="_blank" href="{/get_url domain='main' rule={/$kychannel_path/}/}"><strong>{/$kychannel_pub_type/}</strong></a>{//if/}
+						
+						<br />
+						
+                      <span>悬赏：<span style="margin-right:0">
+                          {/$amParams = ['category_id' => $task.category_id,'createtime' => $task.createtime,'state' => $task.state]/}
+                          {/$task.amount|taskamount:$task.mode:'￥':'':$amParams/}&nbsp;
+                          {/if $task.hosted eq 0/}<a href="/task/ajax-ac-editamount-id-{/$task.task_id/}-type-1" class="ajaxdialog">编辑</a>{//if/}</span></span> |
+                      <span>已托管：<span style="margin-right:0">{/$task.hosted_amount/}
+                      {/if $task.state lte 2 and $task.amount and in_array($task.mode,array(10,13))/}<a href="/task/ajax-ac-editamount-id-{/$task.task_id/}-type-2" class="ajaxdialog">托管</a>{//if/}
+                      {/if in_array($task.mode,array(11,12)) and $task.hosted eq 0/} {/if service_rcba::checkAnAccess('task','ajax','payforbuy')/} 
+                      <a class="ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=payforbuy&tid='|cat:$task.task_id/}">担保</a> {//if/} {//if/}
+                      </span>
+                      </span> | 
+                      {/assign var=lasttime value=($task.endtime-time())/}
+                      
+                      {/*
+                      {/if $task.mode eq 10/}
+                      <span>
+                        {/if $task.isgpay eq 0 and $task.hosted_amount neq 0/}
+                        未保证选标
+                        &nbsp;<a href="/task/ajax-ac-gpay-tid-{/$task.task_id/}" class="ajaxask" asktext="确定更改为保证选标吗">更改</a>
+                        {/else/}
+                        <!-- <a href="/task/ajax-ac-gpay-tid-{/$task.task_id/}" class="ajaxask" asktext="确定更改为未保证支付吗">更改</a> -->
+                        {//if/}
+                      </span> | 
+                      {//if/}
+                      */}
+                      
+                      <span>
+                      {/if in_array($task.mode,array(10,13))/}
+                      	{/if $task.mode eq 13/}
+                      	{/if $task.state eq 0/}草稿
+                    		{/elseif in_array($task.state, array(1,2))/}
+                      			{/if $lasttime > 0/}投标剩余时间：{/zbj_lib_BaseUtils::intervalTime2str($lasttime,"second")/}
+                      				{/else/}投标已经结束,等待雇主选标
+                      			{//if/}
+                    		{/elseif $task.state eq 3/}雇主已选标{/if $task.ispublicity and $task.mode neq 13/}&nbsp;公示结束：{/$task.publicity_outime|date_format:'%Y-%m-%d %H:%M:%S'/}{//if/}
+                    		{/elseif $task.state eq 4/}
+                    		 
+                    		{/if $info.refund_amount gt 0/}{/if $info.refund_state neq 0/}退款结束{//if/}{/else/}圆满结束{//if/}
+                    		 
+                    		{/if $info.refund_state neq 0/}{/if $fn_order_status eq 1/}圆满结束{/else/}退款结束{//if/}{/else/}交易完成{//if/}
+                    		{//if/}
+                      	
+                      	{/else/}
+                      	{/if $task.state eq 0/}草稿
+                    		{/elseif $task.state eq 1/}新任务
+                    		{/elseif $task.state eq 2/}
+                          	{/if $task.hosted_amount gt 0/}
+                      			{/if $lasttime > 0/}投标剩余时间：{/zbj_lib_BaseUtils::intervalTime2str($lasttime,"second")/}
+                      				{/else/}投标已经结束,等待雇主选标
+                      			{//if/}
+                          	{//if/}
+                    		{/elseif $task.state eq 3/}雇主已选标{/if $task.ispublicity and $task.mode neq 13/}&nbsp;公示结束：{/$task.publicity_outime|date_format:'%Y-%m-%d %H:%M:%S'/}{//if/}
+                    		{/elseif $task.state eq 4/}
+                    		
+                    		{/if $info.refund_amount gt 0/}{/if $info.refund_state neq 0/}退款结束{//if/}{/else/}圆满结束{//if/}
+                    		 
+                    		{/if $info.refund_state neq 0/}{/if $fn_order_status eq 1/}圆满结束{/else/}退款结束{//if/}{/else/}交易完成{//if/}
+                    		{//if/}
+                      	{//if/}
+                    		
+                      
+                      {/elseif in_array($task.mode,array(11,12))/}
+                        {/if $task.end_type eq 5/}服务商拒绝工作
+                        {/elseif $task.state eq 4/}{/if $info.refund_state neq 0/}{/if $fn_order_status eq 1/}圆满结束{/else/}退款结束{//if/}{/else/}交易完成{//if/}
+                        {/elseif $task.isaccept_sl eq 1/}服务商开始工作
+                        {/elseif $task.hosted_amount eq 0/}未托管赏金
+                        {/elseif $task.hosted_amount gt 0/}已托管赏金
+                        {//if/}
+                      {//if/}
+                      </span>
+                      <span>
+                      {/if $task.mode eq 13/}
+	                      {/if in_array($task.state, array(1,2))/}
+	                      <a href="/task/ajax-ac-edittasktime-id-{/$task.task_id/}" class="ajaxdialog" title="修改任务时间">修改</a>&nbsp;
+	                      <a href="/task/ajax-ac-upextension-id-{/$task.task_id/}" class="ajaxdialog" title="加价延期">延期</a>
+	                      {//if/}
+	                      {/else/}
+	                      	{/if $task.state eq 2 and $task.hosted_amount gt 0/}<a href="/task/ajax-ac-edittasktime-id-{/$task.task_id/}" class="ajaxdialog" title="修改任务时间">修改</a>&nbsp;
+    						{/if in_array($task.mode,array(10)) and $task.allot neq 3 and $task.hosted/}<a href="/task/ajax-ac-upextension-id-{/$task.task_id/}" class="ajaxdialog" title="加价延期">延期</a>{//if/}{//if/}
+                      {//if/}
+                      </span></div>
+                  </div>
+              </div>
+              <div class="clearfix">&nbsp;</div>
+              <ul style="margin:10px 0 0;" class="nav nav-tabs">
+                <li class="{/if $t eq 0/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='id='|cat:$task.task_id/}">详细</a></li>
+               <!-- <li class="{/if $t eq 3/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=3&id='|cat:$task.task_id/}">投标</a></li>-->
+ {/if $task.mode eq 10/} 
+                <li class="{/if $t eq 2/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=2&id='|cat:$task.task_id/}">评论</a></li>
+ {//if/} 
+                <li class="{/if $t eq 5/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=5&id='|cat:$task.task_id/}">支付记录</a></li>
+                <li class="{/if $t eq 1/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=1&id='|cat:$task.task_id/}">日志</a></li>
+                 {/if $t eq 4/} 
+                <li class="active"><a href="{/geturl rule='/task/lastview' data='t=4&id='|cat:$task.task_id/}">备注</a></li>
+                 {//if/} 
+                <li class="{/if $t eq 6/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=6&id='|cat:$task.task_id/}">举报记录</a></li>
+                <li class="{/if $t eq 7/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=7&id='|cat:$task.task_id/}">增值服务</a></li>
+		<!-- 计件不显示 -->
+		{/if ! ($task.mode eq 10 and $task.allot eq 3)/}
+                <li {/if $t eq 8/}class="active"{//if/}><a href="{/geturl rule='/task/lastview' data='t=8&id='|cat:$task.task_id/}">派单详情</a></li>
+              	{//if/}
+              		
+              	{/if $has_pubed_agreement/} 
+              		<li {/if $t eq 9/}class="active"{//if/}><a href="{/geturl rule='/task/lastview' data='t=9&id='|cat:$task.task_id/}">协议</a></li>
+              	{//if/}
+		<li class="{/if $t eq 10/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=10&id='|cat:$task.task_id/}">分配日志</a></li>
+		<li class="{/if $t eq 11/}active{//if/}"><a href="{/geturl rule='/task/lastview' data='t=11&id='|cat:$task.task_id/}">编辑日志</a></li>
+              </ul>
+              {/if $t eq 1/}
+              	<!-- 日志 -->
+                {/include file='task/viewpart/log.html'/}   
+              {/elseif $t eq 2/}
+              	<!-- 评论 -->
+              	{/include file='task/viewpart/comment.html'/} 	
+              {/elseif $t eq 4/}
+                <!--备注 -->
+                {/include file='task/viewpart/remark.html'/}   
+              {/elseif $t eq 5/}
+                <!-- 订单 -->
+                {/include file='task/viewpart/order.html'/}
+		          {/elseif $t eq 6/}
+				        <!-- report -->
+				        {/include file='task/viewpart/report.html'/}
+              {/elseif $t eq 7/}
+                <!-- 增值服务 -->
+                {/include file='task/viewpart/service.html'/}
+              {/elseif $t eq 8/}
+                <!-- 派单详情 -->
+                <!--{/include file='task/viewpart/recommendinfo.html'/}-->
+              {/elseif $t eq 9/}
+                <!-- 合同 -->
+                {/include file='task/viewpart/agreement.html'/}
+		{/elseif $t eq 10/}
+                <!-- 分配日志 -->
+                {/include file='task/viewpart/allotlog.html'/}
+		{/elseif $t eq 11/}
+                <!-- 编辑日志 -->
+                {/include file='task/viewpart/editlog.html'/}
+              {/else/}
+	              <!-- 首页 -->
+                     {/include file='task/viewpart/index.html'/}
+                     
+                    {/if in_array($task.mode,array(10,13))/}
+                      {/if $info.pub_type neq 100/}
+                        {/include file='task/viewpart/taskworks.html'/}
+                      {/else/}
+                        {/include file='task/viewpart/works.html'/}
+                      {//if/}
+                    {/elseif in_array($task.mode,array(11,12))/}
+	                 {/include file='task/viewpart/line.html'/}
+                    {//if/} 
+
+              {//if/}
+                    
+              </div>
+
+              <div class="pull-left x-page-side">
+                {/include file='task/viewpart/manager.html'/}
+
+                
+                <!--订单状态-->
+                <div class="block-container cetificatoin-block">
+                  <div class="block-header">订单状态：
+                      {/if $taskstate[2] eq 2 or $taskstate[1] eq 1/}
+                      <b>未发布</b>
+                      {//if/}
+                      {/if $recmd_status eq 1/}
+                      <b>派单中</b>
+                      {//if/}
+                      {/if $taskstate[3] eq 3 or $taskstate[4] eq 4 or $taskstate[5] eq 5 or $taskstate[6] eq 6 or $taskstate[7] eq 7/}
+                      <b>已发布</b>
+                      {//if/}
+                      {/if $taskstate[8] eq 8 or $taskstate[9] eq 9/}
+                      <b>已选标</b>
+                      {//if/}
+                      {/if $taskstate[12] eq 12 or $taskstate[16] eq 16/}
+                      <b>已选标，未托管</b>
+                      {//if/}
+                      {/if $taskstate[13] eq 13 or $taskstate[17] eq 17/}
+                      <b>交易取消</b>
+                      {//if/}
+                      {/if $taskstate[15] eq 15/}
+                      <b>已选标，已托管</b>
+                      {//if/}
+                      <br/>
+                      <span style="margin-top:10px;">跟进状态：
+                      {/if $followlast.log.giveup_option neq 0/}
+                      <b>已放弃</b>
+                      {//if/}
+                      {/if $taskstate[1] eq 1/}
+                      <b>待受理</b>
+                      {//if/}
+                      {/if $taskstate[2] eq 2/}
+                      <b>梳理需求</b>
+                      {//if/}
+                      {/if $taskstate[3] eq 3/}
+                      <b></b>
+                      {//if/}
+                      {/if $taskstate[4] eq 4/}
+                      <b>有新的报价方案</b>
+                      {//if/}
+                      {/if $taskstate[5] eq 5/}
+                      <b>选标期过1/2未选标</b>
+                      {//if/}
+                      {/if $taskstate[6] eq 6/}
+                      <b>有备选的服务商</b>
+                      {//if/}
+                      {/if $taskstate[7] eq 7/}
+                      <b>双方有争议</b>
+                      {//if/}
+                      {/if $taskstate[8] eq 8/}
+                      <b>工期过1/2</b>
+                      {//if/}
+                      {/if $taskstate[9] eq 9/}
+                      <b>工期截止3天</b>
+                      {//if/}
+                      {/if $taskstate[14] eq 14/}
+                      <b>未联系上雇主</b>
+                      {//if/}
+                      </span>
+                  </div>
+
+                  <div class="block-body">
+                    <table  class="t-task-ects">
+                        <tr>
+                            <td>
+                                {/if $taskstate[10] eq 10/}
+                                • 已选稿<br/>
+                                {//if/}
+                                {/if $taskstate[11] eq 11/}
+                                • 结束并打款<br/>
+                                {//if/}
+                                {/if $taskstate[4] eq 4/}
+                                请审核报价方案：<br/>
+                                {/foreach from=$works_quote_data item="item"/} 
+                                <a href="/user/view-uid-{/$item.user_id/}">{/$wknickname[$item.user_id]/}</a>{/$item.nowtime/}提交
+                                <a href="/task/lastview-id-{/$task.task_id/}.html?quotedid=quote-{/$item.quote_id/}" class="btn btn-small look-quote">审核</a><br/>
+                                {//foreach/}
+                                你还可以：<br/>
+                                {//if/}
+                                {/if $taskstate[5] eq 5/}
+                                • 请联系双方，撮合选标<br/>
+                                • 引导雇主淘汰不合适服务商<br/>
+                                • 帮助服务商解决雇主异议点<br/>
+                                你还可以:<br/>
+                                {//if/}
+                                {/if $taskstate[6] eq 6/}
+                                请重点紧跟备选服务商，促成选标<br/>
+                                {//if/}
+                                {/if $taskstate[7] eq 7/}
+                                请协助双方处理争议<br/>
+                                你还可以：<br/>
+                                {//if/}
+                                {/if $taskstate[8] eq 8/}
+                                • 请关怀客户，了解进展<br/>
+                                你还可以：
+                                {//if/}
+                                {/if $taskstate[9] eq 9/}
+                                • 请关怀客户，促进成交<br/>
+                                你还可以：
+                                {//if/}
+                                {/if $taskstate[12] eq 12/}
+                                • 请联系雇主，促进双方合作<br/>
+                                你还可以：
+                                {//if/}
+                                {/if $taskstate[13] eq 13 or $taskstate[14] eq 14 or $taskstate[17] eq 17/}
+                                • 请联系雇主确认需求，协助寻找合适的服务商<br/>
+                                你还可以：
+                                {//if/}
+                                {/if $taskstate[1] eq 1 or $taskstate[12] eq 12 or ($taskstate[13] eq 13 and $taskstate[14] neq 14)/}
+                                <!--<a class="btn btn-small" id="shouli" href="{/geturl rule='/task/effectProtection-ftype-4' data='id='|cat:$task.task_id/}">受理</a>-->
+                                <a class="btn btn-small" id="shouli" onclick="shoulifollows()">受理</a>
+                                {//if/}
+                                {/if $task.open_state neq 1/}
+                                {/if (in_array($task.mode,array(10,13)) and $task.state lt 3) or (in_array($task.mode,array(11,12)) and $task.state lt 4)/}
+                                <!-- {/if service_rcba::checkAnAccess('task','handle','close') and $allow_close/} -->
+                                  <a class="btn btn-small ajaxdialog " href="/task/handle-ac-close-tid-{/$task.task_id/}">关闭</a>
+                                <!-- {//if/} -->
+                                {//if/}
+                                {//if/}
+                                {/if $taskstate[14] eq 14/}
+                                <a class="btn btn-small shouli " id="shoulis" href="{/geturl rule='/task/effectProtection-ftype-5' data='id='|cat:$task.task_id/}">梳理需求</a>
+                                {//if/}
+                                {/if $taskstate[2] eq 2/}
+                                <a class="btn btn-small shouli " id="shoulis" href="{/geturl rule='/task/effectProtection-ftype-5' data='id='|cat:$task.task_id/}">梳理需求</a>
+                                <a class="btn btn-small shouli " id="shoulis2" href="{/geturl rule='/task/effectProtection-ftype-5' data='id='|cat:$task.task_id/}">发布并派单</a>
+                                {//if/}
+                                {/if $taskstate[3] eq 3 or $taskstate[4] eq 4 or $taskstate[5] eq 5 or $taskstate[6] eq 6/}
+                                {/if $is_website_special_modes eq 1 and !in_array($task.audit_state,array(4,5))/}
+                                <a class="btn btn-small shouli j-paidan" href="/task/lastview-id-{/$task.task_id/}.html?paidan=1">派单</a>
+                                {//if/}
+                                {//if/}
+                                {/if $taskstate[2] eq 2 or $taskstate[3] eq 3 or $taskstate[4] eq 4 or $taskstate[5] eq 5 and $taskstate[6] eq 6 or $taskstate[7] eq 7 or $taskstate[8] eq 8 or $taskstate[9] eq 9 or $taskstate[12] eq 12 or $taskstate[13] eq 13 or $taskstate[14] eq 14 or $taskstate[15] eq 15 or $taskstate[16] eq 16 or $taskstate[17] eq 17/}
+                                <a class="btn btn-small ajaxdialog " href="{/geturl rule='/task/ajax' data='ac=follows&id='|cat:$task.task_id/}">放弃</a>
+                                {//if/}
+				{/if ($info_option['changedmgr1'] eq '1' and $info_option['followed'] eq '' and $followlast.log.issys eq 1) or ($task.state gt 2 and $task.audit_state gt 3) or ($task.open_state gt 0 and $task.audit_state gt 3)/}
+                                <a class="btn btn-small shouli ajaxask" href="/task/Needstate-tid-{/$task.task_id/}-need-6">标记为‘已受理’</a>
+                                {//if/}
+                                {/if $task.mode eq 13 and $recmd_status eq 2/}
+                                    <a class="btn btn-small shouli j-paidan ajaxask"  href="/task/ajax-ac-reopenRecmd-id-{/$task.task_id/}.html" asktext="已公开的需求进入二次派单，该需求将在前台隐藏并进入3小时系统派单。请谨慎操作。您确定要二次派单？">二次派单</a>
+                                {//if/}
+
+                            </td>
+                        </tr>
+                        
+                    </table>
+                  </div>
+                </div>
+           
+               <!--商机订单-->
+              <div class="block-container cetificatoin-block">
+                  <div class="block-header">
+                      是否商机订单：{/if $info.task_source eq 99/}是{/else/}否{//if/}&nbsp;&nbsp;&nbsp;&nbsp;{/if $bstotc.isurgent eq 1/}<span class="badge  bg-red" style="background:red;" title="加急客户">加急客户</span>{/elseif $bstotc.isurgent eq 2/}<span class="badge  bg-red" style="background:red;" title="重点客户">重点客户</span>{//if/}
+                      <br>关联商机ID：<a href="/crmchance/detail?id={/$bstotc.bs_to_ct_id/}&tab=detail">{/$bstotc.bs_to_ct_id/}</a>
+                  </div>
+                  <div class="block-body">
+                    <table class="t-task-ect">
+                        <tbody>
+                            <!-- {/foreach from=$bstotc.note_info item=item/} -->
+                            <tr>
+                                <td style="word-break: break-all;word-wrap: break-word;">
+                                    <span>
+                                        {/$item.note/}
+                                    </span>
+                                    
+                                    <span style="color:#999;">{/$item.create_uid|cpuser:'all'/} 创建于{/$item.time|date_format:"%Y-%m-%d %H:%M:%S"/}</span>
+                                </td>
+                            </tr>
+                            <!-- {//foreach/} -->
+                        </tbody>
+                    </table>
+                    <a href="/crmchance/detail?id={/$bstotc.bs_to_ct_id/}&tab=followlog" class="link pull-right">查看所有</a>
+                    <div class="clearfix">&nbsp;</div>
+                  </div>
+                </div>
+
+                <!--最近订单-->
+                <div class="block-container userinfos">
+                  <div class="hd">
+                    <a href="/user/task-uid-{/$task.user_id/}" target="_blank" style="float:right;">所有订单</a>
+                    <h4>最近订单</h4>
+                  </div>
+                  <div class="bd">
+
+                       <table class="newtask">
+                          <tr>
+                            <th>需求</th>
+                            <th>状态</th>
+                            <th>提交时间</th>
+                            <th>顾问</th>
+                          </tr>
+                            {/foreach from=$tasklist item="item"/}  
+                          <tr>
+                            <td style="line-height:18px;"><a href="/task/lastview-id-{/$item.task_id/}" target="_blank" title="{/$item.title/}" style="text-align:left; height:18px;white-space:nowrap;">￥{/$item.amount/}-{/$item.title/}</a></td>
+                            <td style="line-height:18px;">
+                            {/if $item.mode eq 10 or $item.mode eq 13/}
+                            	{/if $item.state eq 0/}草稿{/elseif $item.state eq 1 and $item.open_state eq 0/}新任务{/elseif $item.open_state eq 1/}已关闭{/elseif $item.state eq 2 and $item.audit_state lt 4/}已发布{/elseif $item.state eq 3/}已选稿{/elseif $item.state eq 4/}已完成{//if/}
+                            {/else/}
+                            	{/if $item.state eq 0/}草稿{/elseif $item.open_state eq 1/}已关闭{/elseif $item.state eq 3/}已选人{/elseif $item.state eq 4/}已结束{//if/}
+                            	<br>{/if $item.mode eq 11/}(服务){/elseif $item.mode eq 12/}(雇佣){//if/}
+                            {//if/}
+                            </td>
+                            <td>{/$item.createtimes/}</td>
+                            <td style="display:block;overflow: hidden;width: 60px;height: 30px;line-height: 30px;text-align: center;"><span>
+                            {/if $item.manager_name neq ''/}
+                            	{/$item.manager_name/}
+                            {/else if $item.manager_id gt 0/}
+                            	{/$item.manager_id|cpuser:'all'/}
+                            {//if/}
+                            </span></td>
+                          </tr>
+                            {//foreach/}
+                       </table>
+
+                  </div>
+
+                </div>
+
+                
+                
+
+{/*效果保障跟进*/}
+{/if $info.pub_type eq 100/}
+{/if service_rcba::checkAnAccess('task','ajax','effectProtection') and $task.hosted eq 1 and $task.state neq 4/}
+	{/if ($task.open_state eq 0)/}
+	<div class="block-container role-block">
+	    <div class="block-header">
+			<div class="status-row">
+			{/if ($task.state gt 2 and $task.mode eq 10 and $task.allot neq 2) or ($task.mode eq 10 and $task.allot eq 2 and $iNum eq $iHaveNum)/}已选标，请保障顺利打款
+			{/elseif ($task.state gt 2 and $task.mode eq 13)/}已选标，请保障顺利打款
+			{/elseif ($task.mode eq 11 or $task.mode eq 12) and ($curr_state ge 3 or $smarty.session.curr_state ge 3)/}服务商已开始工作，如有需要请用工单跟进
+			{/else/}
+				{/if $effect_pro_follow/}订单等级：
+					{/if $effect_pro_follow.giveup_status eq 1/}已放弃&nbsp;&nbsp
+					{/else/}
+						{/foreach $level_desc as $desc/}
+							{/if $desc.mapping eq $effect_pro_follow.level/}
+								{/$desc.level/}{/assign var="eff_follow_level" value=$desc.level/}
+								{/break/}
+							{//if/}
+						{//foreach/}
+					{//if/}
+				{/else/}
+					{/if $task.mode eq 10/}
+						{/if $info.ispic eq 2/}选人悬赏效果保障：&nbsp;&nbsp;未跟进&nbsp;&nbsp;
+						{/else/}比稿悬赏效果保障：&nbsp;&nbsp;未跟进&nbsp;&nbsp;
+						{//if/}
+					{/elseif $task.mode eq 13/}招标效果保障：&nbsp;&nbsp;未跟进&nbsp;&nbsp;
+					{/else/}1V1效果保障：&nbsp;&nbsp;未跟进&nbsp;&nbsp;
+					{//if/}
+				{//if/}
+        {/if $info.pub_type eq 8/}
+            <a class="btn btn-small" href="{/geturl rule='/task/effectProtection-ftype-1' data='id='|cat:$task.task_id/}">跟进</a>
+        {/else/}
+				<a class="btn btn-small ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=effectProtection&id='|cat:$task.task_id/}">跟进</a>
+        {//if/}
+				<p>
+				{/if $effect_pro_follow/}
+					{/if $effect_pro_follow.giveup_status eq 0/}
+						{/$level_desc[$eff_follow_level]['remind_con']|regex_replace:"/date/":sprintf('%s',date('Y-m-d H:i:s',$effect_pro_follow.expriestime))/}
+					{//if/}
+				{/else/}
+					{/if $task.mode eq 10/}
+						{/if $info.ispic eq 2/}请及时跟进订单，为雇主推荐合适的服务商，并促成双方合作，雇主选标或转雇佣
+						{/else/}请跟进订单，联系雇主，确认需要完整度，模式准确性，价格合理性，保障任务效果
+						{//if/}
+					{/elseif $task.mode eq 13/}请及时跟进订单，为雇主推荐合适的服务商，并促成双方合作，雇主选标或转雇佣
+					{/else/}请急时跟进订单，优先联系服务商确定双方沟通情况。
+					{//if/}
+				{//if/}
+				</p>
+			{//if/}
+
+
+
+			</div>
+		</div>
+	</div>
+	{//if/}
+{//if/}
+
+{/*加价可能性*/}
+{/*
+{/if service_rcba::checkAnAccess('task','ajax','priceable') and $task.hosted eq 1/}
+{/if $task.open_state eq 0/}
+	{/if ($task.mode eq 10 and $info.ispic neq 2)/}               
+	<div class="block-container role-block">
+	    <div class="block-header">
+			<div class="status-row">加价可能性：
+				<div id="pa_group" class="btn-group">
+			        <button data-toggle="dropdown" class="btn btn-small dropdown-toggle">
+			        <span id="pa_show">{/if $opis.pub_isorder eq -1/}放弃{/elseif (int)$opis.pub_isorder eq 10/}低{/elseif (int)$opis.pub_isorder eq 50/}中{/elseif (int)$opis.pub_isorder eq 90/}高{/else/}请选择{//if/}</span>
+			        <span class="caret"></span>
+			        </button>
+			        <ul id="pa" class="dropdown-menu">
+						<li><a href="{/get_url rule='/misc/orderadd' data='rid='|cat:$task.task_id|cat:'&touid='|cat:$task.manager_id|cat:'&toname='|cat:$task.manager_name|cat:'&pa=90'/}" pa=90 class="ajaxdialog" title="新建工单">高</a></li>
+						<li><a href="{/get_url rule='/misc/orderadd' data='rid='|cat:$task.task_id|cat:'&touid='|cat:$task.manager_id|cat:'&toname='|cat:$task.manager_name|cat:'&pa=50'/}" pa=50 class="ajaxdialog" title="新建工单">中</a></li>
+						<li><a href="{/get_url rule='/misc/orderadd' data='rid='|cat:$task.task_id|cat:'&touid='|cat:$task.manager_id|cat:'&toname='|cat:$task.manager_name|cat:'&pa=10'/}" pa=10 class="ajaxdialog" title="新建工单">低</a></li>
+						<li><a id="pa_giveup" pa=-1 href="{/geturl rule='/task/ajax' data='ac=priceable&tid='|cat:$task.task_id/}?pa=-1">放弃</a></li>
+					</ul>
+		        </div>
+			</div>
+		</div>
+	</div>
+	{//if/}
+{//if/}
+{//if/}
+*/}
+{/if service_rcba::checkAnAccess('task','ajax','follow') and $task.hosted eq 0/}
+<!-- 跟进 -->
+<div class="block-container role-block">
+	<div class="block-header">
+		  <div class="status-row">订单等级：{/if $followlast['log']['giveup_status'] eq 2/}已放弃{/else/}{/$followLevelString[$followLevel]/} {//if/}<span class="text-error">{/if $followstatus/}（{/$followstatus/}){//if/}</span>
+        {/if $info.pub_type eq 8/}
+            <a class="btn btn-small" href="{/geturl rule='/task/effectProtection-ftype-2' data='id='|cat:$task.task_id/}">跟进</a>
+        {/else/}
+		  	    <a class="btn btn-small ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=follow&id='|cat:$task.task_id/}">跟进</a>
+        {//if/}
+        
+			  	{/if  $followlast['log']['giveup_option']==0 &&  service_rcba::checkAnAccess('task','ajax','giveupfollow')/}
+			  	<!-- <a href="/task/ajax-ac-giveupfollow-id-{/$task.task_id/}" class="ajaxdialog">放弃跟进</a> -->
+			  	 {//if/} 
+			  	 {/if service_rcba::checkAnAccess('task','ajax','followsetexpries')/} 
+				  <a class="ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=followsetexpries&tid='|cat:$task.task_id/}" title="延长跟进时间">延长跟进时间</a>
+    			 {//if/} 
+			  	 {/if $task.mode eq 10 && !$tasktag/}
+			  	{/*<a href="/task/ajax-ac-edittag-id-{/$task.task_id/}" class="ajaxdialog" title="编辑标签">请先设置标签</a>*/}
+			  	 {//if/} 
+		  </div>
+			{/if $followlast['log']['giveup_option'] eq 0/}
+				<div>
+				{/if $level_desc[$followLevelString[$followLevel]]/}
+					{/$level_desc[$followLevelString[$followLevel]]['remind_con']|regex_replace:"/date/":sprintf('%s',date('Y-m-d H:i:s',$followlast['log']['expriestime']))/}
+				{/else/}
+					{/*处理高中低的情况 后续改进*/}
+					{/$followLevelTipString[$followLevel]|regex_replace:"/请\d天内跟进/":sprintf('请%s前跟进',date('Y-m-d H:i:s',$followlast['log']['expriestime']))/}
+				{//if/}
+				</div>
+				{/*{/if $followlast['log']['giveup_status'] eq 1/}*/}
+				{/if $followlast['log']['giveup_status'] eq 2 or $followlast['log']['giveup_status'] eq 1/}
+					<div><span class="text-error">该需求已申请放弃组长正在审核中</span>
+						<a class="btn btn-small ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=confirm&id='|cat:$task.task_id/}">审核</a>
+					</div>
+				{//if/}
+			{/else/}
+				{/*{/if $followlast['log']['giveup_status'] eq 1/}*/}
+				{/if $followlast['log']['giveup_status'] eq 2 or $followlast['log']['giveup_status'] eq 1/}
+					<div><span class="text-error">该需求已申请放弃组长正在审核中</span>
+						<a class="btn btn-small ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=confirm&id='|cat:$task.task_id/}">审核</a>
+					</div>
+				{//if/}
+			{//if/}
+	</div>
+</div>
+{//if/}
+
+
+ {//if/} 
+
+
+
+
+{/if service_rcba::checkAnAccess('task','ajax','follow') and $task.hosted eq 1 and $followlast['log']['giveup_status'] eq 1/}
+<div class="block-container role-block">
+	<div><span class="text-error">该需求申请放弃后雇主<b>已托管</b><br />请组长谨慎审核</span>
+		<a class="btn btn-small ajaxdialog" href="{/geturl rule='/task/ajax' data='ac=confirm&id='|cat:$task.task_id/}">审核</a>
+	</div>
+</div>
+{//if/}
+{/if $tkdata  &&  $task.isfrozen eq 1/}
+ <div class="block-container finance-block">
+  	{/if $tkdata.audit_state eq 0/} 
+ 		<span class="text-error">
+ 		该任务已经申请退款{/if $tkdata.isbackfee eq 0/}{/$tkdata.amount*$task_paytype['option_accept']/}{/else/}{/$tkdata.amount/}{//if/}元,目前无法进行操作，组长正在审核中，如需要操作需求请联系组长</span>
+   	{/if service_rcba::checkAnAccess('task','handle','auditrefund') && $tkdata.audit_state eq 0/} 
+  	<a  class="btn btn-small ajaxdialog" href="{/geturl rule='/task/handle' data='ac=auditrefund&tid='|cat:$task.task_id/}">审核</a>
+   	{//if/} 
+  	{/elseif $tkdata.audit_state eq 1 && $tkdata.state eq 0/}
+ 		<span class="text-error">该任务已经申请退款{/$tkdata.amount/}元,目前无法进行操作，财务正在审核中，如需要操作需求请联系财务</span>
+  	{//if/} 
+ </div>
+{//if/} 
+<!-- 退款意向 begin -->
+{/if $task.state neq 4 && $task_opis.is_applytk eq 1/}
+<div class="block-container finance-block">
+<div class="block-header">
+退款意向：{/if $task_opis.is_applytk eq 1/}
+			有（<span class="text-error">雇主来电表示要退款，请关注</span>）   	{/if service_rcba::checkAnAccess('task','ajax','cancelapplytk')/} 
+			<a class="btn btn-small ajaxask" href="{/geturl rule='/task/ajax' data='ac=cancelapplytk&tid='|cat:$task.task_id/}">撤销</a>
+			  	{//if/} 
+		{/else/}无
+		{//if/}
+  	
+  	</div>
+ </div>
+ {//if/}
+<!-- 退款意向 end -->
+
+<!--跟进操作-->
+{/if ($info.pub_type neq 100 and $followlast.log.giveup_option eq 0 and $followlast.log.giveup_status eq 0)/}
+   <form id="modefollowss" method="post" action="return false" style="display:none">
+   <div class="control-group" style="display:none">
+       <div class="mtb10"><strong>{/$followlasttime/}</strong></div>
+       <div>
+           计划于:
+           <input type="text" name="expries" class="datepicker" style="width: 80px;" data-format="yyyy-MM-dd" size="10">
+           <select name="time" style="width: 80px;">
+               {/foreach from=range(0,23) item="item"/}
+               <option value="{/if $item lt 10/}0{/$item/}{/else/}{/$item/}{//if/}:00:00">{/if $item lt 10/}0{/$item/}{/else/}{/$item/}{//if/}:00</option>
+               {//foreach/}
+           </select>
+           <input type="hidden" name="issend" value="1"/>
+           <input type="hidden" name="lastview" value="1"/>进行下一次跟进
+       </div>
+   </div>
+   </form>
+{//if/}
+
+<!-- 推荐服务商状态 -->
+<!--{/if ! ($task.mode eq 10 and $task.allot eq 3)/}-->
+	<!--{/include file='task/viewpart/recommendwitkey.html'/}-->
+<!--{//if/}-->
+
+<!-- 备注 -->
+{/include file='task/viewpart/addremark.html'/}
+        <!-- 内部资料 begin -->
+        <div class="block-container role-block">
+            <div class="block-header">
+                  <div class="status-row">姓名：{/$customerperson.lastname/}</div>
+                  <div class="status-row">经济条件：{/$fulloptions[$customerperson.pay_ability]/}</div>
+                  <div class="status-row">行业：{/$fulloptions[$customerperson.industry]/}</div>
+                  <div class="status-row">企业规模：{/$fulloptions[$customerperson.com_scale]/}</div>
+                  <div class="status-row">地区：{/if $customerperson.province/}{/$customerperson.province/}{//if/}{/if $customerperson.city/}{/$customerperson.city/}{//if/}</div>
+                  <div class="status-row">备注：{/$customerperson.about/}</div>
+                  <a href="/user/editperson-uid-{/$task.user_id/}" class="ajaxdialog link pull-right">编辑</a>
+            <div class="clearfix">&nbsp;</div>
+            </div>
+        </div>
+        <!-- 内部资料 end -->
+
+        {/include file='task/viewpart/worksorder.html'/}
+        <!-- 操作区 -->
+        {/if $tkdata  &&  $task.isfrozen eq 1/}
+        {/else/}
+        {/include file='task/viewpart/status.html'/}
+        {/include file='task/viewpart/operate.html'/}
+        {//if/}
+
+        <!-- nps授权 begin -->
+        {/include file='task/viewpart/accredit.html'/}
+        <!-- nps授权 end -->
+
+                {/include file='task/viewpart/step.html'/}
+
+				<div class="block-container cetificatoin-block">
+                  <div class="block-header">支付记录</div>
+                  <div class="block-body">
+                    <table  class="t-task-ect">     
+                    <colgroup>
+                    	<col>
+                        <col width="45">
+                        <col width="85">
+                    </colgroup>
+                    <thead>
+                   		<tr>
+                        	<td>订单名称</td>
+                            <td>金额</td>
+                            <td align="center">状态</td>
+                        </tr>
+                    </thead>
+ {/if $order/} 
+ {/section name=sec loop=$order/}    
+                        <tbody>
+                            <tr>
+                                <td>{/$order[sec].title/}</td>
+                                <td>{/$order[sec].price/}</td>
+                                <td align="center">{/if $order[sec].state eq 0/}新订单{/elseif $order[sec].state eq 1/}交易成功{/elseif $order[sec].state eq 2/}关闭交易{//if/}</td>
+                            </tr>                     
+                        </tbody>
+ {//section/} 
+{//if/} 
+                    </table>
+                    <a href="/task/lastview-id-{/$task.task_id/}-t-5" class="link pull-right">查看所有</a>
+                    <div class="clearfix">&nbsp;</div>
+                  </div>
+                </div>
+
+                 <div class="block-container role-block">
+                    <div class="block-header">
+                      <div>NPS评分：{/$nps_score/}
+                      {/if $nps_score == '还未进行NPS评分'/}
+                      <a class="ajaxdialog" href="/nps/PhoneUserFollow-tid-{/$task.task_id/}-puid-{/$phone_user_id/}">回访</a>
+                      {//if/}
+                    </div>
+                    </div>
+                  </div>
+
+              </div>        
+          </div>
+<!--page main content end -->
+
+<!--Report Dialog -->
+        <a id="report-btn" data-target="#report-modal" data-toggle="modal" style="display:none"></a>
+        <div class="modal fade" id="report-modal" tabindex="-1" role="dialog" aria-hidden="false" style="display: block; box-shadow: none; border: none; background: transparent;width: 650px;margin-top: 20px;">
+            <div class="modal-dialog">
+                <div class="modal-content" style="background: transparent;box-shadow: none;border: none;">
+                    <div class="modal-header" style="border: 0;padding: 0;">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true" style="width: 30px;height: 30px;opacity: 1;position: relative;left: -20px;top: -20px;z-index: 10;background: white;border-radius: 50px;">×</button>
+                    </div>
+                    <form action="#" method="post" style="height: 800px;">
+                        <div class="modal-body" style="background: transparent;min-height: 100%;padding: 0;background: url('/assets/img/loading.gif') no-repeat 50% 10%;">
+                            <iframe height="650" src="about:blank" frameborder="0" scrolling="no" seamless="seamless" style="min-height:95%;width:100%;"></iframe>
+                        </div>
+                    </form>
+                </div><!-- /.modal-content -->
+            </div><!-- /.modal-dialog -->
+        </div>
+        <form action="{/zbj_lib_Constant::UC_URL/}/securityreport/index" id="speaialform" target="_blank" method="get">
+        	<input type="hidden" name = "wid" id="wppid" value="0"/>
+        	<input type="hidden" name = "signtoken" id="signtokenp" value=""/>
+        </form>
+<!--Report Dialog END-->
+
+
+
+
+</div>
+
+<script>
+function formsSubmit(){
+    var expries = $('#modefollows').find('input[name=expries]').val();
+    var appoint = $('.appoint-pop').find('input["name=reservation_key[]"]:checked');
+    var inputVal = $('[name=reservation_value]').val();
+
+    if($('.mark-log-input').val() == ''){
+        cpdialog('提示', '请输入备注内容', [{'text':"确定",'click':'close'}]);
+        return false;
+    }
+
+    if(expries && (appoint.length == 0 && !inputVal)){
+        cpdialog('提示', '请选择预约目的', [{'text':"确定",'click':'close'}]);
+        return false;
+    }
+    modefollows();
+    addremark();
+}
+ //修改跟进
+ function modefollows(){
+    $.ajax({
+        cache: false,
+        type: "POST",
+        //url:"/task/ajax-ac-follow-id-"+taskid+"-need-"+need,
+        url:"/task/ajax-ac-follows-id-{/$task.task_id/}",
+        data:$('#modefollows').serialize(),// 你的formid
+        async: false,
+        dataType: "json",
+        error: function(request) {
+            submiting = false;
+            alert("Connection error");
+            return false;
+        },
+        success: function(data) {
+            submiting = false;
+            if(data.state == 0){
+              alert(data.msg);
+              return false;
+            }
+            location.reload();
+        }
+    });
+  }
+
+  //修改跟进
+ function shoulifollows(){
+    $.ajax({
+        cache: false,
+        type: "POST",
+        //url:"/task/ajax-ac-follow-id-"+taskid+"-need-"+need,
+        url:"/task/ajax-ac-follows-id-{/$task.task_id/}",
+        data:$('#modefollowss').serialize(),// 你的formid
+        async: false,
+        dataType: "json",
+        error: function(request) {
+            submiting = false;
+            alert("Connection error");
+            return false;
+        },
+        success: function(data) {
+            submiting = false;
+            if(data.state == 0){
+              alert(data.msg);
+              return false;
+            }
+            //跳转到受理页面
+            //location.reload("/task/effectProtection-ftype-4-id={$task.task_id}");
+            window.location.replace("/task/effectProtection-ftype-4-id-{/$task.task_id/}");
+        }
+    });
+  }
+
+
+
+var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+var eventer = window[eventMethod];
+var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+
+eventer(messageEvent,function(e) {
+    var action = e.data;
+    if(action == 'closeReportWin') {
+    	$('.close[data-dismiss="modal"]').click()
+    }
+  
+},false);
+
+function bossReport(type,id,uid) {
+	var twid = '';
+	if (type=='task') {
+		twid = "taskid="+id;
+	} else {
+		twid = "workid="+id;
+	}
+	if (!uid) {
+	    uid = prompt("请输入要发起举报的用户id", "");
+	}
+	if (!uid) {
+	    return;
+	}
+	$.ajax({
+        type:'POST',
+        url: "/report/createtoken?type=1&"+twid+"&userid="+uid,
+        dataType:'json',
+        success:function(json){
+            if(json.state>0){            	
+                var signtoken = json.signtoken;
+                if(json.taskstatus==1 && type=='works'){
+                	$('#wppid').val(id);
+                	$('#signtokenp').val(signtoken);
+                	$('#speaialform').submit();                	
+                }else{
+	                var iframeSrc = "{/zbj_lib_Constant::TASK_URL/}/{/$task.task_id/}/?dismode=report&signtoken="+signtoken;
+	                if (type != 'task') {
+	                	iframeSrc = iframeSrc+"&wid="+id;
+	                }
+	                $('#report-modal iframe').attr('src',iframeSrc)
+	                $('#report-btn').click();
+                }
+            }else {
+                alert(json.msg);
+            }
+        }
+    });
+}
+function addremark(){
+   //审核或取消审核任务
+    $.ajax({
+        cache: true,
+        type: "POST",
+        url:"/misc/addremark-pkid-{/$task.task_id/}",
+        data:$('#addremark').serialize(),// 你的formid
+        async: false,
+        dataType: "json",
+        error: function(request) {
+            submiting = false;
+            alert("Connection error");
+            return false;
+        },
+        success: function(data) {
+            submiting = false;
+            if(data.state == 0){
+              alert(data.msg);
+              return false;
+            }
+            location.href = "/task/lastview-id-{/$task.task_id/}";
+        }
+    });
+}
+
+function Needstate(){
+          //审核或取消审核任务
+                $.ajax({
+                    cache: true,
+                    type: "POST",
+                    url:"/task/Needstate-tid-{/$task.task_id/}-need-4",
+                    data:"",// 你的formid
+                    async: false,
+                    dataType: "json",
+                    error: function(request) {
+                        submiting = false;
+                        alert("Connection error");
+                        return false;
+                    },
+                    success: function(data) {
+                        submiting = false;
+                        if(data.state == 0){
+                          alert(data.msg);
+                          return false;
+                        }
+                        location.href = "/task/lastview-id-{/$task.task_id/}";
+                    }
+                });
+        }
+
+ function dosubmit(){
+     var m=$("#mq").val();
+     var rUrl='/task/lastview-t-2-id-{/$task.task_id/}.html?m='+m;
+     window.location.href=rUrl;
+ } 
+  function dodemand(){
+    	var q=$("#q").val();
+        var qt=$("#qt").val();
+        var s=$("#sortselect").val();
+        var rUrl='/task/lastview-id-{/$task.task_id/}.html?q='+q+'&qt='+qt+'&s='+s;
+        window.location.href=rUrl;
+ }
+ $(".label").live("mouseover",function(){
+  $(this).children("i").show();
+});
+$(".label").live("mouseout",function(){
+  $(this).children("i").hide();
+});
+
+$(".icon-remove").live("click",function(){
+  var _this=$(this);
+  cpdialog("系统提示","您确定删除吗？",[{'text':"取消",'click':'close'},{'text':'确定','main':1,'click':function (){
+    var tid=_this.attr("tid");
+    var tagid=_this.attr("tagid");
+    var tagname= encodeURI(_this.attr("tagname"));
+    $.getJSON("/apitask/deltag",{'tid':tid,'tagid':tagid,'tagname':tagname},function(d){
+      if(d.code==1){
+        var html="";
+        $.each(d.data,function(i,item){
+          html+='<span class="label label-info"><a target="_blank" href="'+"{/geturl rule='/list/index' domain='www'/}"+item.name+'">'+item.name+'</a><i class="icon-remove" style="display: none;" tid="'+tid+'" tagid="'+item.tid+'" tagname="'+item.name+'"></i></span>&nbsp;';
+        });
+        _this.parent().parent().html(html);
+        cpdialogdestroy();
+      }else{
+        alert(d.codestr);
+      }
+    });
+  }}]);
+});
+
+$(".check-user-auth").live("click",function(){
+    var _this=$(this);
+    var tid=_this.attr("tid");
+    $.getJSON("/task/checkuserauth",{'tid':tid},function(d){
+        if(d.code==1){
+            _this.parent().parent().next().show();
+            _this.parent().parent().remove();
+        }else{
+            alert(d.codestr);
+        }
+    });
+});
+
+    $('.remove-tag-indb').live('click', function(){
+        var tagId = $(this).closest('.keywords-tag').attr('data-id');
+        var taskId = $("input[name=parenttaskId]").val();
+        console.log('tagId', tagId, 'taskId', taskId);
+    })
+</script>
+{//capture/}
+{/include file="common/zhubajietpl.html"/}
+
+<script src="http://t5.zbjimg.com/c/module/xheditor/xheditor-1.2.1.min.js"></script>
+<script src="http://t5.zbjimg.com/c/module/xheditor/xheditor_lang/zh-cn.js"></script>

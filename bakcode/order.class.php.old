@@ -1,0 +1,206 @@
+<?php
+/*
+ *交易系统-订单分配系统2.0
+ *2015-10-20
+ */
+
+class consumer_service_allot_order extends components_baseservice{
+	
+	//当前业务主数据表
+	protected $marter_table = 'zbj_model_mk_task';
+	
+	public function __construct($id=0){
+		parent::__construct();
+		$this->setId($id);
+		$this->srvAllotLog = new zbj_service_taskallotlog();
+	}
+	
+	/**
+	 * 检查是否需要分配交易顾问，并将需求放入分配池子
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function checker($data){
+		$zbjAllotCheck=new zbj_service_allot_taskcheck();
+		$result=$zbjAllotCheck->checkNeedPushPool($data);
+		if(!$result){
+			throw new Exception($zbjAllotCheck->getError());
+		}
+		return $result;
+	}
+
+	/**
+	 * 分配交易顾问入口【manager_id】
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function manager($data){
+		$zbjAllotCheck=new zbj_service_allot_taskcheck();
+		$result=$zbjAllotCheck->manager($data);
+		if(!$result){
+			throw new Exception($zbjAllotCheck->getError());
+		}
+		return $result;
+	}
+
+	/*
+	 *检查商机是否需要分配顾问，并将需求放入分配池子
+	 *待扩展
+	 */
+	public function bschecker($data){
+		return true;
+	}
+
+	/*
+	 *商机分配入口
+	 */
+	public function bsallot($data){
+		$zbjAllotBsCheck=new zbj_service_allot_bscheck();
+		$result=$zbjAllotBsCheck->bsallot($data);
+		if(!$result){
+			throw new Exception($zbjAllotBsCheck->getError());
+		}
+		return $result;
+	}
+
+	/**
+	 * 减少交易顾问分配配额[manager_id]
+	 * @param	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function cutManagerTodayAllotConf($data){
+		$data['task_id'] 	= intval($data['task_id']);
+		$data['manager_id'] = intval($data['manager_id']);
+		
+		if($data['task_id'] <= 0 && $data['manager_id']<=0){
+			throw new Exception('传递的需求数据异常');
+		}
+		
+		if($data['task_id'] > 0){
+			$srvTask = new zbj_service_task($data['task_id']);
+			$srvTask = $srvTask->init();
+			$task = $srvTask->get();
+			
+			if(empty($task['task_id'])){
+				throw new Exception("需求[{$data['task_id']}]不存在");
+			}
+			if($task['createymd']>='2015-03-01'){
+				$data['manager_id']>0 && $task['manager_id'] = $data['manager_id'];
+			}else{
+				$task = array();
+			}
+		}
+		
+		empty($task) && $task = $data;
+		
+		// 减少交易顾问分配配额
+		$srvAlloter = new zbj_service_allot_taskallot();
+		$back = $srvAlloter->updateManagerConf(0,$task['manager_id'],$task);
+		
+		if($back !== true){
+			throw new Exception($srvAlloter->getError());
+		}
+		return true;
+	}
+	/**
+	 * 重置交易顾问【manager_id】
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function resetManager($data){
+		$data['task_id'] = intval($data['task_id']);
+		if($data['task_id'] < 4800000) return true;
+		
+		$srvTask = new zbj_service_task($data['task_id']);
+		$srvTask = $srvTask->init();
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			throw new Exception("需求[{$data['task_id']}]不存在");
+		}
+		
+		$taskinfo = $srvTask->get('task_info.*');
+		if($taskinfo['pub_type']>0 || $task['manager_id']==0){
+			throw new Exception("需求跟进标识异常或者交易顾问已被重置");
+		}
+		
+		$srvAllotLog = new zbj_service_taskallotlog();
+		
+		try{
+			$this->_beginTransaction('mk');
+
+			if($task['manager_id']!=0){
+				$uptask = array(
+					'manager_id'	=> 0,
+					'manager_name'	=> '',
+					'manager_teamid'=> 0,
+					'm_is_at'		=> 0,
+				);
+				if($srvTask->set($uptask) === false){
+					throw new Exception('设置需求交易顾问失败');
+				}
+				if($srvTask->save() === false){
+					throw new Exception('重置需求交易顾问失败');
+				}
+				
+				$srvAlloter = new zbj_service_allot_taskallot();
+				$srvAlloter->setTransaction(false);
+				if($srvAlloter->updateManagerConf(0,$task['manager_id'],$task) !== true){
+					throw new Exception($srvAlloter->getError());
+				}
+				$grabPoolModule = zbj_model_api::get('zbj_model_mk_allotgrabpool');
+				$grabCondi['task_id']=$task['task_id'];
+				$grabCondi['type']=1;
+				$isPushGrabPool=$grabPoolModule->selectOne($grabCondi);
+				if($isPushGrabPool){
+					$delResult=$grabPoolModule->delete($grabCondi);
+					if(!$delResult){
+						throw new Exception('清除盲抢标记失败！');
+					}
+					$this->srvAllotLog->addTaskAllotLog($task['task_id'],array('清除盲抢标记成功！'));
+				}
+				$grabCondi['task_id']=$task['task_id'];
+				$grabCondi['type']=1;
+				$taskGrabPoolModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+				$grabWinPool=$taskGrabPoolModule->selectOne($grabCondi);
+				if($grabWinPool){
+					if($grabWinPool['status']==1){
+						$deleteResult=$taskGrabPoolModule->delete($grabCondi);
+						if(!$deleteResult){
+							throw new Exception('清除盲抢标记失败！');
+						}
+						$this->srvAllotLog->addTaskAllotLog($task['task_id'],array('清除盲抢成功标记成功！'));
+					}
+					else if($grabWinPool['status']==0 && ($grabWinPool['createtime']+60)<time()){
+						$deleteResult=$taskGrabPoolModule->delete($grabCondi);
+						if(!$deleteResult){
+							throw new Exception('清除盲抢成功标记失败！');
+						}
+						$this->srvAllotLog->addTaskAllotLog($task['task_id'],array('清除盲抢成功标记成功！'));
+					}
+					else{
+						throw new Exception('该任务正被抢，清除盲抢成功标记失败！');
+					}
+				}
+			}
+						
+			$throw = zbj_lib_Api::taskResetedManager($data['task_id'],$task['manager_id'],1);
+			if($throw !==  true){
+				throw new Exception(zbj_lib_Api::getError());
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$srvAllotLog->addTaskAllotLog($data['task_id'],array($e->getMessage()));
+			throw new Exception($e->getMessage());
+		}
+		
+		unset($srvTask,$task,$uptask);
+		
+		return true;
+	}
+}

@@ -1,0 +1,522 @@
+<?php
+use com\zhubajie\task\interfaces\WorkTaskStepServiceClient;
+use com\zhubajie\task\dataobject\worktaskstep\WorkStateDTO;
+use com\zhubajie\task\interfaces\EventSystemServiceClient;
+use com\zhubajie\task\dataobject\eventsystem\EventDTO;
+use com\zhubajie\task\dataobject\eventsystem\ListenerDTO;
+/**
+ * 首次跟进/二次跟进
+ * lstmango
+ * 20150924
+ */
+class zbj_service_tradefollow extends zbj_components_baseservice {
+	//当前业务ID
+	protected $id;
+
+	//当前对象主数据表
+	protected $marter_table = 'zbj_model_mk_workstaskstep';
+	function __construct() {
+		parent::__construct();
+		$this->id = $id;
+	}
+
+    /**
+     * 首次跟单,提交跟单信息
+     * @param param，首次跟进post接口的json信息，详情查阅基础技术提供接口文件
+     * @param debug=1 打印传递json信息
+     * @return json
+     */
+    public function submitFirstFollow($param){
+		
+		if($param['data']['reasonItemNdto']['relationId'] == 21 && $param['data']['contactType']==2){
+			$is_add_reason=1;
+		}
+		$data=zbj_lib_BaseUtils::getStr(json_decode($param['param'],true));
+		$taskId = intval($data['data']['taskId']);
+		$worksId = intval($data['data']['worksId']);
+		$userId = intval($data['data']['userId']);
+		$contactType = intval($data['data']['contactType']);
+		if($worksId<=0 || $userId<=0 || $contactType==0){
+			return zbj_lib_BaseUtils::jsonp('传递的参数错误！',1,0);
+		}
+		try{
+			// 确定服务商身份
+			$srvWork = new zbj_service_works($worksId);
+			$work = $srvWork->get();
+			if($userId!=$work['user_id']){
+				throw new Exception('你不是该稿件服务商,无法提交跟单信息！');
+			}
+
+			$condition = "works_id='{$worksId}' and dotype=10";
+			$workTaskModel = zbj_model_api::get('zbj_model_mk_workstaskstep');
+			$worktask = $workTaskModel->selectOne($condition);
+			if($worktask['user_id'] != $userId || !$worktask['user_id']){
+				throw new Exception('指定的稿件编号错误');
+			}else if($worktask['done']==1){
+				throw new Exception('该跟单信息已经提交过了！');
+			}else if($worktask['expiretime'] && $worktask['expiretime']<time()){
+				throw new Exception('对不起，您已超期！');
+			}else if($work['iseliminate']==1){
+				throw new Exception('该稿件已被淘汰');
+			}
+			// 标识为已联系
+			zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET);
+			$workDTO = new WorkStateDTO();
+			$workDTO->works_id = $worksId;
+			$workDTO->done = 1;
+			$workDTO->roletype = 1;
+			$m = new zbj_model_mk_workstaskstep();
+			$m->beginTransaction('mk');
+			$setResult=$this->setWorkTaskState(10,$workDTO);
+
+			if(!$setResult){
+				$m->rollback('mk');
+				throw new Exception('设置待办事项状态失败');
+			}
+			//记录操作日志
+			if($param['debug']==1){
+				$postData['_d']=1;
+			}
+			$postData['appid']='trade';
+			$postData['service']='FollowFirstService';
+			$postData['method']='addFirstFollow';
+			$postData['param']=$param['param'];
+
+			$apiHttp=new zbj_lib_ApiHttpClient($postData);
+			$jsonList=$apiHttp->execute();
+
+			$result = json_decode($jsonList,1);
+			if(!is_array($result) || !$result['success']){
+				$m->rollback('mk');
+				throw new Exception($result['description']);
+			}
+			$m->commit('mk');
+			if($contactType==2){
+				//需求跟进
+				if($is_add_reason == 1){
+					//只记录电话号码错误
+					$fData['task_id']=$data['data']['taskId'];
+					$fData['works_id']=$data['data']['worksId'];
+					$fData['user_id']=$data['data']['userId'];
+					$fData['feedbacktime']=time();
+					if($data['data']['reasonItemNdto']['relationId']==22 && $data['data']['reasonItemNdto']['inputTxt']!=''){
+						$reasonData[0]=$data['data']['reasonItemNdto']['inputTxt'];
+						$fData['reason']=$reasonData;
+					}
+					else{
+						$fData['reason'][$data['data']['reasonItemNdto']['relationId']]=$data['data']['reasonItemNdto']['relationId'];
+					}
+					$sFollow=new zbj_service_taskfollow();
+					$addResult=$sFollow->addCannotContactData($fData);
+				}
+				zbj_lib_Api::firstFollowUnContact($taskId,$userId);
+			}
+		}catch(Exception $e){
+			return zbj_lib_BaseUtils::jsonp($e->getMessage(),1,0);
+		}
+		return zbj_lib_BaseUtils::jsonp('操作成功',1,1);
+
+	}
+
+    /**
+     * 二次跟单,提交跟单信息
+     * @param param，首次跟进post接口的json信息，详情查阅基础技术提供接口文件
+     * @param debug=1 打印传递json信息
+     * @return json
+     */
+    public function submitSecondFollow($param){
+		$data=zbj_lib_BaseUtils::getStr(json_decode($param['param'],true));
+		$worksId = intval($data['data']['worksId']);
+		$userId = intval($data['data']['userId']);
+		if($worksId<=0 || $userId<=0){
+			return zbj_lib_BaseUtils::jsonp('传递的参数错误！',1,0);
+		}
+		try{
+			// 确定服务商身份
+			$srvWork = new zbj_service_works($worksId);
+			$work = $srvWork->get();
+			if($userId!=$work['user_id']){
+				throw new Exception('你不是该稿件服务商,无法提交跟单信息！');
+			}
+
+			$condition = "works_id='{$worksId}' and dotype=20";
+			$workTaskModel = zbj_model_api::get('zbj_model_mk_workstaskstep');
+			$worktask = $workTaskModel->selectOne($condition);
+			if($worktask['user_id'] != $userId || !$worktask['user_id']){
+				throw new Exception('指定的稿件编号错误');
+			}else if($worktask['done']==1){
+				throw new Exception('该跟单信息已经提交过了！');
+			}else if($worktask['expiretime'] && $worktask['expiretime']<time()){
+				throw new Exception('对不起，您已超期！');
+			}else if($work['iseliminate']==1){
+				throw new Exception('该稿件已被淘汰');
+			}
+
+			// 标识为已联系
+			zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET);
+			$workDTO = new WorkStateDTO();
+			$workDTO->works_id = $worksId;
+			$workDTO->done = 1;
+			$workDTO->roletype = 1;
+			$m = new zbj_model_mk_workstaskstep();
+			$m->beginTransaction('mk');
+			$setResult=$this->setWorkTaskState(20,$workDTO);
+			if(!$setResult){
+				$m->rollback('mk');
+				throw new Exception('设置待办事项状态失败');
+			}
+
+			//记录操作日志
+			if($param['debug']==1){
+				$postData['_d']=1;
+			}
+			$postData['appid']='trade';
+			$postData['service']='FollowSecondService';
+			$postData['method']='addSecondFollow';
+			$postData['param']=$param['param'];
+
+			$apiHttp=new zbj_lib_ApiHttpClient($postData);
+			$jsonList=$apiHttp->execute();
+
+			$result = json_decode($jsonList,1);
+			if(!is_array($result) || !$result['success']){
+				$m->rollback('mk');
+				throw new Exception($result['description']);
+			}
+			$m->commit('mk');
+		}catch(Exception $e){
+			return zbj_lib_BaseUtils::jsonp($e->getMessage(),1,0);
+		}
+		return zbj_lib_BaseUtils::jsonp('操作成功',1,1);
+	}
+
+	private function setWorkTaskState($dotype,WorkStateDTO $workstate) {
+		$condition = array(
+			'works_id'	=> $workstate->works_id,
+			'dotype'	=> $dotype,
+		);
+		$updata = array(
+			'done'	=> $workstate->done,
+			'roletype'	=> $workstate->roletype,
+			'updatetime'=> time(),
+		);
+		$workStepModel = new zbj_model_mk_workstaskstep();
+			
+		$workStepModel->setDbEntry();
+		$worktask = $workStepModel->selectOne($condition,'*');
+		if(empty($worktask['step_id'])){
+			return zbj_lib_BaseUtils::jsonp('指定稿件的计划任务不存在',1,0);
+			
+		}
+		
+		if($workstate->done==1 && $workstate->roletype!=3 && $worktask['expiretime']>0 && $worktask['expiretime']<time()+5){
+			return zbj_lib_BaseUtils::jsonp('对不起已经超期了',1,0);
+		}
+
+		$condition['step_id']=$worktask['step_id'];
+		$saveResult = $workStepModel->update($condition,$updata);
+		if($saveResult === false){
+			return zbj_lib_BaseUtils::jsonp('设置待办事项状态失败',1,0);
+		}
+		
+		// 服务商表示已联系雇主，创建发布报价方案的计划任务
+		if($dotype==10 && $workstate->done==1 ){
+			$newtask = array(
+				'task_id'	=> $worktask['task_id'],
+				'works_id'	=> $worktask['works_id'],
+				'user_id'	=> $worktask['user_id'],
+				'dotype'	=> 20,
+				'done'		=> 0,
+				'roletype'	=> 0,
+				'createtime'	=> time(),
+				'expiretime'	=> time()+43200, // 12小时
+			);
+
+			$param = array(
+				'task_id'	=> $newtask['task_id'],
+				'works_id'	=> $newtask['works_id'],
+				'user_id'	=> $newtask['user_id'],
+			);
+			zbj_lib_ApiClient::init(APPID, SECRET);
+			$evtApi = new EventSystemServiceClient(NULL);
+			zbj_lib_ApiClient::build($evtApi);
+			$event = new EventDTO();
+			$event->event = 'worktask.20.created';
+			$event->bodys = $param;
+			$event->delaytime = (int)$newtask['expiretime'];
+	
+			$back = $evtApi->throwEvent($event);
+			if($back->success != true){
+				return zbj_lib_BaseUtils::jsonp('事件异常：'.$back->message,1,0);
+			}
+			$insertResult=$workStepModel->insert($newtask);
+
+			if($insertResult === false){
+				return zbj_lib_BaseUtils::jsonp('创建计划任务失败',1,0);
+			}
+		}
+		return true;
+	}
+
+}
+成功开店
+				$oInfo = zbj_model_api::get('zbj_model_mb_info', $user_id);
+				$point += $oInfo->getData("isfws") ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $oInfo->getData("isfws") ? 1 : 0;
+				break;
+			case 'service'://有出售中的服务
+				$oService = new zbj_model_sp_service();
+				$sRes = $oService->selectOne("user_id={$user_id} and servicetype='3' and status='1'");
+				$point += $sRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $sRes ? 1 : 0;
+				break;
+			//2014-11-25 Fan<fanruipeng@zhubajie.com>
+			//case 'servicenum5'://出售中的服务不低于5个
+			//	$oService = zbj_model_api::get('zbj_model_sp_service');
+			//	$service = $oService->selectOne("user_id={$user_id} and servicetype='3' and status='1'",'count(1) num');
+			//	if ($isnum && $service['num'] || $service['num']>=5) {
+			//		$point += $config['point'];
+			//		$this->configs[$type]['ispass'] = 1;
+			//	} else {
+			//		$this->configs[$type]['ispass'] = 0;
+			//	}
+			//	break;
+			case 'shopdiy'://店铺装修
+				$oShopfile = zbj_model_api::get('zbj_model_sp_shopfile');
+				$shopfile = $oShopfile->selectOne("user_id={$user_id}");
+				$point += $shopfile ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $shopfile ? 1 : 0;
+				break;
+			case 'login'://近3天登陆过网站
+				/* $oUser = zbj_model_api::get('zbj_model_mb_account', $user_id);
+				$islogin = $oUser->getData("loginendtime")>time()-3*86400;
+				$point += !$islogin ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $islogin ? 1 : 0; */
+				$point += $config['point'];
+				$this->configs[$type]['ispass'] = 1;
+				break;
+			case 'online'://近7天日均在线时间不低于3小时***
+				$oLInfo = zbj_model_api::get('zbj_model_mb_logininfo');
+				$linfo = $oLInfo->selectOne("user_id={$user_id} and ymd>='".date('Y-m-d',time()-7*86400)."'",'sum(online) num');
+				$point += $linfo['num']>10800 ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $linfo['num']>10800 ? 1 : 0;
+				break;
+			case 'app'://登录抢单宝APP***
+				$oMlogin = zbj_model_api::get('zbj_model_lg_mobilelogin');
+				$mlogin = $oMlogin->selectOne("user_id={$user_id} and client_type=3");
+				$point += $mlogin ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $mlogin ? 1 : 0;
+				break;
+			/*add by Fan<fanruipeng@zhubajie.com> 2014-11-21*/
+			case 'appuse'://最近三天使用过抢单包APP
+				$oMlogin = zbj_model_api::get('zbj_model_lg_mobilelogin');
+				$mlogin = $oMlogin->selectOne("user_id={$user_id} and client_type=3 and logindate>=".date('Y-m-d',time()-3*86400)."'");
+				$point += $mlogin ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $mlogin ? 1 : 0;
+				break;
+			case 'addquanzi'://加入圈子
+				$oRelated = zbj_model_api::get('zbj_model_qz_userrelated');
+				$related = $oRelated->selectOne("user_id={$user_id} and isverify=1");
+				$point += $related ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $related ? 1 : 0;
+				break;
+			case 'topic'://近3天有过发帖或回帖***
+				if (!$isearch) {
+					$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+					$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+					$point += $asyn ? $config['point'] : 0;
+					$this->configs[$type]['ispass'] = $asyn ? 1 : 0;
+				} else {
+					$oTopic = zbj_model_api::get('zbj_model_qz_topic');
+					$topic = $oTopic->selectOne("user_id={$user_id} and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+					$oComment = zbj_model_api::get('zbj_model_qz_comment');
+					$comment = $oComment->selectOne("user_id={$user_id} and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+					$point += $comment||$topic ? $config['point'] : 0;
+					$this->configs[$type]['ispass'] = $comment||$topic ? 1 : 0;
+				}
+				break;
+			case 'university'://近3天访问过猪八戒大学***
+				$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+				$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+				$point += $asyn ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $asyn ? 1 : 0;
+				break;
+			case 'statistics'://近3天使用访客监控***
+				$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+				$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+				$point += $asyn ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $asyn ? 1 : 0;
+				break;
+			case 'card'://近3天使用名片***
+				$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+				$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+				$point += $asyn ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $asyn ? 1 : 0;
+				$this->configs[$type]['url'] .= $user_id; //Fan <fanruipeng@zhubajie.com> 2014-12-3 把名片的地址变为动态的
+				break;
+			case 'seo'://设置店铺SEO
+				$oShopinfo = zbj_model_api::get('zbj_model_sp_shopinfo');
+				$shopinfo = $oShopinfo->selectOne("user_id={$user_id}");
+				$point += $shopinfo ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $shopinfo ? 1 : 0;
+				break;
+			case 'vas'://购买增值广告
+				$oVas = zbj_model_api::get('zbj_model_mb_vaspaidlisting');
+				$vas = $oVas->selectOne("user_id={$user_id} and state=1 and end_time>{$this->_time}");
+				$point += $vas ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $vas ? 1 : 0;
+				break;
+			case 'securitys'://加入雇主保障
+				$oSecurity = zbj_model_api::get('zbj_model_mb_securitysstatus');
+				$security = $oSecurity->selectOne("user_id={$user_id} and state=1");
+				$point += $security ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $security ? 1 : 0;
+				break;
+			case 'onebid'://体验一次投标交易***
+				$oAysn = zbj_model_api::get('zbj_model_mb_assesslog');
+				$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}'");
+				if (empty($asyn)) {
+					$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+					$asyn = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0");
+				}
+				$point += $asyn ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $asyn ? 1 : 0;
+				break;
+			case 'trade'://近7天至少有一笔完成评价的交易***
+				if (!$isearch) {
+					$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+					$evaluation = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-7*86400)."'");
+				} else {
+					$oEvaluation = zbj_model_api::get('zbj_model_mb_evaluation');
+					$evaluation = $oEvaluation->selectOne("user_id={$user_id} and type=2 and dateymd>='".date('Y-m-d',time()-7*86400)."'");
+				}
+				$point += $evaluation ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $evaluation ? 1 : 0;
+				break;
+			case 'bid'://近3天参与过需求投标***3
+				if (!$isearch) {
+					$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+					$sign = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+				} else {
+					$oSign = zbj_model_api::get('zbj_model_mk_tasksign');
+					$sign = $oSign->selectOne("user_id={$user_id} and dateymd>='".date('Y-m-d',time()-3*86400)."'");
+				}
+				$point += $sign ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $sign ? 1 : 0;
+				break;
+			case 'nocredit'://近7天无诚信度扣分记录***
+				if (!$isearch) {
+					$oAysn = zbj_model_api::get('zbj_model_mb_assessasyn');
+					$credit = $oAysn->selectOne("user_id={$user_id} and type='{$type}' and isasyn=0 and dateymd>='".date('Y-m-d',time()-7*86400)."'");
+				} else {
+					$oCredit = zbj_model_api::get('zbj_model_mb_creditlog');
+					$credit = $oCredit->selectOne("user_id={$user_id} and type=1 and addymd>='".date('Y-m-d',time()-7*86400)."'");
+				}
+				$point += !$credit ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = !$credit ? 1 : 0;
+				break;
+			case 'credit'://诚信度高于95分
+				$oInfo = zbj_model_api::get('zbj_model_mb_info', $user_id);
+				$credit = $oInfo->getData("creditpoints")+$oInfo->getData("freezingcredit");
+				$point += $credit>=95 ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $credit>=95 ? 1 : 0;
+				break;
+			case 'noreport'://无进行中的被举报信息***
+				$oReport = zbj_model_api::get('zbj_model_mb_report');
+				$report = $oReport->selectOne("t_user_id={$user_id} and state in(1,2)");
+				$point += !$report ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = !$report ? 1 : 0;
+				break;
+			case 'appservice'://是否手机服务内容
+				$oApp = zbj_model_api::get('zbj_model_sp_service');
+				$oAppRes = $oApp->selectOne("user_id={$user_id} and cont_app != '' and state = 2",'service_id');
+				$point += $oAppRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $oAppRes ? 1 : 0;
+				if($oAppRes) {//已完成给个链接
+					$this->configs['appservice']['url'] = "http://shop.zhubajie.com/".$user_id."/sid-".$oAppRes['service_id'];
+				} else {//未完成
+					$oAppRes = $oApp->selectOne("user_id={$user_id} and state = 2",'service_id','','order by lasttime desc');
+					if($oAppRes) {//未完成但是有服务在出售 跳到修改
+						$this->configs['appservice']['url'] .= "step2-sid-".$oAppRes['service_id'];
+					}
+				}
+				break;
+			case 'appamount'://是否设置手机专享价
+				$oApp = zbj_model_api::get('zbj_model_sp_service');
+				$oAppRes = $oApp->selectOne("user_id={$user_id} and amount_app > 0.00 and state = 2",'service_id');
+				$point += $oAppRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $oAppRes ? 1 : 0;
+				if($oAppRes) {//已完成给个链接
+					$this->configs['appamount']['url'] = "http://shop.zhubajie.com/".$user_id."/sid-".$oAppRes['service_id'];
+				} else {//未完成
+					$oAppRes = $oApp->selectOne("user_id={$user_id} and state = 2",'service_id','','order by lasttime desc');
+					if($oAppRes) {//未完成但是有服务在出售 跳到修改
+						$this->configs['appamount']['url'] .= "step2-sid-".$oAppRes['service_id'];
+					}
+				}
+				break;
+			case 'baseinfo'://基本信息
+				$oInfo = zbj_model_api::get('zbj_model_mb_info', $user_id);
+				$oRes = $oInfo->getData("age") && $oInfo->getData("sex") && $oInfo->getData("brandname");
+				$point += $oRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $oRes ? 1 : 0;
+				break;
+			case 'isvip'://签约服务商
+				$oAcc = zbj_model_api::get('zbj_model_mb_account', $user_id);
+				$goldStatus = $oAcc->getData("goldstatus");
+				$point += $goldStatus ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $goldStatus ? 1 : 0;
+				break;
+			case 'interested'://需求偏好设置
+				$mdlUTC = new zbj_model_mb_usertaskcategory();
+				$uRes = $mdlUTC->selectOne("user_id = '$user_id'");
+				$point += $uRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $uRes ? 1 : 0;
+				break;
+			case 'recommend'://使用橱窗推荐
+				$mdlSrcRmd = new zbj_model_sp_servicerecommend();
+				$sRes = $mdlSrcRmd->selectOne("user_id = '$user_id' and state = 1");
+				$point += $sRes ? $config['point'] : 0;
+				$this->configs[$type]['ispass'] = $sRes ? 1 : 0;
+				break;
+			default :
+				break;
+		}
+		return $point;
+	}
+
+	/**
+	 * 写增量
+	 */
+	public function addAssessSynDo($type, $isasyn=false) {
+		if (empty($this->id)) return false;
+		$oAysn = new zbj_model_mb_assessasyn();
+		$ymd = date('Y-m-d');
+		$con = "user_id={$this->id} and type='{$type}' and dateymd='{$ymd}'";
+		if ($isasyn) {
+			$con .= " and isasyn=1";
+		} else {
+			$con .= " and isasyn=0";
+		}
+		$asyn = $oAysn->selectOne($con);
+		if (!$asyn) {
+			$item = array('user_id'=>$this->id,
+					'type'=>$type,
+					'isasyn'=>$isasyn ? 1 : 0,
+					'dateymd'=>$ymd
+			);
+			$oAysn->insert($item);
+		}
+		return true;
+	}
+	
+	public function addAssessSyn($type, $isasyn=false) {
+		if (empty($this->id) || empty($type)) {
+			return true;
+		}
+		$url = zbj_lib_Constant::UC_URL.'/ajax/addAssessSyn';
+		$data = array('user_id'=>$this->id,'type'=>$type,'isasyn'=>$isasyn);
+		zbj_lib_BaseUtils::file_get_contents_safe($url, $data , 'POST', 5, false);
+		
+	}
+}

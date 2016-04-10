@@ -1,0 +1,17 @@
+<?php
+/**
+*  订单分配系统抢订单记录表
+*/
+class zbj_model_mk_taskallotgrab extends zbj_components_basemodel {
+
+	public function primarykey(){
+		return 'task_id';
+	}
+
+	/**
+	 * 返回当前模型数据表名
+	 */
+	public function tableName() {
+		return 'mk_task_allot_grab';
+	}
+}

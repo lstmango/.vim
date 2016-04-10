@@ -1,0 +1,1079 @@
+<?php
+/**
+ * 交易顾问的商机分配
+ */
+class zbj_service_allot_bsallot extends zbj_components_baseservice {
+	
+	protected $id;
+	protected $marter_table = 'zbj_model_mk_allotuser';
+	
+	protected $srvAllotLog = null;
+	
+	static $filter = array(
+			'rand'	=> 'rand',	// 随机筛选的
+			'suitable'	=> 'suitable', // 最适合的 
+			'previous'	=> 'previous', // 上一次分配的
+			'special'	=> 'special', // 直接指定的
+			'grab'	=> 'grab', // 盲抢
+			'nb'	=> 'nb' // nb模式
+		);
+	private $bsArray=array();
+	
+	/**
+	 * 构造函数
+	 */
+	public function __construct($id=0) {
+		parent::__construct();
+		$this->id = $id;
+		$this->srvAllotLog = new zbj_service_taskallotlog();
+	}
+	
+	
+	// =================================  分配交易顾问 ==================================
+	
+	/**
+	 * 获取交易顾问并执行分配动作「带事务」
+	 * @param	object	$srvTask
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function getNextManagerAndDoAllot(&$bsArray){
+		if(empty($bsArray)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		// 寻找交易顾问
+		try{
+			$this->_beginTransaction('mk','cp');
+			$this->setLock();
+			#define('DEBUG',true);
+			$manager = $this->getNextAllotManager($bsArray); 
+			if($manager===false){
+				throw new Exception($this->getError());
+			}
+			
+			// 未找到交易顾问
+			if(empty($manager['manager']['manager_id'])){
+				$srvTaskPool = new zbj_service_allot_bspool();
+				$srvTaskPool->setTransaction(false);
+				if($srvTaskPool->repushToAllotPool($bsArray) === false){
+					throw new Exception($srvTaskPool->getError());
+				}
+				$this->_commit('mk');
+				return true;
+			}
+			
+			// 执行分配
+			$srvAlloter = new zbj_service_allot_bsallot();
+			$srvAlloter->setTransaction(false);
+			if($srvAlloter->doAllot($bsArray,$manager) === false){
+				throw new Exception($srvAlloter->getError());
+			}
+			
+			$this->_commit('mk','cp');
+		}catch(Exception $e){
+			$this->_rollBack('mk','cp');
+			$this->setError(0,$e->getMessage());
+			$srvAllotBsPool=new zbj_service_allot_bspool();
+			$srvAllotBsPool->addLog2($bsArray['bs_to_ct_id'],$e->getMessage(),30,2);
+			return false;
+		}
+		
+		return true;
+	}
+		
+	/**
+	 * 执行分配动作
+	 * @param	object	$srvTask
+	 * @param	array	$toManager	调用getNextAllotManager（）方法返回的结果
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function doAllot(&$bsArray,array $toManager){
+		$filter = strtolower($toManager['filter']);
+		if(empty($bsArray)){
+			$this->setError(0,'传递的商机信息异常'); 
+			return false;
+		}
+		$wmanager = (array)$toManager['manager'];
+		if(empty($wmanager['manager_id'])){
+			$this->setError(0,'请指定需要分配的交易顾问');
+			return false;
+		}
+
+		try{
+			$this->_beginTransaction('mk','cp');
+			$bsCondition=array(
+				'bs_to_ct_id'	=> $bsArray['bs_to_ct_id'],
+			);
+			$bsUpdateData=array(
+				'follow_uid'	=> $toManager['manager']['manager_id'],
+				'allottime'	=> time(),
+				'allotymd'	=> date('Y-m-d',time()),
+				'next_follow_time'	=> date('Y-m-d H:i:s',$this->getFollowTime()),
+				'next_follow_ymd'	=> date('Y-m-d',$this->getFollowTime()),
+			);
+			$bstoctMdl = zbj_model_api::get('zbj_model_mk_bstoct');
+			$bsUpdateResult = $bstoctMdl->update($bsCondition,$bsUpdateData);
+			
+			if(!$bsUpdateResult){
+				throw new Exception('分配顾问失败'.$toManager['manager']['manager_id']);
+			}
+
+			if($filter!=self::$filter['special']){
+				$poolCondition = array(
+					'task_id'	=> $bsArray['bs_to_ct_id'],
+					'type'		=> 2,
+				);
+				$uppool = array(
+					'allotstate'	=> 1,
+					'allottime'		=> $this->_time,
+				);
+				
+				$allotPoolModule = zbj_model_api::get('zbj_model_mk_allotpool');
+				$poolSaveResult = $allotPoolModule->update($poolCondition,$uppool);
+				if(!$poolSaveResult){
+					throw new Exception('更新分配池子数据失败 ');
+				}
+			}
+			// 更新抢单状态
+			//mangomark//待重写
+			if($filter=='grab' || $filter=='nb'){
+				$condition=array(
+					'task_id'  => $bsArray['bs_to_ct_id'],
+					'type'  => 2,
+				);
+				$grabData = array(
+					'status'	=> 1
+				);
+				if($filter=='nb'){
+					$grabData['manager_id']=$toManager['manager']['manager_id'];
+				}
+				$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+				$saveResult = $taskAllotGrabModule->update($condition,$grabData);
+				if($taskAllotGrabModule->save() === false){
+					throw new Exception('更新抢单状态失败'.$taskAllotGrabModule->getError());
+				}
+				$condiGrab=array(
+					'task_id'  => $bsArray['bs_to_ct_id'],
+					'type'  => 2,
+				);
+				$grabData2 = array(
+					'status'	=> 1,
+					'grabtime'	=> time(),
+				);
+				$allotGrabPoolModule = zbj_model_api::get('zbj_model_mk_allotgrabpool');
+				$saveResult2 = $allotGrabPoolModule->update($condiGrab,$grabData2);
+				if($allotGrabPoolModule->save() === false){
+					throw new Exception('更新抢单状态失败'.$taskAllotGrabModule->getError());
+				}
+			}
+
+			$log=$toManager['log'];
+			$srvAlloter = new zbj_service_allot_bsallot();
+			$srvAlloter->setTransaction(false);
+			if($filter!='nb'){
+				if($srvAlloter->updateManagerConf($toManager['manager']['manager_id'],$bsArray['follow_uid'],$bsArray) !==  true){
+					throw new Exception($srvAlloter->getError());
+				}
+			}
+			$srvAllotBsPool=new zbj_service_allot_bspool();
+			$logAddResult=$srvAllotBsPool->addLog2($bsArray['bs_to_ct_id'],$log,30,2);
+			if(!$logAddResult){
+				throw new Exception($srvAllotBsPool->getError());
+			}
+			if($filter=='nb'){
+				$cache = new zbj_lib_cache('memcache');
+				$cachekey = 'bschance.zhubajie.allot.grabpool.manager_allot_num.date='.date('Y-m-d',time());
+				$managerAllotNum = $cache->get($cachekey);
+				var_dump($managerAllotNum);
+				$oldAllotManagerNum=(int)$managerAllotNum[$toManager['manager']['manager_id']];
+				$managerAllotNum[$toManager['manager']['manager_id']]=$oldAllotManagerNum+1;
+
+				$cache->set($cachekey, $managerAllotNum, 86400);
+			}
+			$this->_commit('mk','cp');
+		}catch(Exception $e){
+			$this->_rollBack('mk','cp');
+			$this->setError(0,$e->getMessage());
+			return false;
+		}
+		
+		return true;
+	}
+	
+
+	
+	
+	
+	// ================================= 获取交易顾问 ==================================
+	
+	/**
+	 * 获取需求应分配的交易顾问
+	 * @param	object	$srvTask
+	 * @param	int		$managerid
+	 * @return array [index:manager,filter]
+	 * */
+	public function getNextAllotManager(&$bsArray,$managerid=0){
+		$this->bsArray=$bsArray;
+		$managerid = intval($managerid);
+		if(empty($bsArray)){
+			$this->setError(0,'传递的商机信息异常'); 
+			return false;
+		}
+		$allotlog = array();
+		$onlineOnly = true; 
+
+		// 取指定交易顾问
+		if($managerid > 0){
+			return;
+			/*
+			 *$manager = $this->getSpecialManager($managerid);
+			 *if(empty($manager)) return false;
+			 *$checkAllotResult=$this->checkManagerCanAllot($managerid,$srvTask);
+			 *if(!$checkAllotResult) return false;
+			 *return array('manager'=>$manager,'filter'=>self::$filter['special']);
+			 */
+		}
+		
+		// 同雇主需求
+		$manager = $this->getPreManager($bsArray);
+		if($manager===false){
+			return false;
+		}
+
+		if(!empty($manager['manager']['manager_id']) && is_array($manager)){
+			return $manager;
+		}
+		$manager = $this->getNextSuitableManager($bsArray,$onlineOnly);
+		if(!$manager){
+			$allotlog = '没有可分配的顾问「匹配模式」';
+			if($allotlog){
+				$srvAllotBsPool=new zbj_service_allot_bspool();
+				$abc=$srvAllotBsPool->addLog2($bsArray['bs_to_ct_id'],$allotlog,30,2);
+			}
+			return array();
+		}
+
+
+		$log='分配顾问【'.$manager['manager_name'].'】成功【匹配模式】';
+		return array('manager'=>$manager,'log'=>$log);
+	}
+	
+	/**
+	 * 获取指定的交易顾问
+	 * @param	int		$managerid
+	 * @param	bool	$online
+	 * @return array
+	 * */
+	public function getSpecialManager($managerid){
+		$condition = array("manager_id='{$managerid}'");
+		
+		$field = "*";
+		
+		$manager = $this->model()->selectOne($condition,$field);
+		$manager = (array)$manager;
+		if(empty($manager['manager_id'])){
+			$this->setError(0,'指定的交易顾问不存在'); 
+			return false;
+		}
+		
+		return $manager;
+	}
+	
+	/**
+	 * 获取需求上一次跟进的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$online
+	 * @return array
+	 * */
+	public function getPreManager(&$bsInfo){
+		$allUserIdArray=$this->getBsAllUser($bsInfo);
+		$manager_id = 0;
+		if($allUser===false){
+			return false;
+		}
+		if ($bsInfo['create_uid'] && in_array($bsInfo['create_uid'], $allUserIdArray)){
+			$log = '分配给创建人';
+			$manager_id = $bsInfo['create_uid'];
+		}else {
+			if ($bsInfo['ct_id']){
+				$m_bstoctcontacts = zbj_model_api::get('zbj_model_mk_bstoctcontacts');
+				$bsContactsInfo = $m_bstoctcontacts->selectOne(array('ct_id'=>$bsInfo['ct_id']));
+				if ($bsContactsInfo['ct_mobile']){
+					$user_id = $this->getFollowUserByPhone($bsContactsInfo['ct_mobile']);
+					if ($user_id && in_array($user_id, $allUserIdArray)){
+						$manager_id = $user_id;
+						$log = '分配给相同手机号';
+					}
+				}
+			}
+		}
+		
+		if($manager_id === 0){
+			return array();
+		}
+		if (!in_array($manager_id, $allUserIdArray)){
+			return array();
+		}
+        $allotUserModule = zbj_model_api::get('zbj_model_mk_allotuser');
+		$manager=$allotUserModule->selectOne('manager_id='.$manager_id);
+		$logstr='分配顾问【'.$manager['manager_name'].'】成功【'.$log.'】';
+
+		return array('manager'=>$manager,'log'=>$logstr);
+	}
+	
+	/**
+	 * 获取随机的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$onlineOnly
+	 * @return array
+	 * */
+	public function getNextRandManager(&$srvTask,$onlineOnly=true,$verifyData){
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])) {
+			$this->setError(0,'需求不存在'); 
+			return false;
+		}
+		$manageids = $this->getAllotDimensionManagers($srvTask,$onlineOnly,false,$verifyData);
+		if($manageids === false){  return false; }
+		if(is_array($manageids) && empty($manageids)){
+			//$this->setError(0,'获取在线交易顾问失败'); 
+			return array();
+		}
+		$idindex = array_rand($manageids,1);
+		$managerid = (int)$manageids[$idindex];
+		
+		$condition = array("manager_id='{$managerid}'");
+		
+		$field = "*";
+		
+		$manager = $this->model()->selectOne($condition,$field);
+		if($manager === false){
+			$this->setError(0,$this->model()->getError()); 
+			return false;
+		}
+		
+		return (array)$manager;
+	}
+		
+	/**
+	 * 获取需求应分配的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$onlineOnly
+	 * @return array
+	 * */
+	public function getNextSuitableManager(&$srvTask,$onlineOnly=true){
+		$allUser=$this->getBsAllUser($srvTask,true);
+		if($allUser=== false){  return array(); }
+		if(is_array($manageids) && empty($manageids)){
+			return array();
+		}
+		return $allUser[0];
+	}
+	
+	
+	/**
+	 * 获取所有分配规则下的售前交易顾问
+	 * @param	mixed	$srvTask
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getAllotDimensionManagers($srvTask,$onlineOnly=true,$getinfo=false,$verifyData=array()){
+           
+		if(is_object($srvTask) && stripos(get_class($srvTask),'zbj_service_task') !== false){
+			$srvModCfg = new zbj_service_moduleconfig();
+			$modcfg = $srvModCfg->getTaskAllotDimensionConfig($srvTask);
+                        
+			if($modcfg === false){
+				$this->setError(0,'获取需求对应分配配置失败'.$srvModCfg->getError()); 
+				return false;
+			}
+			$dimensionids = array();
+			foreach((array)$modcfg as $mod){
+				$mid = intval($mod['dimension_id']);
+				$mid > 0 && $dimensionids[] = $mid;
+			}
+                        
+			$dbManagers = $this->getDimensionAllManager($dimensionids,$onlineOnly);
+                        
+		}else{ // 取全部行业下的
+			$dbManagers = $this->getAllManager($onlineOnly);
+		}
+
+		$manages = array();
+		foreach($dbManagers as $manage){
+			$mid = intval($manage['manager_id']);
+			$mid>0 && $manages[] = $mid;
+		}
+                
+		if($getinfo && !empty($manages)){
+                        $managerIds = implode(',', $manages);
+			$condition = '`user_id` in('.$managerIds.')';
+			$cpuserModel = zbj_model_api::get('zbj_model_cp_user');
+			$field = 'user_id as manager_id,group_id,truename as manager_name,isleader,isonline';
+			$manages = $cpuserModel->select($condition,$field)->items;
+                        
+		}
+		
+		return $manages;
+	}
+	
+	/**
+	 * 获取所有售前交易顾问
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getAllManager($onlineOnly=true){
+			$dimModule = zbj_model_api::get('zbj_model_mk_allotdimension');
+			$dimArray = $dimModule->select('','dimension_id')->items;
+			if(empty($dimArray)) return array();
+			$dimensionids = array();
+			foreach($dimArray as $dimValue){
+				$did = intval($dimValue['dimension_id']);
+				$did>0 && $dimensionids[] = $did;
+			}
+			if(empty($dimensionids)) return array();
+
+			$conditionDim[] = "dimension_id in(".implode(',',$dimensionids).")";
+			$field3 = "*";
+			$allotUserDemModule = zbj_model_api::get('zbj_model_mk_allotuserdimension');
+			$allotUserDemArray = $allotUserDemModule->select($conditionDim,$field3,'group by manager_id')->items;
+			if(empty($allotUserDemArray)) return array();
+			$managerids = array();
+			foreach($allotUserDemArray as $midvalue){
+				$mid = intval($midvalue['manager_id']);
+				$mid>0 && $managerids[] = $mid;
+			}
+			if(empty($managerids)) return array();
+			$allotUserModeArray=$this->checkManagerMode($managerids);
+			$managerids = array();
+			foreach($allotUserModeArray as $midvalue){
+				$mid = intval($midvalue['manager_id']);
+				$mid>0 && $managerids[] = $mid;
+			}
+			if(empty($managerids)) return array();
+
+			$condition[] = "manager_id in(".implode(',',$managerids).")";
+			$condition[] = "status=1";
+			$condition[] = "isonline=1";
+			$condition[] = "allot_num<max";
+			$condition[] = "nextallottime<".time();
+			$field = "*";
+			
+			$managers = $this->model()->select($condition,$field,'','order by nextallottime')->items;
+			$managers = (array)$managers;
+
+				
+		return (array)$managers;
+	}
+	
+	/**
+	 * 获取所有指定行业的售前交易顾问
+	 * @param	int		$dimensionids
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getDimensionAllManager($dimensionids,$onlineOnly=true){
+		if(!is_array($dimensionids) || empty($dimensionids)) return array();
+		sort($dimensionids);
+		$cache = new zbj_lib_cache('memcache');
+		$cachekey = 'task.zhubajie.module.managers.'.implode('_',$dimensionids).'.'.intval($onlineOnly);
+		$managers = $cache->get($cachekey);
+		if (!is_array($managers) || zbj_lib_Constant::DOMAIN!='zhubajie.com') {
+			$conditionDim[] = "dimension_id in(".implode(',',$dimensionids).")";
+			$field3 = "*";
+			$allotUserDemModule = zbj_model_api::get('zbj_model_mk_allotuserdimension');
+			$allotUserDemArray = $allotUserDemModule->select($conditionDim,$field3,'group by manager_id')->items;
+			if(empty($allotUserDemArray)) return array();
+			$managerids = array();
+			foreach($allotUserDemArray as $midvalue){
+				$mid = intval($midvalue['manager_id']);
+				$mid>0 && $managerids[] = $mid;
+			}
+			if(empty($managerids)) return array();
+			$allotUserModeArray=$this->checkManagerMode($managerids);
+			$managerids = array();
+			foreach($allotUserModeArray as $midvalue){
+				$mid = intval($midvalue['manager_id']);
+				$mid>0 && $managerids[] = $mid;
+			}
+			if(empty($managerids)) return array();
+
+			$condition[] = "manager_id in(".implode(',',$managerids).")";
+			$condition[] = "status=1";
+			$condition[] = "isonline=1";
+			$condition[] = "allot_num<max";
+			$condition[] = "nextallottime<".time();
+			$field = "*";
+			
+			$managers = $this->model()->select($condition,$field,'','order by nextallottime')->items;
+
+			$managers = (array)$managers;
+			$cache->set($cachekey, $managers, 60);
+		}
+		return $managers;
+	}
+	
+
+	/*
+	 *检测交易顾问是否可分配
+	 */
+	public function checkManagerCanAllot($managerid,$srvTask){
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])) {
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		$condition[] = "manager_id='{$managerid}'";
+		$condition[] = "status=1";
+		$condition[] = "nextallottime<".time();
+		$field = "*";
+		
+		$manager = $this->model()->selectOne($condition,$field);
+		$manager = (array)$manager;
+		if(empty($manager['manager_id'])){
+			$this->setError(0,'指定的交易顾问不存在'); 
+			return false;
+		}
+
+
+		$allotUserModeArray=$this->checkManagerMode(array($managerid));
+		if(!$allotUserModeArray){
+			$this->setError(0,'该用户'.$manager['manager_id'].'未配置分配模式'.$mode_id); 
+			return false;
+		}
+
+			$srvModCfg = new zbj_service_moduleconfig();
+			$modcfg = $srvModCfg->getTaskAllotDimensionConfig($srvTask);
+
+                        
+			if($modcfg === false){
+				$this->setError(0,'获取需求对应分配配置失败'.$srvModCfg->getError()); 
+				return false;
+			}
+			$dimensionids = array();
+			foreach((array)$modcfg as $mod){
+				$mid = intval($mod['dimension_id']);
+				$mid > 0 && $dimensionids[] = $mid;
+			}
+		$conditionDim[] = "dimension_id in(".implode(',',$dimensionids).")";
+		$conditionDim[] = "manager_id='{$managerid}'";
+		$field3 = "*";
+		$allotUserDemModule = zbj_model_api::get('zbj_model_mk_allotuserdimension');
+		$allotUserDemArray = $allotUserDemModule->select($conditionDim,$field3)->items;
+		if($allotUserDemArray === false){
+			$this->setError(0,'该用户'.$manager['manager_id'].'未配置分配模式'.implode(',',$dimensionids)); 
+			return false;
+		}
+		
+		return $manager;
+	}
+
+	/*
+	 *验证顾问分配模式
+	 */
+	private function checkManagerMode($manageArray){
+		$task=$this->srvTask->get();
+		$mode_id=$this->_get_task_mode($task);
+		if($mode_id==false){
+			$this->setError(0,'获取任务模式失败'); 
+			return false;
+		}
+		$managerIds = implode(',', $manageArray);
+		$condi[] = 'manager_id in('.$managerIds.')';
+		$condi[] = "mode_id=".$mode_id;
+		$field2 = "manager_id";
+		$allotUserMode = zbj_model_api::get('zbj_model_mk_allotusermode');
+		$allotUserModeArray = $allotUserMode->select($condi,$field2)->items;
+		if(!$allotUserModeArray){
+			//$this->setError(0,'该用户'.$manager['manager_id'].'未配置分配模式'.$mode_id); 
+			return false;
+		}
+		return $allotUserModeArray;
+	}
+
+
+	/*
+	 *更新顾问配置
+	 */
+	public function updateManagerConf($managerid=0,$oldManagerid=0,$params=array()){
+		$managerid = intval($managerid);
+		$oldManagerid = intval($oldManagerid);
+				
+		$params['task_id'] = intval($params['task_id']);
+		$params['amount'] = round((float)$params['amount'],2);
+
+		$upManager = $upOldManager = true;
+		if(($params['filter'] == 'rand' && $params['amount']==0) || $managerid<=0){
+			$upManager = false;
+		}
+		$oldManagerid<=0 && $upOldManager = false;
+		$srvAllotBsPool=new zbj_service_allot_bspool();
+		try{
+			$this->_beginTransaction('mk');
+			$allotUserMode = zbj_model_api::get('zbj_model_mk_allotuser');
+			if($upManager){ // 增加新交易顾问的配额
+				$srvManager1 = new zbj_service_allot_taskallot($managerid);
+				$conf1 = $srvManager1->get();
+				if(empty($conf1['manager_id'])){
+					throw new Exception('获取交易顾问的配置数据失败[1]');
+				}
+				$allot_num = (int)$conf1['allot_num']<(int)$conf1['max']?((int)$conf1['allot_num'] + 1):$conf1['allot_num'];
+				$allottime = time();
+				$updata1 = array(
+					'allot_num'	=> $allot_num,
+					'nextallottime'	=> time()+$conf1['interval_time'],
+				);
+				if($srvManager1->set($updata1) === false){
+					throw new Exception('设置分配阀值数据失败[1]');
+				}
+				if($srvManager1->save() === false){
+					throw new Exception('更新分配阀值数据失败[1]'.$srvManager1->getError());
+				}
+				$srvAllotBsPool->addLog2($params['bs_to_ct_id'],"修改新顾问「{$conf1['manager_name']}」分配阀值成功",30,2);
+			}
+			if($upOldManager){ // 减少旧交易顾问的配额
+				$srvManager2 = new zbj_service_allot_taskallot($oldManagerid);
+				$conf2 = $srvManager2->get();
+				if(empty($conf2['manager_id'])){
+					throw new Exception('获取交易顾问的配置数据失败[2]');
+				}
+			}
+			if($upOldManager && (int)$conf2['allot_num']>0){
+				$allot_num = (int)$conf2['allot_num'] - 1;
+				$updata2 = array(
+					'allot_num'	=> $allot_num,
+				);
+				if($srvManager2->set($updata2) === false){
+					throw new Exception('设置分配阀值数据失败[2]');
+				}
+				if($srvManager2->save() === false){
+					throw new Exception('更新分配阀值数据失败[2]'.$srvManager2->getError());
+				}
+				$srvAllotBsPool->addLog2($params['bs_to_ct_id'],"减少顾问「{$conf2['manager_name']}」分配阀值成功",30,2);
+			}
+
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$srvAllotBsPool->addLog2($params['bs_to_ct_id'],$e->getMessage(),30,2);
+			return false;
+		}
+		
+		return true;
+	}
+
+
+	/*
+	 *验证商机维度
+	 */
+	private function checkManagerBsdimension(){
+		$bsArray=$this->bsArray;
+		$mode_id=$this->_get_task_mode($task);
+		if($mode_id==false){
+			$this->setError(0,'获取任务模式失败'); 
+			return false;
+		}
+		$managerIds = implode(',', $manageArray);
+		$condi[] = 'manager_id in('.$managerIds.')';
+		$condi[] = "mode_id=".$mode_id;
+		$field2 = "manager_id";
+		$allotUserMode = zbj_model_api::get('zbj_model_mk_allotusermode');
+		$allotUserModeArray = $allotUserMode->select($condi,$field2)->items;
+		if(!$allotUserModeArray){
+			return false;
+		}
+		return $allotUserModeArray;
+	}
+
+	/*
+	 *获取当前维度所有顾问
+	 */
+	public function getBsAllUser($bsArray='',$info=false,$from=''){
+		if(!$bsArray){
+			$bsArray=$this->bsArray;
+		}
+        $bsdimension_id = $bsArray['config_id'];
+        $allotUserMode = zbj_model_api::get('zbj_model_mk_allotuser');
+        $leftjoin = array(
+            'mk_allot_user_bsdimension as a_u_b'=>'a_u_b.manager_id = a_u.manager_id',
+        );
+		if($bsdimension_id!=0){
+			$condi[]="a_u_b.bsdimension_id=".$bsdimension_id;
+		}
+		$param = array();
+		if($from=='allotgrabpool'){
+			$condi[]="a_u.isonline=1";
+			$condi[]="a_u.status=1";
+		}
+		elseif($from=='boss_t6'){
+			if($this->lock){
+				$param = array('type'=>'main','lock'=>'FOR UPDATE');
+			}
+			$condi[]="a_u.isonline=1";
+			$condi[]="a_u.status=1";
+			$condi[] ="a_u.allot_num<a_u.max";
+		}
+		else{
+			if($this->lock){
+				$param = array('type'=>'main','lock'=>'FOR UPDATE');
+			}
+			$condi[]="a_u.isonline=1";
+			$condi[]="a_u.status=1";
+			$condi[]="a_u.nextallottime<".time();
+			$condi[] ="a_u.allot_num<a_u.max";
+		}
+
+		$allUser=$allotUserMode->_db->select('mk_allot_user as a_u',$condi,"a_u.*", 'group by a_u.manager_id', 'order by nextallottime asc', $leftjoin,$param)->items;
+		if(!$allUser){
+			$this->setError(0,'该维度暂无合适交易顾问'); 
+			return false;
+		}
+		if($info == true){
+			return $allUser;
+		}
+		$allUserIdArray = array();
+		foreach((array)$allUser as $userValue){
+			$managerId = intval($userValue['manager_id']);
+			$managerId > 0 && $allUserIdArray[] = $managerId;
+		}
+		return $allUserIdArray;
+	}
+
+	/**
+	 * 相同手机号分配规则
+	 * 
+	 * @author tanqing
+	 * @date 2015年7月23日
+	 * @param unknown $phone
+	 * @return boolean|multitype:
+	 */
+	public function getFollowUserByPhone2($phone){
+		$timeout = 10;
+		$sdk_lib=array('zbj_sdk','zbj_boss_sdk', 'ub-client');
+		zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET,$timeout,$sdk_lib);
+	    $bschanceClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+		zbj_lib_ApiClient::build ( $bschanceClient );
+
+	    $searchPhoneResult = $bschanceClient->getFollowUserByPhone($phone);
+	    if (!$searchPhoneResult->success){
+	        return false;
+	    }
+	    if (empty($searchPhoneResult->ext_params['follow_uid'])){
+	        return false;
+	    }
+	    $user = $searchPhoneResult->ext_params['follow_uid'];
+	    return $user;
+	}
+
+	public function getFollowUserByPhone($phone){
+		$m_bstoct = zbj_model_api::get('zbj_model_mk_bstoct');
+		$table_bstoct = $m_bstoct->tableName();
+		
+		$m_bstoct_contacts = zbj_model_api::get('zbj_model_mk_bstoctcontacts');
+		$table_bstoct_contacts = $m_bstoct_contacts->tableName();
+		$leftjoin = array(
+			$table_bstoct_contacts => $table_bstoct_contacts.".ct_id = ".$table_bstoct.".ct_id",
+		);
+		$condition = array();
+		$condition[$table_bstoct_contacts.'.ct_mobile'] = $phone;
+		$condition[] = $table_bstoct.'.follow_uid>0';
+		$item = array(
+			$table_bstoct.'.follow_uid',
+			$table_bstoct.'.bs_to_ct_id',
+		);
+		$info = $m_bstoct->selectOne($condition,$item,'','order by bs_to_ct_id desc',$leftjoin);
+	    if (!$info || !$info['follow_uid']){
+	        return false;
+	    }
+	    return $info['follow_uid'];
+
+	}
+
+	public function getFollowTime(){
+	    // 对5点半以后分配的机会，跟进时间从第二天开始算
+	    if (time()  > strtotime ( date('Y-m-d 17:30'))) {
+	        $base_time = strtotime ( date ( 'Y-m-d 18:00', strtotime ( '+1 days' ) ) );
+	    } else {
+	        $base_time = strtotime(date("Y-m-d 18:00:00"));
+	    }
+	    if (in_array ( date ( 'w', time() ), array (6,0) )) {
+			$base_time  = strtotime(date("Y-m-d 18:00:00",strtotime('next monday')));
+		}
+		return $base_time;
+	}
+
+    /**
+     * 三级类目转换为config_id
+     * 
+     * @author tanqing
+     * @date 2015年9月8日
+     * @param unknown $id
+     * @return number
+     */
+    public function __getconfigid($id){
+        switch (intval($id)) {
+            case 1282:
+            case 1282:
+            case 1284:
+            case 165:
+            case 1145:
+            case 1278:
+            case 1475:
+            case 267:
+            case 1470:
+            case 857:
+            case 1262:
+            case 1269:
+            case 287:
+            case 1270:
+            case 1265:
+            case 286:
+            case 1266:
+            case 1421:
+            case 1370:
+            case 1371:
+            case 1372:
+            case 196:
+            case 1367:
+            case 1369:
+            case 1365:
+            case 195:
+            case 1362:
+            case 1297:
+            case 1295:
+            case 180:
+            case 1301:
+            case 1300:
+            case 1298:
+            case 1299:
+            case 178:
+            case 172:
+            case 176:
+            case 1290:
+            case 1288:
+            case 1287:
+            case 1416:
+            //case 1420:
+            case 1417:
+            case 1413:
+            case 1424:
+            case 1418:
+                return 104;
+                break;
+            case 1329:
+            case 1328:
+            case 1327:
+            case 319:
+            case 1271:
+            case 892:
+            case 891:
+            case 1296:
+            case 1294:
+            case 1303:
+            case 85:
+            case 1247:
+            case 1245:
+            case 1542:
+            case 1248:
+            case 1538:
+            case 1541:
+            case 1540:
+            case 1539:
+            case 1545:
+            case 1544:
+            case 1546:
+            case 1251:
+            case 1250:
+            case 1249:
+            case 1226:
+            case 1231:
+            case 1229:
+            case 1228:
+            case 1230:
+            case 1537:
+            case 1227:
+            case 1535:
+            case 1225:
+            case 1385:
+            case 1386:
+            case 1384:
+            case 1547:
+            case 1243:
+            case 1244:
+                return 105;
+                break;
+            /*
+            case 1448:
+            case 1243:
+            case 1244:
+                return 105;
+            */
+                break;
+            case 1381:
+            case 1375:
+            case 1378:
+            case 1330:
+            case 365:
+            case 368:
+            case 367:
+            case 1333:
+            case 1332:
+            case 413:
+            case 1443:
+                return 107;
+                break;
+            case 1340:
+            case 382:
+            case 1337:
+            case 1331:
+            case 1339:
+                return 108;
+                break;
+            case 1430:
+            case 1368:
+            case 1363:
+            case 1004:
+            case 1212:
+            case 231:
+            case 1419:
+            case 235:
+            case 1423:
+            case 1382:
+            case 1426:
+            case 1429:
+            case 1134:
+            case 131:
+            case 123:
+            case 120:
+            case 126:
+            case 1428:
+            case 129:
+            case 168:
+            case 162:
+            case 161:
+            case 1431:
+            case 177:
+            case 170:
+            case 1425:
+            case 203:
+            case 173:
+            case 1286:
+            case 1448:
+                return 109;
+                break;
+            case 1517:
+            case 1465:
+            case 1515:
+            case 1518:
+            case 1512:
+            case 1516:
+            case 1498:
+            case 1513:
+            case 1514:
+            case 1520:
+            case 1519:
+            case 1527:
+            case 1522:
+            case 1525:
+            case 493:
+            case 1466:
+            case 1526:
+            case 1524:
+            case 1469:
+            case 1467:
+            case 1523:
+            case 1468:
+            case 1508:
+            case 1507:
+            case 1504:
+            case 1505:
+            case 1510:
+            case 348:
+            case 1506:
+            case 1498:
+            case 1493:
+            case 1491:
+            case 1497:
+            case 1496:
+            case 1490:
+            case 1494:
+            case 1498:
+            case 1495:
+            case 1492:
+            case 1502:
+            case 1500:
+            case 1503:
+            case 1501:
+            case 350:
+                return 110;
+                break;
+            case 1347:
+            case 1349:
+                return 111;
+                break;
+            default:
+                return 112;
+        }
+    }
+
+
+	/*
+	 *获取下一个交易顾问并分配（盲抢池商机）
+	 */
+	public function getNextManagerAndDoAllotGrabpool(&$bsArray){
+
+		if(empty($bsArray)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		// 寻找交易顾问
+		try{
+			$this->_beginTransaction('mk','cp');
+			$this->setLock();
+			#define('DEBUG',true);
+			$manager = $this->getBsAllUser($bsArray,true,'allotgrabpool'); 
+			if($manager===false){
+				throw new Exception($this->getError());
+			}
+			$cache = new zbj_lib_cache('memcache');
+			$totalCachekey = 'bschance.zhubajie.allot.grabpool.manager_total_num';
+			$totalNum = $cache->get($totalCachekey);
+			$cachekey = 'bschance.zhubajie.allot.grabpool.manager_allot_num.date='.date('Y-m-d',time());
+			$managerAllotNum = $cache->get($cachekey);
+			foreach($manager as $mKey=>$mValue){
+				if((int)$managerAllotNum[$mValue['manager_id']]<(int)$totalNum){
+					$selectManager=$mValue;
+					break;
+				}
+			}
+			
+			// 未找到交易顾问
+			if(empty($selectManager)){
+				throw new Exception('所有符合分配维度的顾问分配数量已满，请重新设置阀值totalNum');
+			}
+			$toManager['manager']=$selectManager;
+			$toManager['filter']='nb';
+			$log='恭喜【'.$selectManager['manager_name'].'】成功分配商机订单一枚！';
+			$toManager['log']=$log;
+			
+			// 执行分配
+			$srvAlloter = new zbj_service_allot_bsallot();
+			$srvAlloter->setTransaction(false);
+			if($srvAlloter->doAllot($bsArray,$toManager) === false){
+				throw new Exception($srvAlloter->getError());
+			}
+			
+			$this->_commit('mk','cp');
+		}catch(Exception $e){
+			$this->_rollBack('mk','cp');
+			$this->setError(0,$e->getMessage());
+			return false;
+		}
+		
+		return true;
+	}
+}

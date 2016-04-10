@@ -1,0 +1,44 @@
+<form class="form-horizontal form dialog" method="post" action="{/$smarty.server.REQUEST_URI/}">
+	
+	<div class="control-group">
+  	<label class="control-label" for="manager_id">1知识产权顾问：</label>
+  	<div class="controls">
+  	<select id="gid" name="gid" style="width: 110px;">
+	    <option value="0" {/if $smarty.get.gid eq 0/} selected="selected"{//if/}>全部</option>
+	    {/foreach from=$groups item=item/}
+	    <option value="{/$item.group_id/}" {/if $item.group_id eq  $smarty.get.gid/} selected="selected"{//if/}>{/$item.name/}</option>
+	    {//foreach/}
+	</select>
+	<select id="manager_id" name="manager_id" style="width: 110px;">
+	    <option value="0">全部</option>
+	</select>
+  		</div>
+  	</div>
+</form>
+
+<script type="text/javascript">
+$(document).ready(function (){
+	ajaxform($('.form'));
+	
+	$("#gid").change(function(){
+	    var html='<option value="0">全部</option>';
+	    if($(this).val()!=0){
+	        $.getJSON("/apicpuser/getuserbygroupid",{"gid":$(this).val()},function(d){
+	            if(d.code===1){
+	                for(var i=0;i<d.data.length;i++){
+	                    html+='<option value="'+d.data[i]["user_id"]+'">'+d.data[i]["name"]+'</option>';
+	                }
+	                $("#manager_id").html(html);
+	                if($("#manager_id").attr('name')=='manager_id'){
+	                	$("#manager_id").val('{/$smarty.get.manager_id/}');
+	                }else{
+	                	$("#manager_id").val('{/$smarty.get.manager_id2/}');
+	                }
+	            }
+	        });
+	    }else{
+	        $("#manager_id").html(html);
+	    }
+	}).trigger('change');
+});
+</script>

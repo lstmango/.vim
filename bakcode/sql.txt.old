@@ -1,0 +1,131 @@
+
+CREATE TABLE `mk_allot_analyse` (
+  `task_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '任务号',
+  `type` tinyint(1) unsigned NOT NULL DEFAULT '1' COMMENT '任务类型:1订单，2商机',
+  `source` tinyint(1) unsigned DEFAULT '0' COMMENT '来源',
+  `status` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0失败，1成功',
+  `createtime` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间戳',
+  `reason` text COMMENT '原因',
+  PRIMARY KEY (`task_id`,`createtime`,`type`),
+  KEY `createtime` (`createtime`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统分发统计分析表';
+
+
+CREATE TABLE `mk_allot_bsdimension` (
+  `bsdimension_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `bsdimension_name` varchar(100) DEFAULT NULL COMMENT '商机分配维度名称',
+  `state` tinyint(1) unsigned NOT NULL DEFAULT '1' COMMENT '是否启用，1启用，0未启用',
+  PRIMARY KEY (`bsdimension_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8 COMMENT='商机分配维度表';
+
+CREATE TABLE `mk_allot_grabpool` (
+  `task_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '任务id',
+  `type` int(1) unsigned NOT NULL COMMENT '1:正常订单，2:商机订单',
+  `status` int(1) unsigned DEFAULT '0' COMMENT '状态，0默认，1成功，2失败',
+  `weights` int(10) DEFAULT '0' COMMENT '权重值',
+  `createtime` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间搓',
+  `grabtime` int(10) unsigned DEFAULT '0' COMMENT '抢单时间',
+  PRIMARY KEY (`task_id`,`type`),
+  KEY `createtime,status` (`createtime`,`status`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-盲抢池';
+
+CREATE TABLE `mk_allot_group` (
+  `group_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '顾问分组id',
+  `group_name` varchar(200) NOT NULL DEFAULT '分组名',
+  PRIMARY KEY (`group_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8 COMMENT='订单分配顾问分组表';
+
+CREATE TABLE `mk_allot_mode` (
+  `mode_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `mode_name` varchar(100) DEFAULT NULL COMMENT '任务模式名称',
+  `state` tinyint(1) unsigned DEFAULT '1' COMMENT '是否启用，1启用，0未启用',
+  PRIMARY KEY (`mode_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8 COMMENT='订单分配任务模式表';
+
+CREATE TABLE `mk_allot_onlinetime` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL COMMENT '顾问id',
+  `type` tinyint(1) NOT NULL DEFAULT '0' COMMENT '上下班状态：1上班，0下班',
+  `createtime` int(10) NOT NULL DEFAULT '0' COMMENT '操作时间戳',
+  `createymd` date DEFAULT NULL,
+  `totalsecond` int(10) DEFAULT '0' COMMENT '当前下班距离上次上班秒数',
+  PRIMARY KEY (`id`),
+  KEY `k_manager_id` (`manager_id`),
+  KEY `k_createymd` (`createymd`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=43 DEFAULT CHARSET=utf8 COMMENT='订单分配系统-上下班时间记录表';
+
+CREATE TABLE `mk_allot_pool` (
+  `task_id` int(10) NOT NULL DEFAULT '0' COMMENT '任务号',
+  `type` tinyint(1) NOT NULL COMMENT '任务类型：1正式订单，2商机',
+  `needallot` int(2) NOT NULL DEFAULT '0' COMMENT '是否需要分配：1需要，0不需要',
+  `allotstate` tinyint(1) DEFAULT '0' COMMENT '分配状态：0,未分配，1成功，2失败',
+  `weights` int(10) DEFAULT '0' COMMENT '权重值',
+  `allottime` int(10) DEFAULT '0' COMMENT '分配时间',
+  `amount` decimal(12,2) unsigned NOT NULL DEFAULT '0.00' COMMENT '需求当时金额',
+  `createtime` int(10) NOT NULL DEFAULT '0' COMMENT '创建时间戳',
+  `next_chktime` int(10) DEFAULT '0' COMMENT '下次检测时间',
+  `begin_chktime` int(10) DEFAULT '0' COMMENT '开始检测时间',
+  PRIMARY KEY (`task_id`,`type`),
+  KEY `needallot_allotstatus` (`needallot`,`allotstate`),
+  KEY `createtime` (`createtime`),
+  KEY `weights` (`weights`),
+  KEY `next_chktime` (`next_chktime`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-分配池';
+
+CREATE TABLE `mk_allot_user` (
+  `manager_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '顾问id',
+  `manager_name` varchar(200) NOT NULL COMMENT '交易顾问姓名',
+  `group_id` int(10) unsigned DEFAULT '0' COMMENT '分组id',
+  `max` int(10) unsigned DEFAULT '0' COMMENT '最大可分配数量',
+  `interval_time` int(10) unsigned DEFAULT '600' COMMENT '分配间隔时间(s)',
+  `leader` tinyint(1) unsigned DEFAULT '0' COMMENT '是否组长：0不是，1是',
+  `assistant` tinyint(1) unsigned DEFAULT '0' COMMENT '是否助理：0不是，1是',
+  `nextallottime` int(10) unsigned DEFAULT '0' COMMENT '下次可分配时间',
+  `isonline` tinyint(1) unsigned DEFAULT '0' COMMENT '是否上班，0下班，1上班',
+  `status` tinyint(1) unsigned DEFAULT '1' COMMENT '交易顾问状态：0锁定，1启用',
+  `allot_num` int(10) unsigned DEFAULT '0' COMMENT '今天已分配的数量',
+  PRIMARY KEY (`manager_id`),
+  KEY `group_id` (`group_id`),
+  KEY `nextallottime` (`nextallottime`) USING BTREE,
+  KEY `allot_num` (`allot_num`) USING BTREE,
+  KEY `max` (`max`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-交易顾问配置表';
+
+CREATE TABLE `mk_allot_user_bsdimension` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '交易顾问id',
+  `bsdimension_id` int(10) NOT NULL DEFAULT '0' COMMENT '商机分配维度id',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=484 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联商机分配维度表';
+
+CREATE TABLE `mk_allot_user_dimension` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '顾问id',
+  `dimension_id` int(10) NOT NULL DEFAULT '0' COMMENT '分配维度id',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`),
+  KEY `dimension_id` (`dimension_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=728 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联分配维度表';
+
+CREATE TABLE `mk_allot_user_mode` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '交易顾问id',
+  `mode_id` int(10) NOT NULL DEFAULT '0' COMMENT '任务模式',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`),
+  KEY `mode_id` (`mode_id`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=392 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联分配任务模式';
+
+ALTER TABLE `mk_task_allot_grab`
+DROP PRIMARY KEY,
+ADD PRIMARY KEY (`task_id`, `type`);
+
+三点半执行的sql
+insert into mk_allot_pool (task_id,type,needallot,allotstate,weights, createtime,next_chktime,begin_chktime) select task_id,1,1,0,66,createtime,next_chktime,begin_chktime from mk_task_allot_pool where needallot=1 and allotstate=0 and createtime>1445788800
+
+insert into mk_allot_pool (task_id,type,needallot,allotstate,weights, createtime,next_chktime,begin_chktime) select task_id,1,needallot,0,68,createtime,next_chktime,begin_chktime from mk_task_allot_pool where needallot=2 and allotstate=0 and createtime>1445788800
+
+insert into mk_allot_grabpool (task_id,type,weights,createtime) select task_id,1,68,createtime from mk_task_allot_pool where needallot=2 and allotstate=0 and createtime>1445788800
+
+

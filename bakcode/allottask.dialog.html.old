@@ -1,0 +1,22 @@
+<form class="form-horizontal form dialog" method="post" action="{/$smarty.server.REQUEST_URI/}">
+	<div class="control-group">
+		<label class="control-label" for="tags">售前客服</label>
+		<div class="controls">
+			<select name="mid">
+<!-- 			{/foreach from=$managers item=manager/} -->
+                                <optgroup label="{/$manager.group_name/}">
+                                    <!-- 			{/foreach from=$manager.managers item=m/} -->
+                                    <option value="{/$m.manager_id/}">{/$m.manager_name/}&nbsp;{/if $m.isonline/}(在线){//if/}</option>
+                                    <!-- 			{//foreach/} -->
+                                </optgroup>
+<!-- 			{//foreach/} -->
+			</select>
+			<span class="help-inline">请指定您要分配的客服。</span>
+		</div>
+   	</div>
+</form>
+<script>
+$(document).ready(function (){
+	ajaxform($('form.dialog'))
+});
+</script>

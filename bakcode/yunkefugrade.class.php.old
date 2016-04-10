@@ -1,0 +1,17 @@
+<?php
+
+class zbj_model_mk_contactreason extends zbj_components_basemodel {
+
+	public function primarykey(){
+		return 'rs_id';
+	}
+
+	/**
+	 * 返回当前模型数据表名
+	 */
+	public function tableName() {
+		return 'mk_yunkefu_grade';
+	}
+
+}
+?>

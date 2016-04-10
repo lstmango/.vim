@@ -1,0 +1,10 @@
+#!/bin/bash
+sudo cd /data/www/html/zbjv6
+sudo rm -f cscope.*
+sudo rm -f tags
+#sudo rm -f /data/www/html/zbjv6/cscope.*
+#sudo rm -f /data/www/html/zbjv6/tags
+sudo ctags -R /data/www/html/zbjv6/
+#sudo find /data/www/html/zbjv6 -name "*.php"  -o -name '*.inc' -o -name '*.module' > cscope.files
+sudo find /data/www/html/zbjv6 -name "*.php"  -o -name '*.inc' -o -name '*.module' > cscope.files
+sudo cscope -Rbkq

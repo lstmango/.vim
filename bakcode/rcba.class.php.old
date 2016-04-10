@@ -1,0 +1,181 @@
+<?php
+
+/**
+ * 用户类
+ */
+class service_rcba extends zbj_components_baseservice {
+	/**
+	 * 默认无需认证模块
+	 *
+	 * @var string
+	 */
+	static $NOT_AUTH_MODULE = 'cp,crontab,tools,weixinapi';
+	/**
+	 *
+	 * @var string
+	 */
+	static $RBAC_ROLE_TABLE = 'cp_role';
+	/**
+	 *
+	 * @var string
+	 */
+	static $RBAC_USER_TABLE = 'cp_role_user';
+	/**
+	 *
+	 * @var string
+	 */
+	static $RBAC_ACCESS_TABLE = 'cp_access';
+	/**
+	 *
+	 * @var string
+	 */
+	static $RBAC_NODE_TABLE = 'cp_node';
+	
+	// 权限认证的过滤器方法
+	
+	/**
+	 * +----------------------------------------------------------
+	 * 取得当前认证号的所有权限列表
+	 * +----------------------------------------------------------
+	 *
+	 * @param integer $authId
+	 *        	用户ID
+	 *        	+----------------------------------------------------------
+	 * @access public
+	 *         +----------------------------------------------------------
+	 */
+	static public function getAccessList($authId) {
+		// 新方法进行权限的优化
+		// Db方式权限数据
+		$m_roleuser = new zbj_model_cp_roleuser ();
+		$roleusers = $m_roleuser->selectone ( array (
+				'user_id' => $authId,
+				'cp_role.status' => 1 
+		), 'GROUP_CONCAT( role_id ) as role_id', null, null, array (
+				'cp_role' => 'cp_role.id=cp_role_user.role_id' 
+		) );
+		if (count ( $roleusers )) {
+			$role_ids = explode ( ',', $roleusers ['role_id'] );
+		} else {
+			return array ();
+		}
+		$nodes = array ();
+		$m_access = new zbj_model_cp_access ();
+		if (count ( $role_ids )) {
+			$access = $m_access->select ( array (
+					'role_id in (' . implode ( ',', $role_ids ) . ')' 
+			), 'distinct node_id' )->items;
+			if (is_array ( $access )) {
+				foreach ( $access as $node ) {
+					array_push ( $nodes, $node ['node_id'] );
+				}
+			} else {
+				return array ();
+			}
+		} else {
+			return array ();
+		}
+		if ($nodes) {
+			$m_node = new zbj_model_cp_node ();
+			// define('DEBUG', $value);所有的有效的结点
+			$temp_nodes = $m_node->select ( array (
+					'status=1 and id in (' . implode ( ',', $nodes ) . ')' 
+			), 'id,name,pid,level' )->items;
+			$access = array ();
+			$del_key = array ();
+			// 处理第一级
+			foreach ( $temp_nodes as $key => $val ) {
+				if ($val ['level'] == 1 && $val ['pid'] == 0) { // level app
+					$level2 = array ();
+					array_push ( $del_key, $key );
+					foreach ( $temp_nodes as $key2 => $val2 ) { // level control
+						if (in_array ( $key2, $del_key )) {
+							continue;
+						}
+						if ($val ['id'] == $val2 ['pid'] && $val2 ['level'] == 2) {
+							array_push ( $del_key, $key2 );
+							$level3 = array ();
+							foreach ( $temp_nodes as $key3 => $val3 ) { // level mothed
+								if (in_array ( $key3, $del_key )) {
+									continue;
+								}
+								if ($val2 ['id'] == $val3 ['pid'] && $val3 ['level'] == 3) {
+									array_push ( $del_key, $key3 );
+									$level4 = array ();
+									foreach ( $temp_nodes as $key4 => $val4 ) { // level submothed
+										if (in_array ( $key4, $del_key )) {
+											continue;
+										}
+										if ($val3 ['id'] == $val4 ['pid'] && $val4 ['level'] == 4) {
+											array_push ( $del_key, $key4 );
+											$level4 [strtoupper ( $val4 ['name'] )] = array ();
+										}
+									}
+									$level3 [strtoupper ( $val3 ['name'] )] = $level4;
+								}
+							}
+							$level2 [strtoupper ( $val2 ['name'] )] = $level3;
+						}
+					}
+					$access [strtoupper ( $val ['name'] )] = $level2;
+				}
+			}
+			return $access;
+		} else {
+			return array ();
+		}
+	}
+	/**
+	 * 检查一个操作是否有权限指定
+	 *
+	 * @param string $control
+	 *        	控制器
+	 * @param string $action
+	 *        	操作默认index
+	 * @param string $subaction
+	 *        	子操作默认null
+	 * @param string $app
+	 *        	程序cp
+	 * @return boolean
+	 */
+	static function checkAnAccess($control, $action = 'index', $subaction = null) {
+		$pathinfo=parse_url(lib_Constant::BOSS2_URL);
+		if (strtolower ( $pathinfo ['host'] ) != 'boss2.zhubajie.com') {
+			return true;
+		}
+		$control = strtoupper ( $control );
+		$action = strtoupper ( $action );
+		if (self::$NOT_AUTH_MODULE) {
+			if (in_array ( $control, explode ( ',', strtoupper ( self::$NOT_AUTH_MODULE ) ) )) {
+				return true;
+			}
+		}
+		
+		if ($subaction) {
+			$subaction = strtoupper ( $subaction );
+		}
+		if (isset ( $_SESSION ['_ACCESS_LIST'] [$control] [$action] )) {
+			if ($subaction) {
+				if (isset ( $_SESSION ['_ACCESS_LIST'] [$control] [$action] [$subaction] )) {
+					return true;
+				}else{
+					$s_cache = new zbj_lib_cache ( 'memcache' );
+					$rcba_open = $s_cache->get ( 'boss.rcba_open' );
+					if ($rcba_open) {
+						return true;
+					}else{
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+		$s_cache = new zbj_lib_cache ( 'memcache' );
+		$rcba_open = $s_cache->get ( 'boss.rcba_open' );
+		if ($rcba_open) {
+			return true;
+		}else{
+			return false;
+		}
+	}
+}

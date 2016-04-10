@@ -1,0 +1,161 @@
+<?php
+/**
+ * 订单分配审核顾问
+ * User: switch
+ * Date: 2015/7/8
+ * Time: 13:57
+ */
+
+class zbj_service_taskverify extends zbj_components_baseservice{
+
+    protected $id;  //主键id
+    protected $marter_table = 'zbj_model_mk_task';
+
+    /**
+     * 构造函数
+     * @param $id
+     */
+    function __construct($id=0)
+    {
+        parent::__construct();
+        $this->setId($id);
+		$this->srvAllotLog = new zbj_service_taskallotlog();
+    }
+
+    /**
+     * 需求分配审核人员
+     * @param $taskObj
+     * @param $managerArr
+     * @return bool
+     */
+    public function toVerify(&$taskObj){
+
+        if(empty($taskObj) || !is_object($taskObj)){
+            $this->setError(0,'参数异常');
+            return fasle;
+        }
+
+        $taskInfo = $taskObj->get('*');
+
+        //需求有交易顾问、审核顾问或者需求模式不是雇佣、招标  退出
+        if(!empty($taskInfo['manager_id']) || !empty($taskInfo['manager_id2'])  || (!in_array($taskInfo['mode'], array(10,13))) ){
+            return true;
+        }
+
+        if(empty($taskInfo['task_id'])){
+            $this->setError(0, '获取需求失败');
+            return false;
+        }
+        if($taskInfo['open_state'] == 1){
+            $this->setError(0, '该需求被关闭，无法分配');
+            return false;
+        }
+
+        $log = '自动分配审核人员：';
+        try{
+            $this->_beginTransaction('mk');
+            //从交易顾问中获取审核顾问
+            $managerArr = $this->getVerifyManager($taskObj);
+            if(empty($managerArr['manager'])){
+                throw new Exception('获取审核顾问失败');
+            }
+            $manager = (array)$managerArr['manager'];
+            //获取审核人员信息
+            $managerObj = new zbj_service_manager($manager['manager_id']);
+            $managerInfo = $managerObj->get('*');
+            $name = !empty($managerInfo['truename']) ? $managerInfo['truename'] : $managerInfo['name'];
+            $log .= $name;
+            //配置需求审核人员
+            $taskAttr = array(
+                'manager_id2'     => $manager['manager_id'],
+                'manager_name2'   => $name,
+            );
+            $this->set($taskAttr);
+
+            if($this->save() === false){
+                throw new Exception('更新需求信息失败');
+            }
+            
+            //更新需求分配审核时间
+            $taskObj->updateTaskExtends(array("allot_audit_time"=>time()));
+
+            //非1v1订单审核
+            $allotService = new zbj_service_allot(4);
+            $allotService->createlog($taskInfo['task_id'],$managerInfo['manager_id']);
+            $logService = new zbj_service_cplog();
+            $logService->addLog(0, $taskInfo['task_id'], $log);
+			$this->srvAllotLog->addTaskAllotLog($taskInfo['task_id'],array($log));
+
+            $this->_commit('mk');
+        }catch (Exception $e){
+            $this->_rollBack('mk');
+            $this->setError(0, $e->getMessage());
+            return fasle;
+        }
+        return true;
+    }
+
+    /**
+     * 获取审核顾问   在需求交易顾问中选一个
+     * @param $taskService
+     * @param int $managerId
+     * @return array|bool
+     */
+    private function getVerifyManager(&$taskService, $managerId=0){
+
+        if(empty($taskService) || !is_object($taskService)){
+            $this->setError(0,'传入的参数异常');
+            return false;
+        }
+
+        $taskInfo = $taskService->get('*');
+
+        if(empty($taskInfo['task_id'])){
+            $this->setError(0,'获取需求信息失败');
+            return false;
+        }
+        $verifyLog = array();
+        $managerId = intval($managerId);
+        $taskAllot = new zbj_service_allot_taskallot();
+        //获取指定审核顾问信息
+        if($managerId > 0){
+            $manager = $taskAllot->getSpecialManager($managerId);
+            if(empty($manager)) return false;
+            return array('manager'=>$manager);
+        }
+
+        //获取最合适的交易顾问做审核顾问
+        $isOnline = zbj_lib_Constant::DOMAIN=='zhubajie.com'?true:false; //线上环境必须线上审核顾问
+
+        // 获取该需求上一次交易顾问当审核顾问
+        $manager = $taskAllot->getPreManager($taskService);
+		unset($manager);
+
+        if(!empty($manager) && is_array($manager)){
+            $chkOnline = !$isOnline || $manager['isonline']==1;
+
+            if($chkOnline){
+                return array('manager'=>$manager);
+            }
+
+            $allotlog[] = "审核顾问「{$manager['manager_name']}」";
+            if(!$chkOnline){
+                $allotlog[] = "不在线";
+            }
+        }
+
+		$verifyData['is_verify']=1;
+        $manager = $taskAllot->getNextRandManager($taskService,true,$verifyData);
+        if(!empty($manager) && is_array($manager)){
+            return array('manager'=>$manager);
+        }
+        $verifyLog[] = '没有找到随机的审核顾问';
+
+        if(!empty($allotlog[0])){
+        	$srvAllotLog = new zbj_service_taskallotlog();
+            $srvAllotLog->addTaskAllotLog($taskInfo['task_id'],$allotlog);
+        }
+        return array();
+    }
+
+}

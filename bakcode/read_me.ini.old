@@ -1,0 +1,20 @@
+http 模拟接口
+
+加密方式
+请求参数采用 http post 方式传输
+     * 将请求参数格式化为“key=value”格式，即“k1=v1”、“k2=v2”、“k3=v3” ；
+     * 将格式化好的参数键值对以字典序升序排列后，拼接在一起，即“k1=v1&k2=v2&k3=v3”；
+     * 在拼接好的字符串末尾追加上公共加密key；即：k1=v1&k2=v2&k3=v3signkey=加密key（ （参数sign 不做拼接）
+     * 上述字符串的sha1值即为签名的值。
+     * 请求参数sign 的值 即为 签名
+测试环境key（ZHUBAJIESIGNKEY）括号内为key
+
+1.移动端延长招标订单征集期接口
+请求地址 ： task.t6.zbj.com/httpapi/ExtendNewbidEndDate
+请求参数
+task_id任务id
+day延期天数
+
+返回
+state 0 失败 1成功
+msg  接口返回信息

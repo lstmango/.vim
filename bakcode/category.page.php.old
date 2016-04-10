@@ -1,0 +1,4003 @@
+<?php
+class controller_category extends components_basepage {
+	
+	private $_mdlCategory;
+	private $_mdlVirtual;
+	private $_mdlPub;
+	private $_mdlV2c;
+	private $_mdlP2c;
+	private $_oCategoryV;
+	private $_oCategoryP;
+	private $_oCategory;
+	
+    //交易协议金额
+    const AGREEMENTCLOSEAMOUNT = 1000;
+    const AGREEMENTOPENAMOUNT  = 5000;
+
+	public function __construct() {
+		parent::__construct();
+		$this->_mdlCategory = zbj_model_api::get('zbj_model_mk_category');      //获取数据模型
+		$this->_mdlVirtual = zbj_model_api::get('zbj_model_mk_categoryvirtual');
+		$this->_mdlPub = zbj_model_api::get('zbj_model_mk_categorypub');
+		$this->_mdlV2c = zbj_model_api::get('zbj_model_mk_categoryv2c');
+		$this->_mdlP2c = zbj_model_api::get('zbj_model_mk_categoryp2c');
+		$this->_oCategory = new zbj_service_category();
+		$this->_oCategoryV = new zbj_service_categoryvirtual();
+		$this->_oCategoryP = new zbj_service_categorypub();
+	}
+
+	
+	/**
+	 * 获取二级类目
+	 */
+	private function getSecCat($str=''){
+		$categoryvirtual = new zbj_service_categoryvirtual();
+		$secendcat = array();
+		if(!empty($catgdata)){
+			foreach ($catgdata as $key=>$item){
+				foreach ($item['list'] as $key2=>$item2){
+					if(!empty($str)){
+					if (preg_match('/'.$str.'/', $item2["virtual_name"]))
+							$secendcat[] = array('name'=>trim($item2["virtual_name"]),'cid'=>$key2);
+					}else{
+						$secendcat[] = array('name'=>trim($item2["virtual_name"]),'cid'=>$key2);
+					}
+				}
+			}
+		}
+		return $secendcat;
+	}
+	/**
+	 * 获取三级类目
+	 * @param string $str
+	 * @return multitype:
+	 */	
+	private function getThreeCat($str=''){
+		$categoryvirtual = new zbj_service_categoryvirtual();
+		$aVirtuals = $categoryvirtual->getTree();
+		$list_lv3 =array();
+		foreach ($aVirtuals as $lv1id => $lv1data) {
+			if (is_array($lv1data['list'])) {
+				foreach ($lv1data['list'] as $lv2id => $lv2data) {
+					if (is_array($lv2data['list'])) {
+						foreach ($lv2data['list'] as $lv3id => $lv3data) {
+							//$list_lv3[$lv3id] = $lv3data;
+							if(!empty($str)){
+								if (preg_match('/'.$str.'/', $lv3data["virtual_name"]))
+									$list_lv3[] = array('name'=>trim($lv3data['virtual_name']),'cid'=>$lv3id);
+							}else{
+								$list_lv3[] = array('name'=>trim($lv3data['virtual_name']),'cid'=>$lv3id);
+							}
+						}
+						unset($lv2data['list']);
+					}
+					$list_lv2[$lv2id] = $lv2data;
+				}
+				unset($lv1data['list']);
+			}
+			$list_lv1[$lv1id] = $lv1data;
+		}
+		return $list_lv3;
+	}
+	
+	/**
+	 * 获取分类
+	 * @param unknown $inPath
+	 * @return string
+	 */
+	public function PageGetCategory($inPath) {
+		$urlparam = $this->getUrlParams($inPath);
+		$type = (int)$urlparam['type']? (int)$urlparam['type'] : 0;
+		$data =array();
+		if (in_array($type, array(1,2,3))) {//分类一二三级
+			$catId = intval($urlparam['id']);
+			$virtual = new zbj_service_category();
+			$treelist = $virtual->getTree();
+			if ($type == 1) {
+				$catalist = $treelist;
+			} elseif ($type == 2) {
+				$catalist = $treelist[$catId]['list'];
+			} else {
+				foreach ($treelist as $v1) {
+					if ($v1['list']) {
+						foreach ($v1['list'] as $v2) {
+							if ($v2['category_id'] == $catId) {
+								$catalist = $v2['list'];
+								break;
+							}
+						}
+					}
+				}
+			}
+			if ($catalist) {
+				foreach ($catalist as $k => $v) {
+					if ($v['is_show'] == 1) {
+						$data[] = array('id' => $v['category_id'], 'name' => $v['category_name']);
+					}
+				}
+			}
+		} 
+		return json_encode($data);
+	}
+	
+	/**
+	 *通用列表
+	 */
+	private function getCommList($mdl,$condition='',$item='',$groupby='',$orderby='',$leftjoin='',$limit=12,$page='',$count=false){
+		if (!empty($limit)){
+			$mdl->setLimit($limit);
+		}
+		if (!empty($page)){
+			$mdl->setPage($page);
+		}
+		$mdl->setCount($count);
+		$listObj = $mdl->_db->select($mdl->tableName().' AS a',$condition,$item,$groupby,$orderby,$leftjoin);
+		return $listObj;
+	}
+	
+	/**
+	 * 推荐位管理
+	 * @param unknown $inPath
+	 */
+	public function pageRecomand($inPath){
+		$params = $this->getUrlParams($inPath);
+		$do = $params['do'];
+		switch ($do){
+			case 'list':
+				$this->aParams['name'] = $params['name'];
+				$this->aParams['cid'] = $params['cid'];
+				$mdl = zbj_model_api::get("zbj_model_mk_categoryv2r");
+				//define("DEBUG", TRUE);
+				$result = $this->getCommList($mdl,"a.virtual_id={$params['cid']}","*");
+				$usermdl = zbj_model_api::get("zbj_model_mb_info");
+				$list = array();
+				foreach ($result->items as $item){
+					if(!empty($item['user_id'])){
+						$listarr = $this->getCommList($usermdl,"a.user_id={$item['user_id']}","brandname");
+						$item['brandname'] = $listarr->items[0]['brandname'];
+					}
+					$list[$item['sort']-1] = $item;
+				}
+				if(!empty($result->items)){
+					$this->aParams['list'] = $list;
+				}
+				return $this->render ("category/recd/list.html", $this->aParams);
+				break;
+			case 'del':
+				$categoryvirtual = new zbj_service_categoryvirtual();
+				$v2r_id = $_GET['v2r_id'];
+				$re = $categoryvirtual->removeRecommendUser($v2r_id);
+				if($re){
+					echo 1;
+				}else{
+					echo 0;
+				}
+				exit;
+				break;
+			case 'save':
+				$categoryvirtual = new zbj_service_categoryvirtual();
+				$vid = $_GET['virtualid'];
+				$uid = $_GET['userid'];
+				$sort = $_GET['sort'];
+				if(!empty($vid)){
+					$users =array($sort=>$uid);
+					$categoryvirtual->setId($vid);
+					$result = $categoryvirtual->addRecommendUser($users);
+					echo $result;
+					exit;
+				}else{
+					$this->aParams['cid'] = $params['cid'];
+					return $this->render ("category/recd/add.html", $this->aParams );
+				}
+				break;
+			default:
+				if(!empty($_GET['searchncont'])){
+					$cat = $this->getThreeCat($_GET['searchncont']);
+				}else{
+					$cat = $this->getThreeCat();
+				}
+				$this->aParams['cat'] = $cat;
+				return $this->render ("category/recd/index.html", $this->aParams );
+				break;
+		}
+	}
+	
+	/**
+	 *  扩展属性管理
+	 */
+	public function pageExtlist($inPath){
+		$path = $this->getUrlParams($inPath);
+		$do = $path['do'];
+		$type = !empty($path['type'])?$path['type']:0;//区分服务商，需求和服务
+		$path['type']=!empty($path['type'])?$path['type']:0;
+		$condition = " a.`type`={$type}";
+		$page = max(intval($path['page']),1);
+		$categoryId = $path['cid'];
+		switch ($do){
+			case 'getctg':
+				echo json_encode($this->getCatalog($path));
+				break;
+			case 'extinfo':
+				$srCategory = new zbj_service_category();
+				$extid =  $path['extid'];
+				$res = $this->getExtV2v($categoryId, 0);
+				$str = "";
+				if(!empty($res)){
+					$extarr = $res[$extid];
+					//$_SERVER["HTTP_REFERER"]
+					if(!empty($extarr)){
+						$str .="<div>以下内容有关联到该扩展属性，确定要删除这个扩展属性吗？</div>";
+						foreach ($extarr as $item){
+							$stype = $item['s_ext_type'];
+							if($stype==1){
+								$stype ="需求";
+							}else if($stype ==2) {
+								$stype ="服务";
+							}else{
+								$stype ="服务商";
+							}
+							$srCategory->setId($categoryId);
+							$paths = $srCategory->getPath();
+							$str .="<div><span>{$item['val_name']} ({$stype}) <span>({$paths[0]['category_name']} - {$paths[1]['category_name']} - {$paths[2]['category_name']}) </div>";
+						}
+					}
+				}
+				exit($str);
+			case 'extreainfo':
+				$srCategory = new zbj_service_category();
+				$mdlv2v = zbj_model_api::get("zbj_model_mk_categoryextv2v");
+				$extid = $path['extid'];
+				$sql = "select * from mk_category_ext_v2v as v2v,mk_category_ext as ext,mk_category_ext_val as val where  v2v.s_val_id=val.val_id and s_ext_id={$extid} and v2v.m_ext_id = ext.ext_id  ";
+				$list = $mdlv2v->query($sql);
+				if(!empty($list)){
+					$str .="<div>以下内容有关联到该扩展属性，确定要删除这个扩展属性吗？</div>";
+					foreach ($list as $item){
+						$stype = $item['s_ext_type'];
+						if($stype==1){
+							$stype ="需求";
+						}else if($stype ==2) {
+							$stype ="服务";
+						}else{
+							$stype ="服务商";
+						}
+						$srCategory->setId($item['category_id']);
+						$paths = $srCategory->getPath();
+						$str .="<div><span>{$item['val_name']} ({$stype}) <span>({$paths[0]['category_name']} - {$paths[1]['category_name']} - {$paths[2]['category_name']}) </div>";
+					}
+				}
+				exit($str);
+				break;
+			case 'relainfo':
+				//define("DEBUG",1);-+
+				$ext_val = intval($_GET['m_val_id']);
+				$mdlv2v = zbj_model_api::get("zbj_model_mk_categoryextv2v");
+				$sql = "select * from mk_category_ext_v2v as v2v,mk_category_ext as ext,mk_category_ext_val as val where v2v.s_val_id=val.val_id and v2v.s_ext_id = ext.ext_id and m_val_id={$ext_val} and s_ext_type={$type}";
+				$list = $mdlv2v->query($sql);
+				$result = array();
+				header("Content-type: text/html; charset=utf-8");
+				$srCategory = new zbj_service_category();
+				if(!empty($list)){
+					foreach ($list as $item){
+						$sextid = $item['category_id'];
+						$srCategory->setId($sextid);
+						$path = $srCategory->getPath();
+						$item['twocat'] = $path[1]['category_name'];
+						$item['threecat'] = $path[2]['category_name'];
+						$result[]=$item;
+					}
+				}
+				$res = "";
+				if(!empty($result)){
+					foreach ($result as $item){
+						$res .="<div>(".$item['twocat'].')'.$item['threecat'].':'.$item['val_name']."</div>";
+					}
+				}
+				echo $res;
+				break;
+			case 'savesort':
+				$len = count($_GET);
+				$sortar = array();
+				foreach ($_GET as $key=>$item){
+					$cnam = explode('_', $key);
+					$sortar[$cnam[1]] =$item;
+				}
+				if(!empty($sortar)){
+					try {
+						$mdl = zbj_model_api::get("zbj_model_mk_categoryext");
+						$mdl->beginTransaction();
+						foreach ($sortar as $key=>$val){
+							$mdl->setPkid($key);
+							$mdl->set('ext_sort',$val);
+							if(!$mdl->save()){
+								throw new Exception('报错');
+							}
+						}
+						$mdl->commit();
+						echo 1;
+					}catch (Exception $e){
+						$mdl->rollBack();
+						echo 0;
+					}
+				}
+				exit;
+				break;
+			default:
+				$relaresult = $this->getExtV2v($categoryId, $type,0);//关联属性
+				$srCategory = new zbj_service_category($categoryId);
+				$cateinfo = $srCategory->getPath();
+				$mdl = zbj_model_api::get("zbj_model_mk_categoryext");
+				$item = "a.*";
+				$leftjoin = array('mk_category_ext_val as ev'=>'ev.ext_id = a.ext_id');
+				$condition = "category_id={$categoryId} and type={$type}";
+				$list = $this->getCommList($mdl,$condition,$item,'group by a.ext_id','',$leftjoin,'',$page,true);
+				$result = array();
+				if(!empty($list->items)){
+					foreach ($list->items as $item){
+						$temp = unserialize($item['ext_options']);
+						$item['list_name'] = $temp['list_name'];//筛选时名称
+						$item['sub_name'] = $temp['sub_name'];//发布时名称
+						$item['join_name'] = $temp['join_name'];;//入驻时名称
+						$item['page_name'] = $temp['page_name'];//最终页名称
+						$item['is_must'] = $temp['is_must'];//必选、必填
+						$item['max_select'] = $temp['max_select'];//最多选择数 
+						$result[] = $item;
+					}
+				}
+				$inputype=array('text'=>'文本框','checkbox'=>'多选','select'=>'下拉框','radio'=>'单选','select'=>'下拉列表','hidden'=>'隐藏','password'=>'密码','textarea'=>'富文本');
+				//$pagebar = $this->PageBar($list->totalSize, $limit, $page, $inPath,'style9');
+				$this->tplvar['path'] = $path;
+				$this->tplvar['cateinfo'] = $cateinfo;
+				$this->tplvar['list'] = $result;
+				$this->tplvar['inputype'] = $inputype;
+				$this->tplvar['pagebar'] = $pagebar;
+				$this->tplvar['relares'] = $relaresult;
+				return $this->render('category/ext/list.html',$this->tplvar);
+		}
+	}
+	
+	public function pageDelExt($inPath){
+		$path = $this->getUrlParams($inPath);
+		$zsc = new zbj_service_category();
+		$extid = $path['extid'];
+		if($zsc->deleteExt($extid)){
+			echo 1;
+		}else{
+			echo 0;
+		}
+		exit;
+	}
+
+	
+	/**
+	 * @param unknown $cid 类目ID
+	 * @param unknown $type 区分需求、服务商、服务
+	 */
+	private function getExtV2v($cid,$type){
+		$catgoryser = new zbj_service_category($cid);
+		$catext = $catgoryser->getExt($type);
+		$result = array();
+		if(!empty($catext)){
+			$mdlval = zbj_model_api::get('zbj_model_mk_categoryextval');
+			foreach ($catext as $item){
+				$tmp = $item['vals'];
+				if(!empty($tmp)){
+					$tmpstr = implode(",", array_keys($tmp));
+				}
+				if($type==0){
+					$leftjoin = array('mk_category_ext_v2v as v2v'=>'val_id=v2v.s_val_id');
+				}else{
+					$leftjoin = array('mk_category_ext_v2v as v2v'=>'val_id=v2v.m_val_id');
+				}
+				if(!empty($tmpstr)){
+					$edtion = "val_id in ($tmpstr)";
+					$tmpres =$mdlval->select($edtion,"v2v.*,val_id,ext_id,val_name",'','',$leftjoin);
+					$tmpar =array();
+					foreach ($tmpres->items as $val){
+						if(type !=0){
+							$tmpar[$val['m_val_id']] = $val;
+						}else{
+							$tmpar[$val['val_id']] = $val;
+						}
+					}
+					$result[$val['ext_id']] = $tmpar;
+				}
+			} 
+		}
+		return $result;
+	}
+	
+	
+	public function pageIndex($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$type = zbj_lib_BaseUtils::getStr($path['type'], 'int');
+		switch ($type) {
+			case 1:
+				$page = zbj_lib_BaseUtils::getStr($path['page'], 'int');
+				$page = isset($page) ? $page : 1;
+				$limit = 20;
+				//基础类目
+				$coundition = array(
+					'level'=>3
+				);
+				$sKey = zbj_lib_BaseUtils::getStr($_GET['key'], 'string');
+				if (!empty($sKey)) {
+					$coundition[] = "category_name LIKE('%".$sKey."%')";
+					$this->tplvar['key'] = $sKey;	
+				}
+				$this->_mdlCategory->setLimit(20);
+				$this->_mdlCategory->setPage($page);
+				$this->_mdlCategory->setCount(true);
+				$oCategory = $this->_mdlCategory->select($coundition, '*','', 'order by category_id asc');
+				$aCategory = $oCategory->items;
+				$total = $oCategory->totalSize;
+				
+				$pageBar = $this->pageBar($total, $limit, $page, $inPath, 'style5', '?'.$_SERVER['QUERY_STRING']);
+				
+				$this->tplvar['category'] = $aCategory;
+				$this->tplvar['pagebar'] = $pageBar;
+				$this->tplvar['total'] = $total;
+				
+				return $this->render('category/list.html', $this->tplvar);
+				break;
+			case 2:
+				break;
+			default:
+				//服务商分类树形结构
+				$aData = array();
+				$aCategory = $this->_mdlCategory->select("","category_id,parent_id,is_show,category_name,category1id,category2id,level,sort","","order by level asc, sort desc,category_id asc")->items;
+				$lv1 =0; $lv2 = 0;$lv3 = 0;
+				if (!empty($aCategory)) {
+					foreach ($aCategory as $key=>$value) {
+						$level = $value['level'];
+						if ($level == 1) {
+							$aData[(int)$value['category_id']] = $value;
+							unset($aCategory[$key]);
+						}
+					}
+					foreach ($aCategory as $ky=>$val) {
+						$level = $val['level'];
+						if ($level == 2 && $val['parent_id']) {
+							$aData[(int)$val['parent_id']]['sub'][(int)$val['category_id']] = $val;
+							unset($aCategory[$ky]);
+						}
+					}
+					foreach ($aCategory as $k=>$val) {
+						$level = $val['level'];
+						if ($level == 3 && $val['parent_id']) {
+							$aData[(int)$val['category1id']]['sub'][$val['parent_id']]['sub'][] = $val;
+							unset($aCategory[$k]);
+						}
+					}
+				}
+				
+				$lv1 = $this->_mdlCategory->selectOne("level=1","count(0) as n");
+				$lv1 = $lv1['n'];
+				$lv2 = $this->_mdlCategory->selectOne("level=2","count(0) as n");
+				$lv2 = $lv2['n'];
+				$lv3 = $this->_mdlCategory->selectOne("level=3","count(0) as n");
+				$lv3 = $lv3['n'];
+				
+				$this->tplvar['data'] = $aData;
+				$this->tplvar['total'] = array('lv1'=>$lv1, 'lv2'=>$lv2, 'lv3'=>$lv3);
+				$this->tplvar['freecate'] = $aCategory;
+				
+				return $this->render('category/index.html', $this->tplvar);
+				break;
+		}
+	}
+	
+	public function pageVindex($inPath) {
+		$aVirtual = $this->_mdlVirtual->select("", "sort,virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level", "", "order by level asc,sort desc,virtual_id asc")->items;
+		$aData = array();
+		if (!empty($aVirtual)) {
+			foreach ($aVirtual as $key=>$value) {
+				$level = $value['level'];
+				if ($level == 1 && $value['virtual_id']) {
+					$aData[(int)$value['virtual_id']] = $value;
+					unset($aVirtual[$key]);
+				}
+			}
+			foreach ($aVirtual as $ky=>$val) {
+				$level = $val['level'];
+				if ($level == 2 && $val['parent_id']) {
+					$aData[(int)$val['parent_id']]['sub'][(int)$val['virtual_id']] = $val;
+					unset($aVirtual[$ky]);
+				}
+			}
+			foreach ($aVirtual as $k=>$val) {
+				$level = $val['level'];
+				if ($level == 3 && $val['parent_id'] && $val['virtual1id']) {
+					$aData[(int)$val['virtual1id']]['sub'][$val['parent_id']]['sub'][] = $val;
+					unset($aVirtual[$k]);
+				}
+			}
+		}
+		
+		$lv1 = $this->_mdlVirtual->selectOne("level=1","count(0) as n");
+		$lv1 = $lv1['n'];
+		$lv2 = $this->_mdlVirtual->selectOne("level=2","count(0) as n");
+		$lv2 = $lv2['n'];
+		$lv3 = $this->_mdlVirtual->selectOne("level=3","count(0) as n");
+		$lv3 = $lv3['n'];
+		//游离频道
+		$freeVirtual = $this->_mdlVirtual->select("parent_id = 0 and level <> 1", "virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level")->items;
+		
+		$this->tplvar['data'] = $aData;
+		$this->tplvar['total'] = array('lv1'=>$lv1, 'lv2'=>$lv2, 'lv3'=>$lv3);
+		$this->tplvar['freevirtual'] = $freeVirtual;
+		
+		return $this->render('category/vindex.html', $this->tplvar);
+	}
+
+    /**
+     * 发布类目
+     * @param $inPath
+     * @return mixed
+     */
+    public function pagePindex($inPath) {
+        $aVirtual = $this->_mdlPub->select("", "sort,virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level", "", "order by level asc,sort desc,virtual_id asc")->items;
+        //绑定基础类目
+        $mdlV2c = new zbj_model_mk_categoryp2c();
+        $item = 'virtual_id,group_concat(distinct category_id) category_id';
+        $aV2c = $mdlV2c->select("virtual_id>0",$item , "group by virtual_id")->items;
+        if ($aV2c) {
+            foreach($aV2c as $v) {
+                $v2c[$v['virtual_id']] = $v;
+            }
+        }
+        $aData = array();
+        if (!empty($aVirtual)) {
+            foreach ($aVirtual as $k=>$v) {
+                $aVirtual[$k]['category_id'] = $v2c[$v['virtual_id']]['category_id'];
+            }
+            foreach ($aVirtual as $key=>$value) {
+                $level = $value['level'];
+                if ($level == 1 && $value['virtual_id']) {
+                    $aData[(int)$value['virtual_id']] = $value;
+                    unset($aVirtual[$key]);
+                }
+            }
+            foreach ($aVirtual as $ky=>$val) {
+                $level = $val['level'];
+                if ($level == 2 && $val['parent_id']) {
+                    $aData[(int)$val['parent_id']]['sub'][(int)$val['virtual_id']] = $val;
+                    unset($aVirtual[$ky]);
+                }
+            }
+            foreach ($aVirtual as $k=>$val) {
+                $level = $val['level'];
+                if ($level == 3 && $val['parent_id'] && $val['virtual1id']) {
+                    $aData[(int)$val['virtual1id']]['sub'][$val['parent_id']]['sub'][] = $val;
+                    unset($aVirtual[$k]);
+                }
+            }
+        }
+
+        $lv1 = $this->_mdlPub->selectOne("level=1","count(0) as n");
+        $lv1 = $lv1['n'];
+        $lv2 = $this->_mdlPub->selectOne("level=2","count(0) as n");
+        $lv2 = $lv2['n'];
+        $lv3 = $this->_mdlPub->selectOne("level=3","count(0) as n");
+        $lv3 = $lv3['n'];
+        //游离频道
+        $freeVirtual = $this->_mdlPub->select("parent_id = 0 and level <> 1", "virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level")->items;
+        if ($freeVirtual) {
+            foreach ($freeVirtual as $k => $v) {
+                $freeVirtual[$k]['category_id'] = $v2c[$v['virtual_id']]['category_id'];
+            }
+        }
+
+        $this->tplvar['data'] = $aData;
+        $this->tplvar['total'] = array('lv1'=>$lv1, 'lv2'=>$lv2, 'lv3'=>$lv3);
+        $this->tplvar['freevirtual'] = $freeVirtual;
+
+        return $this->render('category/pub.html', $this->tplvar);
+    }
+
+	/*
+	 * 添加分类 一二三级
+	 * level 0 1 2
+	 */
+	public function pageAddCategory($inPath) {
+		$parames = array();
+		$mdlCategory = zbj_model_api::get('zbj_model_mk_category');
+		$srCategory = new zbj_service_category();
+		$path = $this->getUrlParams($inPath);
+		$level = zbj_lib_BaseUtils::getStr($path['level'], 'int');
+		if (!$level) {
+			$level = 0;
+		}
+		$parames['level'] = $level;
+		$tpl = 'category/addcategory.html';
+		switch ($level) {
+			case 1:
+				if (count($_POST) <= 0) {
+					//一级类目
+					$aCategory = $mdlCategory->select("level=1", 'category_id,category_name')->items;
+					//游离的服务分类
+					$aCatalog = $mdlCategory->select("level=3 AND parent_id = 0", 'category_id,category_name')->items;
+					$parames['category'] = $aCategory;
+					$parames['catalog'] = $aCatalog;
+					return $this->render($tpl, $parames);
+				} else {
+					//添加二级分类
+					$cName = zbj_lib_BaseUtils::getStr($_POST['cname'], 'string');
+					$pCategory = zbj_lib_BaseUtils::getStr($_POST['pcategory'], 'int');
+					$nxCategory = $_POST['nxcategory'];
+					$is_join = zbj_lib_BaseUtils::getStr($_POST['isjoin'], 'int');
+					$isshow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+					//限制数量字段
+					$work_num = zbj_lib_BaseUtils::getStr($_POST['work_num'],'int');
+					$bid_num = zbj_lib_BaseUtils::getStr($_POST['bid_num'],'int');
+					if (empty($cName)) return $this->printmsg('请填写分类名称');
+					if (!$pCategory) return $this->printmsg('请选择所属的一级分类');
+					//限制数量字段合法行判断
+					if (($work_num<0)||($work_num>=255)) return $this->printmsg('输入数量不合法');
+					if (($bid_num<0)||($bid_num>=255)) return  $this->printmsg('输入数量不合法');
+					$items = array(
+						'category_name'=>trim($cName),
+						'parent_id'=>$pCategory,
+						'is_show'=>$isshow,
+						'is_join'=>$is_join,
+						'level'=>2,
+						'work_num'=>$work_num,
+						'bid_num'=>$bid_num,
+					);
+					
+					
+					//添加基础类目
+					$rs = $srCategory->addCategory($items, $nxCategory);
+					if (FALSE === $rs) {
+						return $this->printmsg('添加失败 ['.$srCategory->getError().']',0);
+					}
+					
+					return $this->printmsg('添加分类成功'.$error, 1, '', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			case 2:
+				//添加三级分类
+				if (count($_POST) <= 0) {
+					//二级类目
+					$aCategory = $mdlCategory->select("level=2", 'category_id,category_name')->items;
+					$parames['category'] = $aCategory;
+					return $this->render($tpl, $parames);
+				} else {
+					$cName = zbj_lib_BaseUtils::getStr($_POST['cname'], 'string');
+					$pCategory = zbj_lib_BaseUtils::getStr($_POST['pcategory'], 'int');
+					$is_join = zbj_lib_BaseUtils::getStr($_POST['isjoin'], 'int');
+					$isshow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+					$amount = zbj_lib_BaseUtils::getStr($_POST['amount'], 'float');
+					$min_amount_mode = zbj_lib_BaseUtils::getStr($_POST['min_amount_mode'], 'string');
+					$min_amount_mode = @join(',', $min_amount_mode);
+					is_null($min_amount_mode) && $min_amount_mode = '';
+					$min_amount = zbj_lib_BaseUtils::getStr($_POST['min_amount'], 'float');
+					$task_type = zbj_lib_BaseUtils::getStr($_POST['task_type'], 'int');
+					$ishide = zbj_lib_BaseUtils::getStr($_POST['ishide'], 'int'); //是否隐藏附件
+					$isrecd = zbj_lib_BaseUtils::getStr($_POST['isrecd'], 'int'); //是否手机推荐
+					$isaudit = zbj_lib_BaseUtils::getStr($_POST['isaudit'], 'int'); 
+					$mode_one = (int)$_POST['mode_one'][0];
+					$mode_many = (int)$_POST['mode_many'][0];
+					$mode_pie = (int)$_POST['mode_pie'][0];
+					if (empty($cName)) return $this->printmsg('请填写分类名称',0,'cname');
+					
+					//扩展属性预留
+					
+					$items = array(
+						'category_name'=>trim($cName),
+						'is_join'=>$is_join,
+						'parent_id'=>$pCategory,
+						'is_show'=>$isshow,
+						'isaudit'=>$isaudit,
+						'amount'=>$amount,
+						'min_amount_mode'=>$min_amount_mode,
+						'task_type'=>$task_type,
+						'is_allot_one'=>$mode_one,
+						'is_allot_many'=>$mode_many,
+						'is_allot_job'=>$mode_pie,
+						'min_amount'=>$min_amount,
+						'ishidefile'=>$ishide,
+						'is_recommend'=>$isrecd,
+						'level'=>3,
+					);
+					$rs = $srCategory->addCategory($items);
+					if (FALSE === $rs) {
+						return $this->printmsg('添加失败'.$srCategory->getError(),0);
+					}
+					return $this->printmsg('添加成功', 1, '', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			default:
+				if (count($_POST) <= 0) {
+					return $this->render($tpl, $parames);
+				} else {
+					$cName = zbj_lib_BaseUtils::getStr($_POST['cname'], 'string');
+					$isshow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+					$is_join = zbj_lib_BaseUtils::getStr($_POST['isjoin'], 'int');
+					if (empty($cName)) {
+						return $this->printmsg('请填写分类名称',0, 'cname');
+					}
+					$items = array(
+						'category_name'=>trim($cName),
+						'is_show'=>$isshow,
+						'is_join'=>$is_join,
+						'level'=>1,
+					);
+					$rs = $srCategory->addCategory($items);
+					if (false === $rs) {
+						return $this->printmsg('添加失败 ['.$srCategory->getError().']');
+					}
+					return $this->printmsg('添加成功', 1, '', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+		}
+	}
+	
+	/**
+	 * 编辑分类
+	 * @param $inPath
+	 */
+	public function pageEditCategory($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$categoryId = zbj_lib_BaseUtils::getStr($path['cid'], 'int');
+		if (!$categoryId) return $this->printmsg('请选择一个分类', 0, '', '/category/index');
+		
+		$srCategory = new zbj_service_category($categoryId);
+		$aCategory = $srCategory->get();
+		if (empty($aCategory)) return $this->printmsg('指定的分类不存在', 0, '', '/category/index');
+		$level = intval($aCategory['level']);
+		if (count($_POST) <= 0) {
+			$item  = "category_id,category_name";
+			if ($level == 2) {
+				//一级分类
+				$aCategoryOne = $this->_mdlCategory->select("level=1", $item)->items;
+				//其下级分类
+				$aSubCat = $this->_mdlCategory->select("level=3 and parent_id = {$aCategory['category_id']}", $item)->items;
+				//游离三级分类
+				$aFreeCate = $this->_mdlCategory->select("level=3 and parent_id = 0", $item)->items;
+				
+				// 工作台配置
+				try{
+			    	
+			    	zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET,10);
+					$wbapi = new com\zhubajie\task\interfaces\WorkBenchServiceClient(NULL);
+					zbj_lib_ApiClient::build($wbapi);
+					
+					$back = $wbapi->getTmplByCategoryID($categoryId);
+					if($back->msg->success != true){
+						throw new Exception($back->msg->message);
+					}
+					$wb2c = $back->tplid;
+				}catch(Exception $e){
+					$wb2c = 0;
+				}
+				        	
+				$this->tplvar['workbench_tpid'] = $wb2c;
+				$this->tplvar['category'] = $aCategoryOne;
+				$this->tplvar['subcate'] = $aSubCat;
+				$this->tplvar['freecate'] = $aFreeCate;
+			} elseif ($level == 3) {
+				//二级分类
+				$eCategory = $this->_mdlCategory->select("level=2", $item)->items;
+				$this->tplvar['catalog'] = $eCategory;
+				$securitymoney = (array)json_decode($aCategory['securitymoney']);				
+				$freemoney = 0.00;
+				$buymoney = 0.00;
+				$bidmoney = 0.00;
+				if(!empty($securitymoney)){
+					$freemoney = zbj_lib_BaseUtils::getStr($securitymoney['freemoney'],'float');
+					$buymoney = zbj_lib_BaseUtils::getStr($securitymoney['buymoney'],'float');
+					$bidmoney = zbj_lib_BaseUtils::getStr($securitymoney['bidmoney'],'float');
+				}
+				$this->tplvar['freemoney'] = number_format(round($freemoney,2),2,'.','');
+				$this->tplvar['buymoney'] = number_format(round($buymoney,2),2,'.','');
+				$this->tplvar['bidmoney'] = number_format(round($bidmoney,2),2,'.','');
+				
+				// 价格助手
+				$pubTipsAmount = (array)json_decode($aCategory['pub_tips_amount'],true);
+				empty($pubTipsAmount) && $pubTipsAmount = array(array(),array(),array(),array(),array(),array()); // 默认为6组数据
+				$this->tplvar['pub_tips_amount'] = $pubTipsAmount;
+				// 任务平均数据
+				$this->tplvar['task_avg_data'] = (array)json_decode($aCategory['task_avg_data'],true);
+				// 交易协议包括的附加协议
+				$agraddons = @explode(',',$aCategory['agreement_addons']);
+				$aCategory['agreement_addons'] = array();
+				empty($agraddons) && $agraddons = array();
+				foreach($agraddons as $agr){
+					if(empty($agr)) continue;
+					$aCategory['agreement_addons'][$agr] = 1;
+				}
+			}
+			//将最低发布金额的模式打散为数组便于前端使用
+			$aCategory['min_amount_mode'] = @explode(',', $aCategory['min_amount_mode']);
+			$this->tplvar['categoryId'] = $categoryId;
+			$this->tplvar['level'] = $level;
+			$this->tplvar['cateInfo'] = $aCategory;
+			return $this->render('category/edit.html', $this->tplvar);
+		} else {
+			$cName = zbj_lib_BaseUtils::getStr($_POST['cname'], 'string');
+			$isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+			//限制数量字段
+			$work_num = zbj_lib_BaseUtils::getStr($_POST['work_num'],'int');
+			$bid_num = zbj_lib_BaseUtils::getStr($_POST['bid_num'],'int');
+			$amount = zbj_lib_BaseUtils::getStr($_POST['amount'], 'float');
+			$min_amount = zbj_lib_BaseUtils::getStr($_POST['min_amount'], 'float');
+			$min_amount_mode = zbj_lib_BaseUtils::getStr($_POST['min_amount_mode'], 'string');
+			$min_amount_mode = @join(',', $min_amount_mode);
+			$task_type = zbj_lib_BaseUtils::getStr($_POST['task_type'], 'int');
+			$ishide = zbj_lib_BaseUtils::getStr($_POST['ishide'], 'int'); //是否隐藏附件
+			$isrecd = zbj_lib_BaseUtils::getStr($_POST['isrecd'], 'int'); //是否手机推荐
+			$is_join = zbj_lib_BaseUtils::getStr($_POST['isjoin'], 'int');
+			$isaudit = zbj_lib_BaseUtils::getStr($_POST['isaudit'], 'int'); 
+			$workfirst = zbj_lib_BaseUtils::getStr($_POST['workfirst'], 'int');  //比稿优先
+			$freemoney = round(zbj_lib_BaseUtils::getStr($_POST['freemoney'], 'float'),2);
+			$buymoney = round(zbj_lib_BaseUtils::getStr($_POST['buymoney'], 'float'),2);
+			$bidmoney = round(zbj_lib_BaseUtils::getStr($_POST['bidmoney'], 'float'),2);
+			$needjoin = zbj_lib_BaseUtils::getStr($_POST['bid_need_join'], 'int'); 
+			$ser_win_amount = round(zbj_lib_BaseUtils::getStr($_POST['ser_win_amount'], 'float'),2);
+			
+			$mode_one = (int)$_POST['mode_one'][0];
+			$mode_many = (int)$_POST['mode_many'][0];
+			$mode_pie = (int)$_POST['mode_pie'][0];
+
+            //新增交易协议开启状态金额限制    2015-06-18  switch
+            $cAmount = round(zbj_lib_BaseUtils::getStr($_POST['close_agreement_amount'], 'float'), 2);
+            $mAmount = round(zbj_lib_BaseUtils::getStr($_POST['must_agreement_amount'], 'float'), 2);
+            //若交易协议金额其中一项为空，设默认值
+            (empty($cAmount) && !empty($mAmount)) && $cAmount = self::AGREEMENTCLOSEAMOUNT;
+            (!empty($cAmount) && empty($mAmount)) && $mAmount = self::AGREEMENTOPENAMOUNT;
+			if (empty($cName)) {
+				return $this->printmsg('请填写分类名称', 0, 'cname');
+			}
+			//限制数量字段合法行判断
+			if (($work_num<0)||($work_num>=255)) return $this->printmsg('输入数量不合法');
+			if (($bid_num<0)||($bid_num>=255)) return  $this->printmsg('输入数量不合法');
+
+            if((!empty($cAmount) && !empty($mAmount)) && ($cAmount >= $mAmount)) return $this->printmsg('交易协议状态金额范围不正确');
+
+			$items = array(
+				'category_name'=>trim($cName),
+				'is_show'=>$isShow,
+				'is_join'=>$is_join,
+				'work_num' => $work_num,
+				'bid_num' => $bid_num,
+				'isupfile'=>intval($_POST['isupfile']),
+				'fileext'=>zbj_lib_BaseUtils::getStr($_POST['fileext']),
+				'is_agreement'	=> intval($_POST['is_agreement']), // ### 暂不上线 ###
+				'is_agreement_premoney'=> intval($_POST['is_agreement_premoney']),
+				'is_agreement_tips_order'=> intval($_POST['is_agreement_tips_order']),
+				'ser_win_amount'=>$ser_win_amount,//橱窗服务最低价格
+                'close_agreement_amount' => $cAmount,
+                'must_agreement_amount' => $mAmount
+			);
+			$free = array();
+			switch ($level) {
+				case 1:
+					$items['bid_need_join'] = $needjoin;
+					break;
+				case 2:
+					$pCategory = zbj_lib_BaseUtils::getStr($_POST['pcategory'], 'int');
+					$free = $_POST['nxcategory'];
+					$items['parent_id'] = $pCategory;
+					
+					$workbench = (array)$_POST['workbench_tpid']; // 后期这里直接换成选择的模版ID
+					//模版1 ， 有报价方案 模版2 , 无报价方案
+					$wbtpid = in_array('quote',$workbench)?1:2;
+					break;
+				case 3:
+					$pCategory = zbj_lib_BaseUtils::getStr($_POST['pcategory'], 'int');
+					$items['ispic'] = intval($_POST['ispic']);
+					$items['parent_id'] = $pCategory;
+					$items['amount']=$amount;
+					$items['task_type']=$task_type;
+					$items['is_allot_one']=$mode_one;
+					$items['is_allot_many']=$mode_many;
+					$items['is_allot_job']=$mode_pie;
+					$items['min_amount']=$min_amount;
+					$items['ishidefile']=$ishide;
+					$items['isaudit'] = $isaudit;
+					$items['is_recommend']=$isrecd;
+					$items['is_work_first'] = $workfirst;
+					$items['min_amount_mode'] = $min_amount_mode;
+					//显示消保推荐金额设置
+					$items['securitymoney'] = json_encode(array('freemoney'=>$freemoney,'buymoney'=>$buymoney,'bidmoney'=>$bidmoney));
+					
+					// 价格助手+任务平均数据
+					$pubTipsAmount = $this->getPubTipsAmount();
+					if($pubTipsAmount === false){
+						return $this->printmsg('请正确填写‘价格助手’相关的配置参数');
+					}
+					$taskAvgData = $this->getTaskAvgData();
+					if($taskAvgData === false){
+						return $this->printmsg('请正确填写‘需求平均数据’的相关配置');
+					}
+					
+					$items['pub_tips_amount'] = empty($pubTipsAmount)?'':json_encode($pubTipsAmount);
+					$items['task_avg_data'] = empty($taskAvgData)?'':json_encode($taskAvgData);
+					
+					// 交易协议包括的附加协议
+					$agraddons = zbj_lib_BaseUtils::getStr($_POST['agreement_addons']);
+					$items['agreement_addons'] = @implode(',',$agraddons);
+					
+					break;
+				default:
+					$items['level'] = 0;
+					break;
+			}
+			$rs = $srCategory->editCategory($items, $free);
+			if (false === $rs) {
+				return $this->printmsg('编辑失败 ~ '.$srCategory->getError(), 0);
+			}
+			$wberror = '';
+			if($wbtpid){
+				try{
+					zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET,15);
+					$payapi = new com\zhubajie\task\interfaces\WorkBenchServiceClient(null);
+					zbj_lib_ApiClient::build($payapi);
+										
+					$result = $payapi->updateTmpl($categoryId,$wbtpid);
+					if($result->msg->success == false){
+						throw new Exception($result->msg->message);
+					}
+				}catch(Exception $e){
+					$wberror = ' 编辑交易流程失败：'.$e->getMessage();
+				}
+			}
+			return $this->printmsg('编辑成功'.$wberror, 1, '', $_SERVER['HTTP_REFERER']);
+		}
+	}
+	
+	/**
+	 * 获取发布需求的引导价格
+	 * @return array
+	 * */
+	private function getPubTipsAmount(){
+		$post_price = $_POST['pub_tips_price'];
+		$post_t = $_POST['pub_tips_t'];
+		$post_msg = $_POST['pub_tips_msg'];
+		
+		$len = count($post_price);
+		if(empty($len)) return array();
+		
+		$perfectNum = 0;
+		$pub_tips_data = array();
+		for($i=0;$i<$len;$i++){
+			$tip_price = intval($post_price[$i]);
+			$tip_t = zbj_lib_BaseUtils::getStr($post_t[$i]);
+			$tip_msg = zbj_lib_BaseUtils::getStr($post_msg[$i]);
+			$tip_rec = intval($_POST['pub_tips_rec_'.$i]);
+			
+			$allempty = $tip_price<=0 && empty($tip_t) && empty($tip_msg) && $tip_rec<=0;
+			if($allempty) break;
+			if(($i>0 && $tip_price<=0) || $tip_price%10!=0 || empty($tip_t) || empty($tip_msg)){
+				return false;
+			}			
+			$pub_tips_data[] = array(
+				'price'	=> $tip_price,
+				't'	=> mb_substr($tip_t,0,6),
+				'msg'	=> mb_substr($tip_msg,0,40),
+				'rec'	=> $tip_rec,
+			);
+			$perfectNum++;
+		}
+		if($perfectNum!=0 && $perfectNum<3){
+			return false;
+		}else if($perfectNum==0){
+			return array();
+		}
+		foreach($pub_tips_data as $key=>$line){
+			if(empty($pub_tips_data[$key+1])){ break; }
+			if($line['price']>=$pub_tips_data[$key+1]['price']){
+				return false;
+			}
+		}	
+		for($k=0;$k<$len-$perfectNum;$k++){
+			$pub_tips_data[] = array();
+		}
+		
+		return $pub_tips_data;
+	}
+	
+	
+	/**
+	 * 获取配置的平均数据
+	 * @return array
+	 * */
+	private function getTaskAvgData(){
+		$task_avg_data = array();
+		
+		$post_price = zbj_lib_BaseUtils::getStr($_POST['task_avg_price'],'float');
+		$post_seller = intval($_POST['task_avg_seller']);
+		$post_rate = zbj_lib_BaseUtils::getStr($_POST['task_avg_rate'],'float');
+		
+		$allempty = $post_price<=0 && $post_seller<=0 && $post_rate<=0;
+		if($allempty) return $task_avg_data;
+		
+		if($post_price<=0 || $post_seller<=0 || $post_rate<=0){
+			return false;
+		}
+		$task_avg_data['price'] = number_format(intval($post_price*100)/100,2,'.','');
+		$task_avg_data['seller'] = $post_seller;
+		$task_avg_data['rate'] = number_format(intval($post_rate*100)/100,2,'.','');
+		
+		return $task_avg_data;
+	}
+	
+	/**
+	 * 添加虚拟分类
+	 * array $inPath
+	 */
+	public function pageAddVcategory($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$level = zbj_lib_BaseUtils::getStr($path['level'], 'int');
+		if (!in_array($level, array(1,2,3))) {
+			$level = 1;
+		}
+		$this->tplvar['level'] = $level;
+		switch ($level) {
+			case 1:
+				//define(DEBUG, 1);
+				//选择一级频道
+				if (count($_POST) <= 0) {
+					$aOneVirtual = $this->_mdlVirtual->select("level=2 and parent_id = 0", "virtual_id,virtual_name")->items;
+					$this->tplvar['onevirtual'] = $aOneVirtual;
+					return $this->render('category/addvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					$isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$aVirtual = $_POST['virtualId']; //一级分类
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'redirect_url'=>trim($customUrl),
+						'cndir'=> trim($sVdir),
+						'show_index'=>0,
+						'show_channel'=>0,
+						'level'=>$level,
+					);
+					if ($isShow == 1) {
+						$items['is_show_trade']=1;
+						$items['is_show_user']=1;
+						$items['is_show_service']=1;
+					} else {
+						$items['is_show_trade']=0;
+						$items['is_show_user']=0;
+						$items['is_show_service']=0;
+					}
+					$rs = $this->_oCategoryV->addVirtual($items, $aVirtual);
+					if (!$rs) {
+						return $this->printmsg('添加失败~'.$this->_oCategoryV->getError(), 0);
+					}
+					return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			case 2:
+				//添加一级频道
+				if (count($_POST) <= 0) {
+					//虚拟频道
+					$aVirtual = $this->_mdlVirtual->select("parent_id = 0 and level = 1", "virtual_id,virtual_name")->items;
+					//游离二级频道
+					$aFreeVirtual = $this->_mdlVirtual->select("parent_id = 0 and level = 3", "virtual_id,virtual_name")->items;
+					$this->tplvar['virtual'] = $aVirtual;
+					$this->tplvar['freevirtual'] = $aFreeVirtual;
+					return $this->render('category/addvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$pVirtual = zbj_lib_BaseUtils::getStr($_POST['pvirtual'], 'int');;
+					$freeVirtual = $_POST['virtualId'];
+					//需求页状态
+					$tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+					$tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+					$tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+					$tDesc = zbj_lib_BaseUtils::getStr($_POST['tDesc'], 'string');
+					//服务商页状态
+					$uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+					$uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+					$uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+					$uDesc = zbj_lib_BaseUtils::getStr($_POST['uDesc'], 'string');
+					//服务商页状态
+					$sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+					$sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+					$sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+					$sDesc = zbj_lib_BaseUtils::getStr($_POST['sDesc'], 'string');
+					$recToindx = zbj_lib_BaseUtils::getStr($_POST['recindex'], 'int');
+					$icoFile = zbj_lib_BaseUtils::getStr($_POST['picture_ico'], 'string');
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (empty($sVdir)) return $this->printmsg('请输入分类目录',0 ,'vdir');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					if (!empty($freeVirtual) && !$pVirtual) {
+						 return $this->printmsg('选择二级频道必须选择虚拟频道',0 ,'pvirtual');
+					}
+					
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'cndir'=> trim($sVdir),
+						'is_show_trade'=>$tState,
+						'is_show_user'=>$uState,
+						'is_show_service'=>$sState,
+						'show_index'=>0,
+						'show_channel'=>0,
+						'redirect_url'=>trim($customUrl),
+						'parent_id'=>$pVirtual,
+						'ico'=>$icoFile,
+						'level'=>$level
+					);
+					//seo
+					if ($tState == 1) {
+						$items['title_trade'] = $tTitle;
+						$items['keywords_trade'] = $tKey;
+						$items['description_trade'] = $tDesc;
+					}
+					if ($uState == 1) {
+						$items['title_user'] = $uTitle;
+						$items['keywords_user'] = $uKey;
+						$items['description_user'] = $uDesc;
+					}
+					if ($sState == 1) {
+						$items['title_service'] = $sTitle;
+						$items['keywords_service'] = $sKey;
+						$items['description_service'] = $sDesc;
+					}
+					$rs = $this->_oCategoryV->addVirtual($items, $freeVirtual);
+					if (!$rs) {
+						return $this->printmsg('添加失败~'.$this->_oCategoryV->getError(),0);
+					}
+					return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			case 3:
+				//define(DEBUG, 1);
+				//添加二级频道
+				if (count($_POST) <= 0) {
+					//选择一个服务分类
+					$aCate = $this->_oCategory->getTree();
+					
+					//$aCate = $this->_mdlCategory->select("level=3 and is_show=1", "category_id,category_name")->items;
+					//服务分类的扩展属性
+					//to-do
+					//选择其所属的一级频道
+					$aPVirtual = $this->_mdlVirtual->select("level=2", "virtual_id,virtual_name")->items;
+					$this->tplvar['category'] = $aCate;
+					$this->tplvar['onevirtual'] = $aPVirtual;
+					return $this->render('category/addvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$iCategoryId = zbj_lib_BaseUtils::getStr($_POST['categoryId'], 'int'); //关联服务分类
+					$iVirtualId = zbj_lib_BaseUtils::getStr($_POST['virtualId'], 'int'); //一级分类
+					//需求页状态
+					$tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+					$tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+					$tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+					$tDesc = zbj_lib_BaseUtils::getStr($_POST['tDesc'], 'string');
+					//服务商页状态
+					$uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+					$uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+					$uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+					$uDesc = zbj_lib_BaseUtils::getStr($_POST['uDesc'], 'string');
+					//服务商页状态
+					$sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+					$sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+					$sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+					$sDesc = zbj_lib_BaseUtils::getStr($_POST['sDesc'], 'string');
+					//推荐到首页 当选择的一级分类未推荐到首页是不推荐
+					$recToindx = zbj_lib_BaseUtils::getStr($_POST['recindex'], 'int');
+					//自定义链接地址
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					//在一级展示
+					$isinTop = zbj_lib_BaseUtils::getStr($_POST['isintop'], 'int');
+					
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (empty($sVdir)) return $this->printmsg('请输入分类目录',0 ,'vdir');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					//if (!$iCategoryId) return $this->printmsg('请选择服务分类', 0, 'categoryId');
+					//if (!$iVirtualId) return $this->printmsg('请选择一级分类',0, 'virtualId');
+					if ($iVirtualId) {
+						$mdlVir = zbj_model_api::get('zbj_model_mk_categoryvirtual', $iVirtualId);
+						$aVir = $mdlVir->get();
+						if (empty($aVir))return $this->printmsg('一级频道不存在',0,'virtualId');
+						if ($aVir['show_index'] != 1) {
+							$recToindx = 0;
+						}
+					}		
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'cndir'=> trim($sVdir),
+						'is_show_trade'=>$tState,
+						'is_show_user'=>$uState,
+						'is_show_service'=>$sState,
+						'show_index'=>0,
+						'show_channel'=>0,
+						'show_channel'=>$isinTop,
+						'redirect_url'=>trim($customUrl),
+						'category_id'=>$iCategoryId,
+						'parent_id'=>$iVirtualId,
+						'level'=>$level
+					);
+					//seo
+					if ($tState == 1) {
+						$items['title_trade'] = $tTitle;
+						$items['keywords_trade'] = $tKey;
+						$items['description_trade'] = $tDesc;
+					}
+					if ($uState == 1) {
+						$items['title_user'] = $uTitle;
+						$items['keywords_user'] = $uKey;
+						$items['description_user'] = $uDesc;
+					}
+					if ($sState == 1) {
+						$items['title_service'] = $sTitle;
+						$items['keywords_service'] = $sKey;
+						$items['description_service'] = $sDesc;
+					}
+					$rs = $this->_oCategoryV->addVirtual($items);
+					if (!$rs) {
+						return $this->printmsg('添加失败~'.$this->_oCategoryV->getError(),0);
+					}
+					return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+		}
+	}
+	
+	/**
+	 * 编辑分类
+	 * @param array $inPath
+	 * $vid 虚拟分类ID
+	 */
+	public function pageEditVcategory($inPath) {
+		//define(DEBUG, 1);
+		$path = $this->getUrlParams($inPath);
+		$virtualId = zbj_lib_BaseUtils::getStr($path['vid'], 'int');
+		if (!$virtualId) {
+			return $this->printmsg('缺少频道分类Id');
+		}
+		$this->_oCategoryV = new zbj_service_categoryvirtual($virtualId);
+		$aInfo = $this->_oCategoryV->get();
+		if (empty($aInfo)) {
+			return $this->printmsg('该频道不存在');
+		}
+		$aInfo['option'] = unserialize($aInfo['option']);
+		if (!isset($aInfo['option']['ad_max_num'])) $ad_max_num = $aInfo['option']['ad_max_num'] = 0;
+		$level = $aInfo['level'];
+		$this->tplvar['level'] = $level;
+		$this->tplvar['vinfo'] = $aInfo;
+		//SlightPHP::dbg()->log( $aInfo);
+		$pTitle = zbj_lib_BaseUtils::getStr($_POST['ptitle'], 'string');
+		$pContent = zbj_lib_BaseUtils::getStr($_POST['pcontent'], 'string');
+		$pAmount = zbj_lib_BaseUtils::getStr($_POST['pamount'], 'string');
+		$allow_pub_mode = zbj_lib_BaseUtils::getStr($_POST['allow_pub_mode'], 'int');
+		$rcmd_pub_mode = zbj_lib_BaseUtils::getStr($_POST['rcmd_pub_mode'], 'int');
+		$ky_enable = zbj_lib_BaseUtils::getStr($_POST['ky_enable'], 'int');
+		$ky_pub_disp = zbj_lib_BaseUtils::getStr($_POST['ky_pub_disp'], 'string');
+		$ky_task_disp = zbj_lib_BaseUtils::getStr($_POST['ky_task_disp'], 'string');
+        if (zbj_lib_BaseUtils::isPostRequest()) {
+            $sort = intval($aInfo['sort']);
+            $sort_new = intval($_POST['sort']);
+            $sort_changed = $sort != $sort_new;
+        }
+		switch ($level) {
+			case 1:
+				//选择一级频道
+				$ad_allow_change_max_num = $this->tplvar['ad_allow_change_max_num'] = service_rcba::checkAnAccess('category', 'EditVcategory', 'ad_change_max_num');
+				$ad_allow_edit = $this->tplvar['ad_allow_edit'] = service_rcba::checkAnAccess('category', 'EditVcategory', 'ad_edit');
+				$this->tplvar['ad_sys_max_num'] = $ad_sys_max_num = 3;
+				$this->tplvar['ad_disable_str'] = $ad_allow_edit ? '' : ' disabled="disabled"';
+				if (zbj_lib_BaseUtils::isPostRequest() === false) {
+					//游离一级频道
+					$aOneVirtual = $this->_mdlVirtual->select("level=2 and parent_id = 0", "virtual_id,virtual_name")->items;
+					$this->tplvar['onevirtual'] = $aOneVirtual;
+					//已关联一级频道
+					$aSubVir = $this->_mdlVirtual->select("level=2 and parent_id = {$virtualId}", "virtual_id,virtual_name")->items;
+					$this->tplvar['subvirtual'] = $aSubVir;
+					return $this->render('category/editvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					$isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+					$show_index = zbj_lib_BaseUtils::getStr($_POST['show_index'], 'int');
+					$isinTop = zbj_lib_BaseUtils::getStr($_POST['isintop'], 'int');
+					$icoFile = zbj_lib_BaseUtils::getStr($_POST['picture_ico'], 'string');
+					$aVirtual = $_POST['virtualId']; //一级分类
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'cndir'=> trim($sVdir),
+						'redirect_url'=>trim($customUrl),
+						'level'=>$level,
+						'show_channel'=>$isinTop,
+						'show_index'=>$show_index,
+					);
+					if (!empty($icoFile)) {
+						$items['ico'] = $icoFile;
+					}
+					if ($isShow == 1) {
+						$items['is_show_trade']=1;
+						$items['is_show_user']=1;
+						$items['is_show_service']=1;
+					} else {
+						$items['is_show_trade']=0;
+						$items['is_show_user']=0;
+						$items['is_show_service']=0;
+					}
+					//发布配置
+					 $items['pub_title'] = trim($pTitle);
+					 $items['pub_content'] = trim($pContent);
+					 $items['pub_amount'] = trim($pAmount);
+					 if($allow_pub_mode){
+					 	$items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+					 }
+					 $items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+					 //service or user as default list
+					 if ($ky_enable || $ky_task_disp || $ky_pub_disp) {
+					 	$option = unserialize($this->_oCategoryV->get("option"));
+					 	$option['ky_enable'] = $ky_enable;//关联快印
+					 	$option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+					 	$option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+					}
+					//处理一级分类广告配置
+					if ($ad_allow_change_max_num) {
+						$ad_max_num= intval($_POST['ad_max_num']);
+						if ($ad_max_num >= 0) $option['ad_max_num'] = $ad_max_num;
+					}
+					if ($ad_allow_edit) {
+						$ad_list = $_POST['ad_list'];
+						$ad_list_save = array();
+						for ($i=1; $i<=$ad_sys_max_num; $i++) {
+							$ad_list_save[$i]['url'] = zbj_lib_BaseUtils::getStr($ad_list[$i]['url']);
+							$ad_list_save[$i]['pic_url'] = zbj_lib_BaseUtils::getStr($ad_list[$i]['pic_url']);
+							$ad_list_save[$i]['enabled'] = $ad_list[$i]['enabled'] == '1' && $i <= $ad_max_num && $ad_list_save[$i]['url'] && $ad_list_save[$i]['pic_url'];
+						}
+						$option['ad_list'] = $ad_list_save;
+					}
+					
+					$items['option'] = serialize($option);
+                    if ($sort_changed) $items['sort'] = $sort_new;
+					$rs = $this->_oCategoryV->editVirtual($items, $aVirtual);
+					if (!$rs) {
+						return $this->printmsg('编辑失败~'.$this->_oCategoryV->getError(), 0);
+					}
+					return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			case 2:
+				//编辑一级频道
+				if (zbj_lib_BaseUtils::isPostRequest() === false) {
+					//已关联二级频道
+					$aSubVir = $this->_mdlVirtual->select("parent_id = {$virtualId} and level = 3", "virtual_id,virtual_name")->items;
+					//虚拟频道
+					$aVirtual = $this->_mdlVirtual->select("parent_id = 0 and level = 1", "virtual_id,virtual_name")->items;
+					//游离二级频道
+					$aFreeVirtual = $this->_mdlVirtual->select("parent_id = 0 and level = 3", "virtual_id,virtual_name")->items;
+					$aVirtual['information'] = stripslashes($aVirtual['information']);
+					$this->tplvar['vinfo']['information'] = stripslashes($this->tplvar['vinfo']['information']);
+					$this->tplvar['virtual'] = $aVirtual;
+					$this->tplvar['freevirtual'] = $aFreeVirtual;
+					$this->tplvar['subvirtual'] = $aSubVir;
+					return $this->render('category/editvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$pVirtual = zbj_lib_BaseUtils::getStr($_POST['pvirtual'], 'int');;
+					$freeVirtual = $_POST['virtualId'];
+					//需求页状态
+					$tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+					$tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+					$tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+					$tDesc = zbj_lib_BaseUtils::getStr($_POST['tdesc'], 'string');
+					//服务商页状态
+					$uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+					$uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+					$uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+					$uDesc = zbj_lib_BaseUtils::getStr($_POST['udesc'], 'string');
+					//服务商页状态
+					$sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+					$sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+					$sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+					$sDesc = zbj_lib_BaseUtils::getStr($_POST['sdesc'], 'string');
+					$showindex = zbj_lib_BaseUtils::getStr($_POST['show_index'], 'int');
+					$isinTop = zbj_lib_BaseUtils::getStr($_POST['isintop'], 'int');
+					$default_list = zbj_lib_BaseUtils::getStr($_POST['defaultlist']);
+					$srvdefault = zbj_lib_BaseUtils::getStr($_POST['srvdefault']);
+					$ishot = zbj_lib_BaseUtils::getStr($_POST['ishot'], 'int');
+					$pfee = zbj_lib_BaseUtils::getStr($_POST['pfee'], 'float');//需求置顶费用
+					$pnum = zbj_lib_BaseUtils::getStr($_POST['pnum'], 'int');//需求置顶个数
+					$ptips = zbj_lib_BaseUtils::getStr($_POST['ptips'], 'string');//需求置顶说明
+					$ffee1 = zbj_lib_BaseUtils::getStr($_POST['ffee1'], 'float');//店铺排名页底部店铺推荐位费用
+					$ffee2 = zbj_lib_BaseUtils::getStr($_POST['ffee2'], 'float');//需求最终页右侧店铺推荐位费用
+					$ftfee = zbj_lib_BaseUtils::getStr($_POST['ftfee'], 'float');//频道页店铺推荐位费用
+					$ftfee2 = zbj_lib_BaseUtils::getStr($_POST['ftfee2'], 'float');//店铺排名页右侧店铺推荐位费用
+					$fwfee = zbj_lib_BaseUtils::getStr($_POST['fwfee'], 'float');//服务排名页右侧服务推荐位费用
+					$fwfee2 = zbj_lib_BaseUtils::getStr($_POST['fwfee2'], 'float');//服务排名页底部服务推荐位费用
+					$ftfee3 = zbj_lib_BaseUtils::getStr($_POST['ftfee3'], 'float');//店铺排名页顶部店铺推荐位费用
+					$fwfee3 = zbj_lib_BaseUtils::getStr($_POST['fwfee3'], 'float');//服务排名页顶部服务推荐位费用
+					$icoFile = zbj_lib_BaseUtils::getStr($_POST['picture_ico'], 'string');
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					$information = $_POST['information'];
+					$links = zbj_lib_BaseUtils::getStr($_POST['links'], 'html');
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (empty($sVdir)) return $this->printmsg('请输入分类目录',0 ,'vdir');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					if (!empty($freeVirtual) && !$pVirtual) {
+						 return $this->printmsg('选择二级频道必须选择虚拟频道',0 ,'pvirtual');
+					}
+					//上传图片
+					if (!empty($icoFile)) {
+						$filename = uniqid();
+						//zbj_lib_BaseUtils::getUploadFilePath($icoFile, $filename, "task", $params);
+					}
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'cndir'=> trim($sVdir),
+						'is_show_trade'=>$tState,
+						'is_show_user'=>$uState,
+						'is_show_service'=>$sState,
+						'show_index'=>$showindex,
+						'show_channel'=>$isinTop,
+						'is_red'=>$ishot,
+						'redirect_url'=>trim($customUrl),
+						'parent_id'=>$pVirtual,
+						'level'=>$level,
+						'information'=>$information,
+					);
+					if (!empty($icoFile)) {
+						$items['ico'] = $icoFile;
+					}
+					//增值服务费用
+					if ($pfee > 0) {
+						$items['paid_listing_fee'] = $pfee;
+					}
+					//pfee
+					if ($pfee > 0) {
+						$items['paid_listing_fee'] = $pfee;
+					}
+					if ($pnum > 0) {
+						$items['task_top_num'] = $pnum;
+					}
+					if ($ffee1 > 0) {//店铺排名页底部店铺推荐位
+						$items['recommend_fws_fee1'] = $ffee1;
+					}
+					if ($ffee2 > 0) {//需求最终页店铺推荐位
+						$items['recommend_fws_fee2'] = $ffee2;
+					}
+					if ($ftfee > 0) {//频道页店铺推荐位
+						$items['fws_top_fee'] = $ftfee;
+					}
+					if ($ftfee2 > 0) {//店铺排名页右侧店铺推荐位
+						$items['fws_top_fee2'] = $ftfee2;
+					}
+					if ($fwfee > 0) {//服务排名页右侧服务推荐位
+						$items['fw_top_fee'] = $fwfee;
+					}
+					if ($fwfee2 > 0) {//服务排名页底部服务推荐位
+						$items['fw_top_fee2'] = $fwfee2;
+					}
+					if ( $ftfee3 > 0 ) {//店铺排名页顶部店铺推荐位
+						$items['fws_vas_fee'] = $ftfee3;
+					}
+					if ( $fwfee3 > 0 ) {//服务排名页顶部服务推荐位
+						$items['fw_vas_fee'] = $fwfee3;
+					}
+					$items['task_top_tips'] = trim($ptips);//需求置顶说明
+					//seo
+					if ($tState == 1) {
+						$items['title_trade'] = $tTitle;
+						$items['keywords_trade'] = $tKey;
+						$items['description_trade'] = $tDesc;
+					}
+					if ($uState == 1) {
+						$items['title_user'] = $uTitle;
+						$items['keywords_user'] = $uKey;
+						$items['description_user'] = $uDesc;
+					}
+					if ($sState == 1) {
+						$items['title_service'] = $sTitle;
+						$items['keywords_service'] = $sKey;
+						$items['description_service'] = $sDesc;
+					}
+					//发布配置
+					 $items['pub_title'] = trim($pTitle);
+					 $items['pub_content'] = trim($pContent);
+					 $items['pub_amount'] = trim($pAmount);
+					 if($allow_pub_mode){
+						 $items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+					 }
+					 $items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+					//service or user as default list
+					if ($default_list || $srvdefault || $ky_enable || $ky_task_disp || $ky_pub_disp) {
+						$option = unserialize($this->_oCategoryV->get("option"));
+						$option['defaultlist'] = $default_list;
+						$option['srvdefault'] = $srvdefault;//服务展示 list or srv
+						$option['ky_enable'] = $ky_enable;//关联快印
+						$option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+						$option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+						$items['option'] = serialize($option);
+					}
+                    if ($sort_changed) $items['sort'] = $sort_new;
+					$rs = $this->_oCategoryV->editVirtual($items, $freeVirtual);
+					if (!$rs) {
+						return $this->printmsg('编辑失败~'.$this->_oCategoryV->getError(),0);
+					}
+					return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+			case 3:
+				//添加二级频道
+				if (zbj_lib_BaseUtils::isPostRequest() === false) {
+					//已选择的服务id
+					$mdlV2c = zbj_model_api::get('zbj_model_mk_categoryv2c');
+					$aV2c = $mdlV2c->selectOne("virtual_id = {$virtualId}" , "category_id,ext_id,val_id");
+					$categoryId = $aV2c['category_id'];
+					//选择一个服务分类
+					//选择一个服务分类
+					$aCate = $this->_oCategory->getTree();
+					//服务分类的扩展属性
+					//to-do
+					//选择其所属的一级频道
+					$aPVirtual = $this->_mdlVirtual->select("level=2", "virtual_id,virtual_name")->items;
+					$this->tplvar['category'] = $aCate;
+					$this->tplvar['onevirtual'] = $aPVirtual;
+					$this->tplvar['vinfo']['information'] = stripslashes($this->tplvar['vinfo']['information']);
+					$this->tplvar['vinfo']['category_id'] = $categoryId;
+
+					return $this->render('category/editvcategory.html', $this->tplvar);
+				} else {
+					$sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+					$sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+					$iCategoryId = zbj_lib_BaseUtils::getStr($_POST['categoryId'], 'int'); //关联服务分类
+					$iVirtualId = zbj_lib_BaseUtils::getStr($_POST['virtualId'], 'int'); //一级分类
+					
+					if (! $iVirtualId) {
+						return $this->printmsg('请选择所属一级频道', 1);
+					}
+					if (! $iCategoryId) {
+						return $this->printmsg('请选择服务分类', 1);
+					}
+					
+					//需求页状态
+					$tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+					$tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+					$tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+					$tDesc = zbj_lib_BaseUtils::getStr($_POST['tdesc'], 'string');
+					//服务商页状态
+					$uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+					$uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+					$uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+					$uDesc = zbj_lib_BaseUtils::getStr($_POST['udesc'], 'string');
+					//服务商页状态
+					$sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+					$sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+					$sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+					$sDesc = zbj_lib_BaseUtils::getStr($_POST['sdesc'], 'string');
+					//推荐到首页 当选择的一级分类未推荐到首页是不推荐
+					$showindex = zbj_lib_BaseUtils::getStr($_POST['show_index'], 'int');
+					//自定义链接地址
+					$customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+					$ishot = zbj_lib_BaseUtils::getStr($_POST['ishot'], 'int');
+					$pfee = zbj_lib_BaseUtils::getStr($_POST['pfee'], 'float');//需求置顶费用
+					$pnum = zbj_lib_BaseUtils::getStr($_POST['pnum'], 'int');//需求置顶个数
+					$ptips = zbj_lib_BaseUtils::getStr($_POST['ptips'], 'string');//需求置顶说明
+					$ffee1 = zbj_lib_BaseUtils::getStr($_POST['ffee1'], 'float');//店铺排名页底部店铺推荐位费用
+					$ffee2 = zbj_lib_BaseUtils::getStr($_POST['ffee2'], 'float');//需求最终页右侧店铺推荐位费用
+					$ftfee = zbj_lib_BaseUtils::getStr($_POST['ftfee'], 'float');//频道页店铺推荐位费用
+					$ftfee2 = zbj_lib_BaseUtils::getStr($_POST['ftfee2'], 'float');//店铺排名页右侧店铺推荐位费用
+					$fwfee = zbj_lib_BaseUtils::getStr($_POST['fwfee'], 'float');//服务排名页右侧服务推荐位费用
+					$fwfee2 = zbj_lib_BaseUtils::getStr($_POST['fwfee2'], 'float');//服务排名页底部服务推荐位费用
+					$ftfee3 = zbj_lib_BaseUtils::getStr($_POST['ftfee3'], 'float');//店铺排名页顶部店铺推荐位费用
+					$fwfee3 = zbj_lib_BaseUtils::getStr($_POST['fwfee3'], 'float');//服务排名页顶部服务推荐位费用
+					//在一级展示
+					$isinTop = zbj_lib_BaseUtils::getStr($_POST['isintop'], 'int');
+					$default_list = zbj_lib_BaseUtils::getStr($_POST['defaultlist']);
+					$srvdefault = zbj_lib_BaseUtils::getStr($_POST['srvdefault']);
+					$information = $_POST['information'];
+					$links = zbj_lib_BaseUtils::getStr($_POST['links'], 'html');
+					
+					if (empty($sVname)) return $this->printmsg('请输入分类名称',0,'vname');
+					if (empty($sVdir)) return $this->printmsg('请输入分类目录',0 ,'vdir');
+					if (!empty($customUrl)) {
+						if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+						      return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+						}
+					}
+					//if (!$iCategoryId) return $this->printmsg('请选择服务分类', 0, 'categoryId');
+					//if (!$iVirtualId) return $this->printmsg('请选择一级分类',0, 'virtualId');
+					if ($iVirtualId) {
+						$mdlVir = zbj_model_api::get('zbj_model_mk_categoryvirtual', $iVirtualId);
+						$aVir = $mdlVir->get();
+						if (empty($aVir))return $this->printmsg('一级频道不存在',0,'virtualId');
+						if ($aVir['show_index'] != 1) {
+							$recToindx = 0;
+						}
+					}		
+					$items = array(
+						'virtual_name'=>trim($sVname),
+						'cndir'=> trim($sVdir),
+						'is_show_trade'=>$tState,
+						'is_show_user'=>$uState,
+						'is_show_service'=>$sState,
+						'show_index'=>$showindex,
+						'show_channel'=>$isinTop,
+						'is_red'=>$ishot,
+						'redirect_url'=>trim($customUrl),
+						'category_id'=>$iCategoryId,
+						'parent_id'=>$iVirtualId,
+						'level'=>$level,
+						'information'=>$information,
+					);
+					//seo
+					if ($tState == 1) {
+						$items['title_trade'] = $tTitle;
+						$items['keywords_trade'] = $tKey;
+						$items['description_trade'] = $tDesc;
+					}
+					//pfee
+					if ($pfee > 0) {
+						$items['paid_listing_fee'] = $pfee;
+					}
+					if ($pnum > 0) {
+						$items['task_top_num'] = $pnum;
+					}
+					if ($ffee1 > 0) {
+						$items['recommend_fws_fee1'] = $ffee1;
+					}
+					if ($ffee2 > 0) {
+						$items['recommend_fws_fee2'] = $ffee2;
+					}
+					if ($ftfee > 0) {
+						$items['fws_top_fee'] = $ftfee;
+					}
+					if ($ftfee2 > 0) {
+						$items['fws_top_fee2'] = $ftfee2;
+					}
+					if ($fwfee > 0) {
+						$items['fw_top_fee'] = $fwfee;
+					}
+					if ($fwfee2 > 0) {
+						$items['fw_top_fee2'] = $fwfee2;
+					}
+					if ( $ftfee3 > 0 ) {
+						$items['fws_vas_fee'] = $ftfee3;
+					}
+					if ( $fwfee3 > 0 ) {
+						$items['fw_vas_fee'] = $fwfee3;
+					}
+					$items['task_top_tips'] = trim($ptips);//需求置顶说明
+					if ($uState == 1) {
+						$items['title_user'] = $uTitle;
+						$items['keywords_user'] = $uKey;
+						$items['description_user'] = $uDesc;
+					}
+					if ($sState == 1) {
+						$items['title_service'] = $sTitle;
+						$items['keywords_service'] = $sKey;
+						$items['description_service'] = $sDesc;
+					}
+					//发布配置
+					$items['pub_title'] = trim($pTitle);
+					$items['pub_content'] = trim($pContent);
+					$items['pub_amount'] = trim($pAmount);
+					if($allow_pub_mode){
+						$items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+					}
+					$items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+
+					//service or user as default list
+					if ($default_list || $srvdefault || $ky_pub_disp || $ky_task_disp || $ky_enable) {
+						$option = unserialize($this->_oCategoryV->get("option"));
+						$option['defaultlist'] = $default_list;
+						$option['srvdefault'] = $srvdefault;//服务展示 list or srv
+						$option['ky_enable'] = $ky_enable;//关联快印
+						$option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+						$option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+						$items['option'] = serialize($option);
+					}
+
+                    if ($sort_changed) $items['sort'] = $sort_new;
+					$rs = $this->_oCategoryV->editVirtual($items);
+					if (!$rs) {
+						return $this->printmsg('编辑失败~'.$this->_oCategoryV->getError(),0);
+					}
+					return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+				}
+				break;
+		}
+	}
+
+    /**
+     * 添加发布分类
+     * array $inPath
+     */
+    public function pageAddPcategory($inPath) {
+        $path = $this->getUrlParams($inPath);
+        $level = zbj_lib_BaseUtils::getStr($path['level'], 'int');
+        if (!in_array($level, array(1,2,3))) {
+            $level = 1;
+        }
+        $this->tplvar['level'] = $level;
+        switch ($level) {
+            case 1:
+                //define(DEBUG, 1);
+                //选择一级频道
+                if (count($_POST) <= 0) {
+                    $aOneVirtual = $this->_mdlPub->select("level=2 and parent_id = 0", "virtual_id,virtual_name")->items;
+                    $this->tplvar['onevirtual'] = $aOneVirtual;
+                    return $this->render('category/addpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $aVirtual = $_POST['virtualId']; //一级分类
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'redirect_url'=>trim($customUrl),
+                        'cndir'=> trim($sVdir),
+                        'show_index'=>0,
+                        'show_channel'=>0,
+                        'level'=>$level,
+                    );
+                    if ($isShow == 1) {
+                        $items['is_show_trade']=1;
+                        $items['is_show_user']=1;
+                        $items['is_show_service']=1;
+                    } else {
+                        $items['is_show_trade']=0;
+                        $items['is_show_user']=0;
+                        $items['is_show_service']=0;
+                    }
+                    $rs = $this->_oCategoryP->addVirtual($items, $aVirtual);
+                    if (!$rs) {
+                        return $this->printmsg('添加失败~'.$this->_oCategoryP->getError(), 0);
+                    }
+                    return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+            case 2:
+                //添加一级频道
+                if (count($_POST) <= 0) {
+                    //虚拟频道
+                    $aVirtual = $this->_mdlPub->select("parent_id = 0 and level = 1", "virtual_id,virtual_name")->items;
+                    //游离二级频道
+                    $aFreeVirtual = $this->_mdlPub->select("parent_id = 0 and level = 3", "virtual_id,virtual_name")->items;
+                    $this->tplvar['virtual'] = $aVirtual;
+                    $this->tplvar['freevirtual'] = $aFreeVirtual;
+                    return $this->render('category/addpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $pVirtual = zbj_lib_BaseUtils::getStr($_POST['pvirtual'], 'int');;
+                    $freeVirtual = $_POST['virtualId'];
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    if (empty($sVdir)) return $this->printmsg('请输入类目目录',0 ,'vdir');
+                    if (!empty($freeVirtual) && !$pVirtual) {
+                        return $this->printmsg('选择二级频道必须选择虚拟频道',0 ,'pvirtual');
+                    }
+
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'cndir'=> trim($sVdir),
+                        'is_show_trade'=>$isShow,
+                        'is_show_user'=>$isShow,
+                        'is_show_service'=>$isShow,
+                        'show_index'=>0,
+                        'show_channel'=>0,
+                        'parent_id'=>$pVirtual,
+                        'level'=>$level
+                    );
+                    $rs = $this->_oCategoryP->addVirtual($items, $freeVirtual);
+                    if (!$rs) {
+                        return $this->printmsg('添加失败~'.$this->_oCategoryP->getError(),0);
+                    }
+                    return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+            case 3:
+                //define(DEBUG, 1);
+                //添加二级频道
+                if (count($_POST) <= 0) {
+                    //选择一个服务分类
+                    $aCate = $this->_oCategory->getTree();
+
+                    //$aCate = $this->_mdlCategory->select("level=3 and is_show=1", "category_id,category_name")->items;
+                    //服务分类的扩展属性
+                    //to-do
+                    //选择其所属的一级频道
+                    $aPVirtual = $this->_mdlPub->select("level=2", "virtual_id,virtual_name")->items;
+                    $this->tplvar['category'] = $aCate;
+                    $this->tplvar['onevirtual'] = $aPVirtual;
+                    return $this->render('category/addpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $iCategoryId = zbj_lib_BaseUtils::getStr($_POST['categoryId'], 'int'); //关联服务分类
+                    $iVirtualId = zbj_lib_BaseUtils::getStr($_POST['virtualId'], 'int'); //一级分类
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    if (empty($sVdir)) return $this->printmsg('请输入类目目录',0 ,'vdir');
+                    if ($iVirtualId) {
+                        $mdlVir = zbj_model_api::get('zbj_model_mk_categorypub', $iVirtualId);
+                        $aVir = $mdlVir->get();
+                        if (empty($aVir))return $this->printmsg('二级类目不存在',0,'virtualId');
+                        if ($aVir['show_index'] != 1) {
+                            $recToindx = 0;
+                        }
+                    }
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'cndir'=> trim($sVdir),
+                        'is_show_trade'=>$isShow,
+                        'is_show_user'=>$isShow,
+                        'is_show_service'=>$isShow,
+                        'show_index'=>0,
+                        'show_channel'=>0,
+                        'category_id'=>$iCategoryId,
+                        'parent_id'=>$iVirtualId,
+                        'level'=>$level
+                    );
+                    $rs = $this->_oCategoryP->addVirtual($items);
+                    if (!$rs) {
+                        return $this->printmsg('添加失败~'.$this->_oCategoryP->getError(),0);
+                    }
+                    return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+        }
+    }
+
+    /**
+     * 编辑发布类目
+     * @param array $inPath
+     * $vid 虚拟分类ID
+     */
+    public function pageEditPcategory($inPath) {
+        //define(DEBUG, 1);
+        $path = $this->getUrlParams($inPath);
+        $virtualId = zbj_lib_BaseUtils::getStr($path['vid'], 'int');
+        if (!$virtualId) {
+            return $this->printmsg('缺少类目Id');
+        }
+        $this->_oCategoryP = new zbj_service_categorypub($virtualId);
+        $aInfo = $this->_oCategoryP->get();
+        if (empty($aInfo)) {
+            return $this->printmsg('该类目不存在');
+        }
+        $aInfo['option'] = unserialize($aInfo['option']);
+        if (!isset($aInfo['option']['ad_max_num'])) $ad_max_num = $aInfo['option']['ad_max_num'] = 0;
+        $level = $aInfo['level'];
+        $this->tplvar['level'] = $level;
+        $this->tplvar['vinfo'] = $aInfo;
+        //SlightPHP::dbg()->log( $aInfo);
+        $pTitle = zbj_lib_BaseUtils::getStr($_POST['ptitle'], 'string');
+        $pContent = zbj_lib_BaseUtils::getStr($_POST['pcontent'], 'string');
+        $pAmount = zbj_lib_BaseUtils::getStr($_POST['pamount'], 'string');
+        $allow_pub_mode = zbj_lib_BaseUtils::getStr($_POST['allow_pub_mode'], 'int');
+        $rcmd_pub_mode = zbj_lib_BaseUtils::getStr($_POST['rcmd_pub_mode'], 'int');
+        $ky_enable = zbj_lib_BaseUtils::getStr($_POST['ky_enable'], 'int');
+        $ky_pub_disp = zbj_lib_BaseUtils::getStr($_POST['ky_pub_disp'], 'string');
+        $ky_task_disp = zbj_lib_BaseUtils::getStr($_POST['ky_task_disp'], 'string');
+        if (zbj_lib_BaseUtils::isPostRequest()) {
+            $sort = intval($aInfo['sort']);
+            $sort_new = intval($_POST['sort']);
+            $sort_changed = $sort != $sort_new;
+        }
+        switch ($level) {
+            case 1:
+                //选择一级频道
+                $ad_allow_change_max_num = $this->tplvar['ad_allow_change_max_num'] = service_rcba::checkAnAccess('category', 'EditVcategory', 'ad_change_max_num');
+                $ad_allow_edit = $this->tplvar['ad_allow_edit'] = service_rcba::checkAnAccess('category', 'EditVcategory', 'ad_edit');
+                $this->tplvar['ad_sys_max_num'] = $ad_sys_max_num = 3;
+                $this->tplvar['ad_disable_str'] = $ad_allow_edit ? '' : ' disabled="disabled"';
+                if (zbj_lib_BaseUtils::isPostRequest() === false) {
+                    //游离一级频道
+                    $aOneVirtual = $this->_mdlPub->select("level=2 and parent_id = 0", "virtual_id,virtual_name")->items;
+                    $this->tplvar['onevirtual'] = $aOneVirtual;
+                    //已关联一级频道
+                    $aSubVir = $this->_mdlPub->select("level=2 and parent_id = {$virtualId}", "virtual_id,virtual_name")->items;
+                    $this->tplvar['subvirtual'] = $aSubVir;
+                    return $this->render('category/editpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+                    $aVirtual = $_POST['virtualId']; //一级分类
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'cndir'=> trim($sVdir),
+                        'level'=>$level,
+                    );
+                    if ($isShow == 1) {
+                        $items['is_show_trade']=1;
+                        $items['is_show_user']=1;
+                        $items['is_show_service']=1;
+                    } else {
+                        $items['is_show_trade']=0;
+                        $items['is_show_user']=0;
+                        $items['is_show_service']=0;
+                    }
+                    //发布配置
+                    $items['pub_title'] = trim($pTitle);
+                    $items['pub_content'] = trim($pContent);
+                    $items['pub_amount'] = trim($pAmount);
+                    if($allow_pub_mode){
+                        $items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+                    }
+                    $items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+                    //service or user as default list
+                    if ($ky_enable || $ky_task_disp || $ky_pub_disp) {
+                        $option = unserialize($this->_oCategoryP->get("option"));
+                        $option['ky_enable'] = $ky_enable;//关联快印
+                        $option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+                        $option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+                    }
+                    //处理一级分类广告配置
+                    if ($ad_allow_change_max_num) {
+                        $ad_max_num= intval($_POST['ad_max_num']);
+                        if ($ad_max_num >= 0) $option['ad_max_num'] = $ad_max_num;
+                    }
+                    if ($ad_allow_edit) {
+                        $ad_list = $_POST['ad_list'];
+                        $ad_list_save = array();
+                        for ($i=1; $i<=$ad_sys_max_num; $i++) {
+                            $ad_list_save[$i]['url'] = zbj_lib_BaseUtils::getStr($ad_list[$i]['url']);
+                            $ad_list_save[$i]['pic_url'] = zbj_lib_BaseUtils::getStr($ad_list[$i]['pic_url']);
+                            $ad_list_save[$i]['enabled'] = $ad_list[$i]['enabled'] == '1' && $i <= $ad_max_num && $ad_list_save[$i]['url'] && $ad_list_save[$i]['pic_url'];
+                        }
+                        $option['ad_list'] = $ad_list_save;
+                    }
+
+                    $items['option'] = serialize($option);
+                    if ($sort_changed) $items['sort'] = $sort_new;
+                    $rs = $this->_oCategoryP->editVirtual($items, $aVirtual);
+                    if (!$rs) {
+                        return $this->printmsg('编辑失败~'.$this->_oCategoryP->getError(), 0);
+                    }
+                    return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+            case 2:
+                //编辑一级频道
+                if (zbj_lib_BaseUtils::isPostRequest() === false) {
+                    //已关联二级频道
+                    $aSubVir = $this->_mdlPub->select("parent_id = {$virtualId} and level = 3", "virtual_id,virtual_name")->items;
+                    //虚拟频道
+                    $aVirtual = $this->_mdlPub->select("parent_id = 0 and level = 1", "virtual_id,virtual_name")->items;
+                    //游离二级频道
+                    $aFreeVirtual = $this->_mdlPub->select("parent_id = 0 and level = 3", "virtual_id,virtual_name")->items;
+                    $aVirtual['information'] = stripslashes($aVirtual['information']);
+                    $this->tplvar['vinfo']['information'] = stripslashes($this->tplvar['vinfo']['information']);
+                    $this->tplvar['virtual'] = $aVirtual;
+                    $this->tplvar['freevirtual'] = $aFreeVirtual;
+                    $this->tplvar['subvirtual'] = $aSubVir;
+                    return $this->render('category/editpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $pVirtual = zbj_lib_BaseUtils::getStr($_POST['pvirtual'], 'int');;
+                    $freeVirtual = $_POST['virtualId'];
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+                    $information = $_POST['information'];
+                    $links = zbj_lib_BaseUtils::getStr($_POST['links'], 'html');
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    if (empty($sVdir)) return $this->printmsg('请输入类目目录',0 ,'vdir');
+                    if (!empty($freeVirtual) && !$pVirtual) {
+                        return $this->printmsg('选择三级类目必须选择一级类目',0 ,'pvirtual');
+                    }
+                    //上传图片
+                    if (!empty($icoFile)) {
+                        $filename = uniqid();
+                        //zbj_lib_BaseUtils::getUploadFilePath($icoFile, $filename, "task", $params);
+                    }
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'cndir'=> trim($sVdir),
+                        'is_show_trade'=>$isShow,
+                        'is_show_user'=>$isShow,
+                        'is_show_service'=>$isShow,
+                        'parent_id'=>$pVirtual,
+                        'level'=>$level,
+                        'information'=>$information,
+                    );
+                    //发布配置
+                    $items['pub_title'] = trim($pTitle);
+                    $items['pub_content'] = trim($pContent);
+                    $items['pub_amount'] = trim($pAmount);
+                    if($allow_pub_mode){
+                        $items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+                    }
+                    $items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+                    //service or user as default list
+                    if ($default_list || $srvdefault || $ky_enable || $ky_task_disp || $ky_pub_disp) {
+                        $option = unserialize($this->_oCategoryP->get("option"));
+                        $option['defaultlist'] = $default_list;
+                        $option['srvdefault'] = $srvdefault;//服务展示 list or srv
+                        $option['ky_enable'] = $ky_enable;//关联快印
+                        $option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+                        $option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+                        $items['option'] = serialize($option);
+                    }
+                    if ($sort_changed) $items['sort'] = $sort_new;
+                    $rs = $this->_oCategoryP->editVirtual($items, $freeVirtual);
+                    if (!$rs) {
+                        return $this->printmsg('编辑失败~'.$this->_oCategoryP->getError(),0);
+                    }
+                    return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+            case 3:
+                //添加二级频道
+                if (zbj_lib_BaseUtils::isPostRequest() === false) {
+                    //已选择的服务id
+                    $mdlV2c = zbj_model_api::get('zbj_model_mk_categoryp2c');
+                    $aV2c = $mdlV2c->selectOne("virtual_id = {$virtualId}" , "category_id,ext_id,val_id");
+                    $categoryId = $aV2c['category_id'];
+                    //选择一个服务分类
+                    //选择一个服务分类
+                    $aCate = $this->_oCategory->getTree();
+                    //服务分类的扩展属性
+                    //to-do
+                    //选择其所属的一级频道
+                    $aPVirtual = $this->_mdlPub->select("level=2", "virtual_id,virtual_name")->items;
+                    $this->tplvar['category'] = $aCate;
+                    $this->tplvar['onevirtual'] = $aPVirtual;
+                    $this->tplvar['vinfo']['information'] = stripslashes($this->tplvar['vinfo']['information']);
+                    $this->tplvar['vinfo']['category_id'] = $categoryId;
+
+                    return $this->render('category/editpcategory.html', $this->tplvar);
+                } else {
+                    $sVname = zbj_lib_BaseUtils::getStr($_POST['vname'], 'string');
+                    $sVdir = trim(zbj_lib_BaseUtils::getStr($_POST['vdir'], 'string'));
+                    $iCategoryId = zbj_lib_BaseUtils::getStr($_POST['categoryId'], 'int'); //关联服务分类
+                    $iVirtualId = zbj_lib_BaseUtils::getStr($_POST['virtualId'], 'int'); //一级分类
+
+                    if (! $iVirtualId) {
+                        return $this->printmsg('请选择所属二级类目', 1);
+                    }
+                    if (! $iCategoryId) {
+                        return $this->printmsg('请选择服务分类', 1);
+                    }
+
+                    $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+                    $information = $_POST['information'];
+                    $links = zbj_lib_BaseUtils::getStr($_POST['links'], 'html');
+
+                    if (empty($sVname)) return $this->printmsg('请输入类目名称',0,'vname');
+                    if (empty($sVdir)) return $this->printmsg('请输入类目目录',0 ,'vdir');
+                    if ($iVirtualId) {
+                        $mdlVir = zbj_model_api::get('zbj_model_mk_categorypub', $iVirtualId);
+                        $aVir = $mdlVir->get();
+                        if (empty($aVir))return $this->printmsg('二级类目不存在',0,'virtualId');
+                        if ($aVir['show_index'] != 1) {
+                            $recToindx = 0;
+                        }
+                    }
+                    $items = array(
+                        'virtual_name'=>trim($sVname),
+                        'cndir'=> trim($sVdir),
+                        'is_show_trade'=>$isShow,
+                        'is_show_user'=>$isShow,
+                        'is_show_service'=>$isShow,
+                        'category_id'=>$iCategoryId,
+                        'parent_id'=>$iVirtualId,
+                        'level'=>$level,
+                        'information'=>$information,
+                    );
+                    //发布配置
+                    $items['pub_title'] = trim($pTitle);
+                    $items['pub_content'] = trim($pContent);
+                    $items['pub_amount'] = trim($pAmount);
+                    if($allow_pub_mode){
+                        $items['allow_pub_mode'] = implode(',', $allow_pub_mode);
+                    }
+                    $items['rcmd_pub_mode'] = trim($rcmd_pub_mode);
+
+                    //service or user as default list
+                    if ($default_list || $srvdefault || $ky_pub_disp || $ky_task_disp || $ky_enable) {
+                        $option = unserialize($this->_oCategoryP->get("option"));
+                        $option['defaultlist'] = $default_list;
+                        $option['srvdefault'] = $srvdefault;//服务展示 list or srv
+                        $option['ky_enable'] = $ky_enable;//关联快印
+                        $option['ky_task_disp'] = $ky_task_disp;//任务需求页描述文字
+                        $option['ky_pub_disp'] = $ky_pub_disp;//发布页描述文字
+                        $items['option'] = serialize($option);
+                    }
+
+                    if ($sort_changed) $items['sort'] = $sort_new;
+                    $rs = $this->_oCategoryP->editVirtual($items);
+                    if (!$rs) {
+                        return $this->printmsg('编辑失败~'.$this->_oCategoryP->getError(),0);
+                    }
+                    return $this->printmsg('编辑成功',1,'', $_SERVER['HTTP_REFERER']);
+                }
+                break;
+        }
+    }
+	
+	/**
+	 * 批量排序
+	 * @param $inPath
+	 */
+	public function pageBathSort($inPath) {
+		if (zbj_lib_BaseUtils::isAjax()) {
+			$mdlCategory = zbj_model_api::get('zbj_model_mk_category');
+			$mdlVirtual = zbj_model_api::get('zbj_model_mk_categoryvirtual');
+			$mdlPub = zbj_model_api::get('zbj_model_mk_categorypub');
+			$mdlGuide = zbj_model_api::get('zbj_model_mk_categoryguide');
+
+			$path = $this->getUrlParams($inPath);
+			$type = zbj_lib_BaseUtils::getStr($path['type'], 'int');
+			$categoryId = zbj_lib_BaseUtils::getStr($path['cid'], 'int');
+			$virtualId = zbj_lib_BaseUtils::getStr($path['vid'], 'int');
+			$guideId = zbj_lib_BaseUtils::getStr($path['gid'], 'int');
+			if (!in_array($type, array(1,2,3,4))) return $this->printmsg('分类类型选择错误');
+			$this->tplvar['type'] = $type;
+			switch ($type) {
+				case 1:
+					if (count($_POST) <= 0) {
+						$coundition = "parent_id = {$categoryId}";
+						if (!$categoryId) {
+							$coundition = "level = 1";
+						}
+						$asubCategory = $mdlCategory->select($coundition, "category_id,category_name,sort", "", "order by sort desc")->items;
+						if (empty($asubCategory)) {
+							return '未找到数据';
+						}
+						$this->tplvar['categoryId'] = $categoryId;
+						$this->tplvar['subcategory'] = $asubCategory;
+						return $this->render('category/sort.dialog.html', $this->tplvar);
+					} else {
+						$aSort = $_POST['sort'];
+						if (empty($aSort)) {
+							return $this->printmsg('获取数据失败',0);
+						} else {
+							foreach ($aSort as $key=>$value) {
+								if (intval($value) <= 0) {
+									unset($aSort[$key]);
+								}
+							}
+							if (!empty($aSort)) {
+								foreach ($aSort as $k=>$v) {
+									$mdlCategory->update("category_id = {$k}", "sort = {$v}");
+								}
+							}
+							return $this->printmsg('排序成功',1,'',$_SERVER['HTTP_REFERER']);
+						}
+					}
+					break;
+				case 2:
+					if (count($_POST) <= 0) {
+						$coundition = "parent_id = {$virtualId}";
+						if (!$virtualId) {
+							$coundition = "level = 1";
+						}
+						$asubVirtual = $mdlVirtual->select($coundition, "virtual_id,virtual_name,sort", "", "order by sort desc,virtual_id asc")->items;
+						if (empty($asubVirtual)) {
+							return '未找到数据';
+						}
+						$this->tplvar['virtualId'] = $virtualId;
+						$this->tplvar['subvirtual'] = $asubVirtual;
+						return $this->render('category/sort.dialog.html', $this->tplvar);
+					} else {
+						$aSort = $_POST['sort'];
+						if (empty($aSort)) {
+							return $this->printmsg('获取数据失败',0);
+						} else {
+							foreach ($aSort as $key=>$value) {
+								if (intval($value) <= 0) {
+									unset($aSort[$key]);
+								}
+							}
+							if (!empty($aSort)) {
+								foreach ($aSort as $k=>$v) {
+									$mdlVirtual->update("virtual_id = {$k}", "sort = {$v}");
+								}
+							}
+							return $this->printmsg('排序成功',1,'',$_SERVER['HTTP_REFERER']);
+						}
+					}
+					break;
+                case 3:
+                    if (count($_POST) <= 0) {
+                        $coundition = "parent_id = {$guideId}";
+                        if (!$guideId) {
+                            $coundition = "level = 1";
+                        }
+                        $asubGuide = $mdlGuide->select($coundition, "guide_id,guide_name,sort", "", "order by sort desc,guide_id asc")->items;
+                        if (empty($asubGuide)) {
+                            return '未找到数据';
+                        }
+                        $this->tplvar['guideId'] = $guideId;
+                        $this->tplvar['subguide'] = $asubGuide;
+                        return $this->render('category/sort.dialog.html', $this->tplvar);
+                    } else {
+                        $aSort = $_POST['sort'];
+                        if (empty($aSort)) {
+                            return $this->printmsg('获取数据失败',0);
+                        } else {
+                            foreach ($aSort as $key=>$value) {
+                                if (intval($value) <= 0) {
+                                    unset($aSort[$key]);
+                                }
+                            }
+                            if (!empty($aSort)) {
+                                foreach ($aSort as $k=>$v) {
+                                    $mdlGuide->update("guide_id = {$k}", "sort = {$v}");
+                                }
+                            }
+                            return $this->printmsg('排序成功',1,'',$_SERVER['HTTP_REFERER']);
+                        }
+                    }
+                    break;
+                case 4:
+                    if (count($_POST) <= 0) {
+                        $coundition = "parent_id = {$virtualId}";
+                        if (!$virtualId) {
+                            $coundition = "level = 1";
+                        }
+                        $asubVirtual = $mdlPub->select($coundition, "virtual_id,virtual_name,sort", "", "order by sort desc,virtual_id asc")->items;
+                        if (empty($asubVirtual)) {
+                            return '未找到数据';
+                        }
+                        $this->tplvar['virtualId'] = $virtualId;
+                        $this->tplvar['subvirtual'] = $asubVirtual;
+                        return $this->render('category/sort.dialog.html', $this->tplvar);
+                    } else {
+                        $aSort = $_POST['sort'];
+                        if (empty($aSort)) {
+                            return $this->printmsg('获取数据失败',0);
+                        } else {
+                            foreach ($aSort as $key=>$value) {
+                                if (intval($value) <= 0) {
+                                    unset($aSort[$key]);
+                                }
+                            }
+                            if (!empty($aSort)) {
+                                foreach ($aSort as $k=>$v) {
+                                    $mdlPub->update("virtual_id = {$k}", "sort = {$v}");
+                                }
+                            }
+                            return $this->printmsg('排序成功',1,'',$_SERVER['HTTP_REFERER']);
+                        }
+                    }
+                    break;
+			}
+		}
+	}
+
+	/**
+	 *添加分类扩展
+	 */
+	public function pageAddCategoryExt($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$categoryID = zbj_lib_BaseUtils::getStr($path['cid'], 'int');
+
+		$svCategory = new zbj_service_category($categoryID);
+		$aCategory = $svCategory->get();
+
+		if (empty($aCategory)) {
+			return $this->printmsg('该分类不存在');
+		}
+
+		if ($aCategory['level'] != 3) {
+			return $this->printmsg('指定的分类等级不对');
+		}
+		$this->tplvar['cateInfo'] = $aCategory;
+		if (count($_POST) <= 0) {
+			
+			return $this->render('category/addext.html', $this->tplvar);
+		} else {
+
+		}
+	}
+    
+    /**
+     * 重建频道首页 zhuhuabing 2013-09-06
+     */
+    public function pageCreateChannel($inPath){
+        $cache = new zbj_lib_cache('memcache');
+        $_cacheName = 'www.controller.channel.index.cata_';
+        $objVirServ = new zbj_service_categoryvirtual();
+        $atree = $objVirServ->getTree();
+        if (!empty($atree)) {
+            foreach ($atree as $val) {
+                if (!empty($val['list']) && is_array($val['list'])) {
+                    foreach ($val['list'] as $sv) {
+                        $cache->del($_cacheName.$sv['cndir']);
+                    }
+                }
+            }
+			$cache_name_base = array(
+				'zbjcore.service.category.cndir2virtual',
+				'zbjcore.service.category.id2virtual',
+				'zbjcore.service.category.virtual.information',
+				'zbjcore.service.category.2.list',
+				'zbj.category.virtual.list',
+				'zbj.category.base.list',
+				'zbjcore.service.category.getExtVals.tree',
+				'zbjcore.service.category.getEvaByCategory.data',
+			);
+			foreach ($cache_name_base as $v) {
+				$cache->del($v);
+			}
+            return $this->printmsg('清除成功!');
+        }else{
+            return $this->printmsg('分类树缓存为空!');
+        }
+    }
+
+    /**
+     * 重建发布类目
+     */
+    public function pageCreateChannelPub($inPath){
+        $cache = new zbj_lib_cache('memcache');
+        $_cacheName = 'www.controller.channel.index.cata_';
+        $objVirServ = new zbj_service_categorypub();
+        $atree = $objVirServ->getTree();
+        if (!empty($atree)) {
+            foreach ($atree as $val) {
+                if (!empty($val['list']) && is_array($val['list'])) {
+                    foreach ($val['list'] as $sv) {
+                        $cache->del($_cacheName.$sv['cndir']);
+                    }
+                }
+            }
+            $cache_name_base = array(
+                'zbjcore.service.category.pub.cndir2virtual',
+                'zbjcore.service.category.pub.id2virtual',
+                'zbjcore.service.category.pub.information',
+                'zbjcore.service.category.pub.2.list',
+                'zbj.category.pub.list',
+                'zbj.category.base.list',
+                'zbjcore.service.category.getExtVals.tree',
+                'zbjcore.service.category.getEvaByCategory.data',
+            );
+            foreach ($cache_name_base as $v) {
+                $cache->del($v);
+            }
+            return $this->printmsg('清除成功!');
+        }else{
+            return $this->printmsg('分类树缓存为空!');
+        }
+    }
+	
+	/**
+	 * 编辑拓展属性
+	 */
+	public function pageEditExt($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$extid = intval($path['eid']);
+		$this->tplvar['eid'] = $extid;
+		$cid = intval($path['cid']);
+		$this->tplvar['cid'] = $cid;
+		$type = intval($path['type']) ? intval($path['type']) : 0; 
+		$this->tplvar['type'] = $type;
+		$vtype = intval($path['vtype']) ? intval($path['vtype']) : 0;
+		$this->tplvar['vtype'] = $vtype;
+		
+		$mdlExt = new zbj_model_mk_categoryext();
+		$mdlExtVal = new zbj_model_mk_categoryextval();
+		if (count($_POST) <= 0) {
+			if ($vtype) {
+				$info = $mdlExt->selectOne("ext_id={$extid} and `type`={$type}");
+				$this->tplvar['cid'] = $info['category_id'];
+				$this->tplvar['type'] = $vtype;
+				$type = 0;
+			}
+			if (!empty($extid)) {
+				$info = $mdlExt->selectOne("ext_id={$extid}");
+				if ($info['type'] == $type) {
+					$ext_options = unserialize($info['ext_options']);
+					$info = array_merge($info, (array)$ext_options);
+					$info['val'] = $mdlExtVal->select("ext_id={$extid}",'','','order by val_id asc')->items;
+					
+					if ($type != 0) {//define('DEBUG', 1);
+						$con = "v2v.m_ext_id={$extid}";
+						$left = array('mk_category_ext_val val'=>'v2v.s_val_id=val.val_id','mk_category_ext v'=>'v2v.s_ext_id=v.ext_id');
+						$v2v = $mdlExtVal->_db->select('mk_category_ext_v2v v2v',$con,'v2v.*,val.*,v.ext_name,v.category_id','','',$left)->items;
+						if ($v2v) {
+							foreach ($v2v as $v) {
+								$v2vnew[$v['m_val_id']]['val_ids'][] = $v['val_id'];
+								$v2vnew[$v['m_val_id']]['val_names'][] = $v['val_name'];
+								$category = $mdlExtVal->_db->selectOne('mk_category',"category_id={$v['category_id']}",'category_name');
+								$v2vnew[$v['m_val_id']]['allnames'][] = "({$category['category_name']}){$v['ext_name']}:{$v['val_name']}";
+							}
+						}
+						if ($info['val']) {
+							foreach ($info['val'] as $k => $v) {
+								if ($v2vnew[$v['val_id']]['val_ids']) {
+									$info['val'][$k]['val_ids'] = implode(',', $v2vnew[$v['val_id']]['val_ids']);
+									$info['val'][$k]['val_names'] = implode(',', $v2vnew[$v['val_id']]['val_names']);
+									$info['val'][$k]['allnames'] = implode(',', $v2vnew[$v['val_id']]['allnames']);
+								}
+							}
+						}
+					} else {
+						if ($vtype) {
+							if ($info['val']) {
+								$category = $mdlExtVal->_db->selectOne('mk_category',"category_id={$info['category_id']}",'category_name');
+								foreach ($info['val'] as $k => $v) {
+									$info['val'][$k]['tips'] = 1;
+									$info['val'][$k]['allnames'] = "({$category['category_name']}){$info['ext_name']}:{$v['val_name']}";
+								}
+							}
+						} else {
+							$con = "v2v.s_ext_id={$extid}";
+							$left = array('mk_category_ext_val val'=>'v2v.m_val_id=val.val_id','mk_category_ext v'=>'v2v.m_ext_id=v.ext_id');
+							$v2v = $mdlExtVal->_db->select('mk_category_ext_v2v v2v',$con,'v2v.*,val.*,v.ext_name,v.category_id','','',$left)->items;
+							if ($v2v) {
+								foreach ($v2v as $v) {
+									$category = $mdlExtVal->_db->selectOne('mk_category',"category_id={$v['category_id']}",'category_name');
+									$v2vnew[$v['s_val_id']]['allnames'][] = "({$category['category_name']}){$v['ext_name']}:{$v['val_name']}";
+								}
+							}
+							if ($info['val']) {
+								foreach ($info['val'] as $k => $v) {
+									if ($v2vnew[$v['val_id']]['allnames']) {
+										$info['val'][$k]['tips'] = 1;
+										$info['val'][$k]['allnames'] = implode(',', $v2vnew[$v['val_id']]['allnames']);
+									}
+								}
+							}
+						}
+					}
+					$this->tplvar['info'] = $info;
+				} else {
+					$this->tplvar['cid'] = $info['category_id'];
+				}
+			}
+			return $this->render('category/ext/editext.html', $this->tplvar);
+		} else {
+			$ext_name = lib_BaseUtils::getStr($_POST['ext_name']);
+			$ext_type = lib_BaseUtils::getStr($_POST['ext_type']);
+			$list_name = lib_BaseUtils::getStr($_POST['list_name']);
+			$sub_name = lib_BaseUtils::getStr($_POST['sub_name']);
+			$join_name = lib_BaseUtils::getStr($_POST['join_name']);
+			$page_name = lib_BaseUtils::getStr($_POST['page_name']);
+			$is_list = intval($_POST['is_list']);
+			$is_show = intval($_POST['is_show']);
+			$is_must = intval($_POST['is_must']);
+			$max_select = intval($_POST['max_select']);
+			if (empty($ext_name)) {
+				return $this->printmsg('请输入扩展属性名称',0);
+			}
+			if (empty($ext_type)) {
+				return $this->printmsg('请选择选项类型',0);
+			}
+			if ($is_list && empty($list_name) && in_array($ext_type, array('checkbox','radio','select'))) {
+				return $this->printmsg('请输入筛选名称',0);
+			}
+			if ($type == 0) {
+				if (empty($join_name)) {
+					return $this->printmsg('请输入入驻时的名称',0);
+				}
+			}
+			if ($type == 1 || $type == 2) {
+				if (empty($sub_name)) {
+					return $this->printmsg('请输入发布需求中的名称',0);
+				}
+				if (empty($page_name) && $ext_type != 'hidden') {
+					return $this->printmsg('请输入最终页的名称',0);
+				}
+			}
+			
+			$srvCategory = new zbj_service_category();
+			if ($extid) {
+				$info = $mdlExt->selectOne("ext_id={$extid}");
+				$cid = $info['category_id'];
+				if ($info['type'] != $type || $vtype) {
+					$extid = 0;
+				}
+			} elseif ($cid) {
+				if (empty($cid)) {
+					return $this->printmsg('参数错误',0);
+				}
+				$srvCategory->setId($cid);
+			}
+			$srvCategory->setId($cid);
+			
+			if (in_array($ext_type, array('checkbox','radio','select'))) {
+				if ($ext_type == 'checkbox') {
+					$num = count($_POST['val_ids']);
+					if ($max_select > $num) {
+						return $this->printmsg('属性格式小于最大选择数，请重新选择最大选择数',0);
+					}
+				} else {
+					$max_select = 0;
+				}
+				$val_name = $_POST['val_name'];
+				$val_id = $_POST['val_id'];
+				$val_names = $_POST['val_names'];
+				$val_ids = $_POST['val_ids'];
+				if ($val_name) {
+					foreach ($val_name as $k => $v) {
+						$val['name'] = lib_BaseUtils::getStr($v);
+						$val['val_id'] = (int)$val_id[$k];
+						$v2v = array();
+						if ($val_ids[$k]) {
+							$val_idsarr = explode(',', $val_ids[$k]);
+							foreach ($val_idsarr as $vl) {
+								if ($vl) {
+									$v2v[] = $vl;
+								}
+							}
+						}
+						$val['v2v'] = $v2v;
+						$vals[] = $val;
+					}
+				}
+			} elseif ($ext_type == 'text') {
+				$val_id = lib_BaseUtils::getStr($_POST['val_id1']);
+				$val_name = lib_BaseUtils::getStr($_POST['val_name1']);
+				$vals[] = array('name' => $val_name, 'val_id' => $val_id);
+				$is_list = 0;
+				$max_select = 0;
+			} elseif ($ext_type == 'password') {
+				$val_id = lib_BaseUtils::getStr($_POST['val_id2']);
+				$val_name = lib_BaseUtils::getStr($_POST['val_name2']);
+				$vals[] = array('name' => $val_name, 'val_id' => $val_id);
+				$is_list = 0;
+				$max_select = 0;
+			} elseif ($ext_type == 'hidden') {
+				$val_id = lib_BaseUtils::getStr($_POST['val_id3']);
+				$val_name = lib_BaseUtils::getStr($_POST['val_name3']);
+				$vals[] = array('name' => $val_name, 'val_id' => $val_id);
+				$is_list = 0;
+				$max_select = 0;
+			}
+			if (empty($val_name)) {
+				return $this->printmsg('请设置扩展属性的值',0);
+			}
+			
+			$items = array(
+				'ext_name' => $ext_name,
+				'is_show' => $is_show,
+				'is_list' => $is_list,
+				'ext_type' => $ext_type,
+				'is_match' => 1,
+				'list_name' => $list_name,
+				'sub_name' => $sub_name,
+				'join_name' => $join_name,
+				'page_name' => $page_name,
+				'is_must' => $is_must,
+				'max_select' => $max_select,
+			);
+			$ext_id = $extid ? (int)$extid : false;//define('DEBUG', 1);
+			$res = $srvCategory->addExt($type, $items, $vals, $ext_id);
+			if ($res) {
+				$url = "http://".$_SERVER['HTTP_HOST']."/category/extlist-cid-{$cid}-type-{$type}";
+				return $this->printmsg('操作成功',1,'',$url);
+			} else {
+				return $this->printmsg($srvCategory->getError(),0);
+			}
+		}
+	}
+	
+	public function pageGetExtVal($inPath) {//define('DEBUG',1);
+		$path = $this->getUrlParams($inPath);
+		$cid = intval($path['cid']);
+		$eid = intval($path['eid']);
+		$this->tplvar['eid'] = $eid;
+		$srvCategory = new zbj_service_category();
+		$this->tplvar['tp'] = 'all';
+		if ($eid) {
+			$mdlExt = new zbj_model_mk_categoryext();
+			$info = $mdlExt->selectOne("ext_id={$eid}");
+			//默认拓展属性
+			$srvCategory->setId($info['category_id']);
+			$uvlist = $srvCategory->getExt(0);
+			
+			//默认分类
+			$mdlcategory = new zbj_model_mk_category();
+			$cateinfo = $mdlcategory->selectOne("category_id={$info['category_id']}");
+			$this->tplvar['cateinfo'] = $cateinfo;
+			
+		}
+		if ($cid) {
+			$this->tplvar['tp'] = 'list';
+			//分类下拓展属性
+			$srvCategory->setId($cid);
+			$uvlist = $srvCategory->getExt(0);
+			
+		}
+		
+		$ids = $_POST['ids'];
+		$names = $_POST['names'];
+		$allnames = $_POST['allnames'];
+		if ($ids) {
+			$arrid = explode(',', $ids);
+			$arrname = explode(',', $names);
+			$allname = explode(',', $allnames);
+			foreach ($arrid as $k => $v) {
+				$v2v[] = array('val_id'=>$v,'val_name'=>$arrname[$k],'allname'=>$allname[$k]);
+			}
+		}
+		$this->tplvar['v2v'] = $v2v;
+		$this->tplvar['ulist'] = $uvlist;
+		$msg = $this->render('category/ext/extval.html', $this->tplvar);
+		return $this->printmsg($msg,1);
+	}
+	
+	
+	/**
+	 * 友情链接
+	 */
+	public function pageFriendlink($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$type = intval($_GET['type']) ? intval($_GET['type']) : 1;
+		$this->tplvar['type'] = $type;
+		
+		$aVirtual = $this->_mdlVirtual->select("", "sort,virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level", "", "order by level asc,sort desc,virtual_id asc")->items;
+		$aData = array();
+		if (!empty($aVirtual)) {
+			foreach ($aVirtual as $key=>$value) {
+				$level = $value['level'];
+				if ($level == 1 && $value['virtual_id']) {
+					$aData[(int)$value['virtual_id']] = $value;
+					unset($aVirtual[$key]);
+				}
+			}
+			foreach ($aVirtual as $ky=>$val) {
+				$level = $val['level'];
+				if ($level == 2 && $val['parent_id']) {
+					$aData[(int)$val['parent_id']]['sub'][(int)$val['virtual_id']] = $val;
+					unset($aVirtual[$ky]);
+				}
+			}
+			foreach ($aVirtual as $k=>$val) {
+				$level = $val['level'];
+				if ($level == 3 && $val['parent_id'] && $val['virtual1id']) {
+					$aData[(int)$val['virtual1id']]['sub'][$val['parent_id']]['sub'][] = $val;
+					unset($aVirtual[$k]);
+				}
+			}
+		}
+		
+		$freeVirtual = $this->_mdlVirtual->select("parent_id = 0 and level <> 1", "virtual_id,virtual_name,parent_id,virtual1id,virtual2id,level")->items;
+		
+		$this->tplvar['data'] = $aData;
+		$this->tplvar['freevirtual'] = $freeVirtual;
+		if ($_GET['isajax']) {
+			$tpl = 'category/friendlink/ajaxcat.html';
+			$html = $this->render($tpl, $this->tplvar);
+			return json_encode(array('msg'=>$html));
+		} else {
+			$tpl = 'category/friendlink/index.html';
+			return $this->render($tpl, $this->tplvar);
+		}
+	}
+	
+	/**
+	 * 编辑友情链接
+	 */
+	public function pageEditLink($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$type = intval($_GET['type']) ? intval($_GET['type']) : 1;
+		$this->tplvar['type'] = $type;
+		$virtual_id = intval($_GET['vid']);
+		$this->tplvar['vid'] = $virtual_id;
+		
+		$vinfo = $this->_mdlVirtual->selectOne("virtual_id={$virtual_id}");
+		$mdlV2f = new zbj_model_mk_categoryv2f();
+		$list = $mdlV2f->select("virtual_id={$virtual_id} and type={$type}",'','','order by etype desc, sort asc')->items;
+		
+		$this->tplvar['vinfo'] = $vinfo;
+		$this->tplvar['list'] = $list;
+		$this->tplvar['etype'] = array('友情链接','内部链接');
+		return $this->render('category/friendlink/edit.html', $this->tplvar);
+	}
+	
+	/**
+	 * 添加友情链接
+	 */
+	public function pageAddLink($inPath) {
+		$path = $this->getUrlParams($inPath);//define('DEBUG', 1);
+		$type = intval($_GET['type']) ? intval($_GET['type']) : 1;
+		$this->tplvar['type'] = $type;
+		$virtual_id = intval($_GET['vid']);
+		$this->tplvar['vid'] = $virtual_id;
+		if (strtoupper($_SERVER['REQUEST_METHOD']) == 'GET') $v2f_id = intval($_GET['fid']);
+		if (strtoupper($_SERVER['REQUEST_METHOD']) == 'POST') $v2f_id = intval($_POST['v2f_id']);
+		$mdlV2f = new zbj_model_mk_categoryv2f();
+		if ($v2f_id > 0) {
+			if ($v2f_id) {
+				$v2finfo = $mdlV2f->selectOne("v2f_id={$v2f_id}");
+				$nvirtual_id = $v2finfo['virtual_id'];
+				$this->tplvar['v2finfo'] = $v2finfo;
+				if ($v2finfo) { //取已选的展示地点
+					$this->tplvar['loc_list'] = $vlink_list = zbj_lib_BaseUtils::indexArray($mdlV2f->select(array('linkname' => $v2finfo['linkname'], 'linkurl' => $v2finfo['linkurl'], 'virtual_id' => $v2finfo['virtual_id'], 'etype' => $v2finfo['etype']), 'v2f_id,type')->items, 'type', 'v2f_id');
+				}
+			} elseif ($virtual_id) {
+				$nvirtual_id = $virtual_id;
+			}
+		} 
+		if (strtoupper($_SERVER['REQUEST_METHOD']) != 'POST') {
+			if ($nvirtual_id) {
+				$vinfo = $mdlV2f->_db->selectOne('mk_category_virtual',"virtual_id={$nvirtual_id}");
+				$this->tplvar['vname'] = $vinfo['virtual_name'];
+			}
+			return $this->render('category/friendlink/add.html', $this->tplvar);
+		} else {
+			$linkname = zbj_lib_BaseUtils::getStr($_POST['linkname']);
+			$linkurl = zbj_lib_BaseUtils::getStr($_POST['linkurl']);
+			$vids = zbj_lib_BaseUtils::getStr($_POST['vids']);
+			$etype = zbj_lib_BaseUtils::getStr($_POST['etype'], 'int');
+			$type = $_POST['type'];
+			if (empty($linkname) || empty($linkurl)) {
+				return $this->printmsg('请输入链接名和链接',0);
+			}
+			if (empty($vids)) {
+				return $this->printmsg('请选择分类',0);
+			}
+			if (count($type) == 0) {
+				return $this->printmsg('请选择类型',0);
+			}
+			$v2f_condition_common = $v2finfo ? " AND v2f_id!={$v2f_id}" : '';
+			$vidlist = explode(',', $vids);
+			foreach ($vidlist as $v) {
+				foreach ($type as $t) {
+					if (!ctype_digit((string) $t)) continue;
+					$link = $mdlV2f->selectOne("virtual_id={$v} AND linkname = '{$linkname}' AND `type` = {$t} AND etype = {$etype} {$v2f_condition_common}", "*");
+					if (!empty($link)) {
+						continue;
+					}
+					if ($v2finfo && $v2finfo['virtual_id'] == $v && $v2finfo['type'] == $t) {
+						$mdlV2f->setPkid($v2finfo['v2f_id']);
+					} else {
+						$vinfo = $mdlV2f->selectOne("virtual_id={$v} and type={$t}",'max(sort) as sort');
+						$mdlV2f->setPkid(false);
+						$mdlV2f->set('sort', $vinfo['sort']+1);
+					}
+					$mdlV2f->set('linkname', $linkname);
+					$mdlV2f->set('linkurl', $linkurl);
+					$mdlV2f->set('virtual_id', $v);
+					$mdlV2f->set('etype', $etype);
+					$mdlV2f->set('type', $t);
+					$mdlV2f->save();
+				}
+			}
+			if ($vlink_list) { //删除取消选择的展示地点
+				$del_types = array_diff(array_keys($vlink_list), $type);
+				if ($del_types) {
+					foreach($del_types as $vftype) {
+						if ($vlink_list[$vftype]) $del_vfids[] = $vlink_list[$vftype];
+					}
+					if ($del_vfids) $mdlV2f->delete('v2f_id IN (' . implode(',', $del_vfids) .  ')');
+				}
+			}
+			//清缓存
+			$cache = new zbj_lib_cache('memcache');
+			$cacheName = 'zbjcore.service.category.virtual.friendlink';
+			$cache->del($cacheName);
+			$cacheName = 'zbjcore.service.category.virtual.sidelink';
+			$cache->del($cacheName);
+			
+			$url = $v2finfo?"/category/editlink?vid={$v2finfo['virtual_id']}":($virtual_id?"/category/editlink?vid={$virtual_id}":'/category/friendlink');
+			return $this->printmsg('操作成功',1,'',$url);
+		}
+	}
+	
+	/**
+	 * 删除友情链接
+	 */
+	public function pageDelLink($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$v2f_id = intval($_GET['fid']);
+		if (empty($v2f_id)) {
+			return $this->printmsg('无效参数',0);
+		}
+		$mdlV2f = new zbj_model_mk_categoryv2f();
+		$v2finfo = $mdlV2f->selectOne("v2f_id={$v2f_id}");
+		if (empty($v2finfo)) {
+			return $this->printmsg('该内容不存在',0);
+		}
+		$res = $mdlV2f->delete("v2f_id={$v2f_id}");
+		if ($res) {
+			//清缓存
+			$cache = new zbj_lib_cache('memcache');
+			$cacheName = 'zbjcore.service.category.virtual.friendlink';
+			$cache->del($cacheName);
+			$cacheName = 'zbjcore.service.category.virtual.sidelink';
+			$cache->del($cacheName);
+			return $this->printmsg('删除成功',1,'',"/category/editlink?vid={$v2finfo['virtual_id']}&type={$v2finfo['type']}");
+		} else {
+			return $this->printmsg('删除失败',0);
+		}
+	}
+	
+	/**
+	 * 友情链接排序
+	 */
+	public function pageSortLink($inPath) {
+		$path = $this->getUrlParams($inPath);
+		$mdlV2f = new zbj_model_mk_categoryv2f();
+		if (count($_POST)) {
+			foreach ($_POST as $k => $v) {
+				$name = explode('_', $k);
+				$list[$name[1]] = $v;
+			}
+		}
+		if (count($list)) {
+			try {
+				$mdlV2f->beginTransaction();
+				foreach ($list as $k => $v) {
+					$mdlV2f->setPkid($k);
+					$mdlV2f->set('sort', $v);
+					if(!$mdlV2f->save()){
+						throw new Exception('ERROR');
+					}
+				}
+				$mdlV2f->commit();
+				//清缓存
+				$cache = new zbj_lib_cache('memcache');
+				$cacheName = 'zbjcore.service.category.virtual.friendlink';
+				$cache->del($cacheName);
+				$cacheName = 'zbjcore.service.category.virtual.sidelink';
+				$cache->del($cacheName);
+				return $this->printmsg('操作成功');
+			}catch (Exception $e){
+				$mdlV2f->rollBack();
+				return $this->printmsg('操作失败',0);
+			}
+		}
+	}
+	
+	/**
+	 * 需求分配配置
+	 * @access public
+	 */
+	public function pageAllotConfig () {
+		$module_id = zbj_lib_BaseUtils::getStr($_GET['mid'], 'int');
+		$dimension_id = zbj_lib_BaseUtils::getStr($_GET['did'], 'int', 0);
+		
+		if (! $dimension_id) $this->printmsg("参数错误");
+		
+		$condition = array();
+		$items = array(
+			'category_id',
+			'category_name',
+			'parent_id',
+			'level'
+		);
+		$categories = $this->_mdlCategory->select($condition, $items, '', 'ORDER BY level DESC, sort')->items;
+		
+		$s_module = new service_module($module_id);
+		$category_ids = explode(',', $s_module->getCategoryIdStrByModuleId());
+		
+		$three_level = array();
+		$second_level = array();
+		$temp = array();
+		foreach ($categories as $category) {
+			if (3 == $category['level']) {
+				if (! in_array($category['category_id'], $category_ids)) {
+					continue;
+				}
+				
+				$three_level[$category['parent_id']][] = $category;
+			} elseif (2 == $category['level']) {
+				if (! $three_level[$category['category_id']]) {
+					continue;
+				}
+				
+				$second_level[$category['parent_id']][$category['category_id']] = $category;
+				$second_level[$category['parent_id']][$category['category_id']]['children'] = $three_level[$category['category_id']];
+			} else {
+				if (! $second_level[$category['category_id']]) {
+					continue;
+				}
+				
+				$temp[$category['category_id']] = $category;
+				$temp[$category['category_id']]['children'] = $second_level[$category['category_id']];
+
+			}
+		}
+		
+		$this->tplvar['categories'] = $temp;
+		
+		//配置
+		$m_module_config = new model_mk_moduleConfig();
+		$allot_config = array();
+		$allot_config_temp = $m_module_config->select(array('dimension_id' => $dimension_id))->items;
+		foreach ($allot_config_temp as $value) {
+			$allot_config[$value['category_id']] = json_decode($value['allot_config_option'], true);
+		}
+		$this->tplvar['allot_config'] = $allot_config;
+		
+		$s_cpoption = new service_cpoption();
+		$cp_options = $s_cpoption->getFullItems();
+		$this->tplvar['cp_options'] = $cp_options;
+		
+		//行业
+		$this->tplvar['modules'] = $s_module->getModule();
+		//分配维度
+		$m_dimension = new model_mk_allotdimension();
+		$dimension = $m_dimension->selectOne(array('dimension_id'=>$dimension_id));
+		$this->tplvar['dimension'] = $dimension;
+		
+		$this->tplvar['mode_config'] = $this->_get_config_type();
+		
+		return $this->render('category/allotConfig.html', $this->tplvar);
+	}
+	
+	/**
+	 * 删除分类分配配置
+	 * @access public
+	 */
+	public function pageDelAllotConfig($inPath) {
+		if(zbj_lib_BaseUtils::isAjax() == false){
+			return $this->printmsg('仅支持AJAX操作方式',0);
+		}
+		
+		$params = $this->getUrlParams($inPath);
+		
+		$dimension_id = intval($_GET['did']);
+		$category_id = intval($_GET['cid']);
+		
+		if($dimension_id <= 0 || $category_id <= 0){
+			return $this->printmsg('传递的参数错误',0);
+		}
+		
+		$modulecfgModel = new model_mk_moduleConfig();
+		$back = $modulecfgModel->delete("category_id='{$category_id}' and dimension_id='{$dimension_id}'");
+		if($back === false){
+			return $this->printmsg('删除分类配置失败',0);
+		}
+		return $this->printmsg('删除分类配置成功',1);
+	}
+		
+	/**
+	 * 行业分类编辑
+	 * @access public
+	 */
+	public function pageAllotConfigEdit($inPath) {
+		$m_module_config = new model_mk_moduleConfig();
+		
+		$url_params = $this->getUrlParams($inPath);
+		$module_id = $url_params['mid'];
+		$category_id = $url_params['cid'];
+		$dimension_id = $url_params['did'];
+		
+		if (! count($_POST)) {
+			$map = array();
+			$category = $this->_mdlCategory->selectOne(array('category_id' => $category_id));
+			if ($category['category1id']) {
+				$map[] = $this->_mdlCategory->selectOne(array('category_id' => $category['category1id']));
+			}
+			if ($category['category2id']) {
+				$map[] = $this->_mdlCategory->selectOne(array('category_id' => $category['category2id']));
+			}
+			$map[] = $category;
+			$this->tplvar['map'] = $map;
+			
+			//分配方式
+			$s_option = new service_cpoption(34);
+			$this->tplvar['option_34'] = $s_option->getItems();
+			//举报类型
+			$s_report = new zbj_service_report();
+			$this->tplvar['option_37'] = $s_report->getReportType();
+			//选标状态
+			$s_option = new service_cpoption(38);
+			$this->tplvar['option_38'] = $s_option->getItems();
+			//计件投标期过半
+			$s_option = new service_cpoption(39);
+			$this->tplvar['option_39'] = $s_option->getItems();
+			//计件选标期过半
+			$s_option = new service_cpoption(40);
+			$this->tplvar['option_40'] = $s_option->getItems();
+			
+			$this->tplvar['module_id'] = $module_id;
+			$this->tplvar['dimension_id'] = $dimension_id;
+			
+			//配置
+			$allot_config = $m_module_config->selectOne(array('category_id' => $category_id, 'dimension_id' => $dimension_id));
+			$this->tplvar['allot_config'] = $this->_format_allot_config($allot_config);
+			
+			return $this->render('category/allotConfigEdit.html', $this->tplvar);
+		}
+		
+		//插入配置
+		$config_type = $this->_get_config_type();
+		$mode_desc = $this->_get_mode_desc();
+		$allot_config = zbj_lib_BaseUtils::getStr($_POST['allot_config']);
+		
+		foreach ($allot_config as $mode => $config) {
+			foreach ($config as $type => $detail) {
+				$temp = 0;
+				foreach ($detail as $key => $value) {
+					if (! ('select' == $type)) {
+						if (('10_3' == (string)$mode) && ('tender' == $type)) {
+							if (! $value['tender_state']) {
+								return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请选择选标状态', 0);
+							}
+						} else {
+							if (('10_3' == (string)$mode) && (in_array($type, array('hosted', 'unhosted', 'hosted_apart')))) {
+								if (! is_numeric($value['w_min'])) {
+									return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请填写稿件金额', 0);
+								} else {
+									if ($value['w_max'] && ($value['w_min'] > $value['w_max'])) {
+										return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '稿件金额范围填写有误', 0);
+									}
+								}
+							}
+							
+							if ('report' == $type) {
+								if (! is_numeric($value['min'])) {
+									return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '数据范围填写有误，请检查后重新填写', 0);
+								} else {
+									if ($value['max'] && ($value['min'] > $value['max'])) {
+										return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '数据范围填写有误，请检查后重新填写', 0);
+									}
+								}
+							} else {
+								if (($value['min'] < $temp) or (! is_numeric($value['min']))) {
+									return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '数据范围填写有误，请检查后重新填写', 0);
+								} else {
+									$temp = $value['min'];
+								}
+								if (($value['max'] < $temp) or (! is_numeric($value['max']))) {
+									if (! ((0 == $value['max']) && ($key == (count($detail) -1)))) {
+										return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '数据范围填写有误，请检查后重新填写', 0);
+									}
+								} else {
+									$temp = $value['max'];
+								}
+							}
+						}
+					} else {
+						if (! $value['select_state']) {
+							return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请选择选标状态', 0);
+						}
+					}
+					
+					if ('report' == $type) {
+						if (! $value['report_type']) {
+							return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请选择举报类型', 0);
+						}
+					}
+					
+					if (! $value['allot_type']) {
+						return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请选择处理方式', 0);
+					}
+					if (378 == $value['allot_type']) {//延迟分配
+						if ((! $value['extend']) or (! is_numeric($value['extend']))) {
+							return $this->printmsg($mode_desc[$mode] . $config_type[$mode][$type] . '请正确填写延迟分配时间', 0);
+						}
+					}
+				}
+			}
+		}
+		
+		$category_ids = array();
+		if ($module_id) {
+			$s_module = new service_module($module_id);
+			$module_category_ids = explode(',', $s_module->getCategoryIdStrByModuleId());
+			
+			$category = $this->_mdlCategory->selectOne(array('category_id' => $category_id));
+			switch ($category['level']) {
+				case 3:
+					$category_ids[] = $category['category_id'];
+					break;
+				case 2:
+					$temp = $this->_mdlCategory->select(array('category2id' => $category_id, 'level' => 3))->items;
+					foreach ($temp as $key => $value) {
+						if (in_array($value['category_id'], $module_category_ids)) {
+							$category_ids[] = $value['category_id'];
+						}
+					}
+					break;
+				case 1:
+					$temp = $this->_mdlCategory->select(array('category1id' => $category_id, 'level' => 3))->items;
+					foreach ($temp as $key => $value) {
+						if (in_array($value['category_id'], $module_category_ids)) {
+							$category_ids[] = $value['category_id'];
+						}
+					}
+					break;
+				default:
+			}
+			
+		} else {
+			$category = $this->_mdlCategory->selectOne(array('category_id' => $category_id));
+			switch ($category['level']) {
+				case 3:
+					$category_ids[] = $category['category_id'];
+					break;
+				case 2:
+					$temp = $this->_mdlCategory->select(array('category2id' => $category_id, 'level' => 3))->items;
+					foreach ($temp as $key => $value) {
+						$category_ids[] = $value['category_id'];
+					}
+					break;
+				case 1:
+					$temp = $this->_mdlCategory->select(array('category1id' => $category_id, 'level' => 3))->items;
+					foreach ($temp as $key => $value) {
+						$category_ids[] = $value['category_id'];
+					}
+					break;
+				default:
+			}
+		}
+		
+		$data = array();
+		$data['allot_config_option'] = json_encode($allot_config);
+		$data['dimension_id'] = $dimension_id;
+		foreach ($category_ids as $value) {
+			$data[category_id] = $value;
+			$m_module_config->insert($data, true);
+		}
+		
+		return $this->printmsg("编辑成功.", 2, null, "/category/allotConfig?mid={$module_id}&did={$dimension_id}");
+	}
+	
+	/**
+	 * 格式化配置数据
+	 * 
+	 * @param array $allot_config
+	 * 
+	 * @access private
+	 * @author yuanzhuang
+	 */
+	private function _format_allot_config($allot_config) {
+		$format_data = array();
+		
+		if ($allot_config) {
+			$allot_config = json_decode($allot_config['allot_config_option'],  true);
+		} else {
+			$allot_config = array();
+		}
+			
+		$modes = array('10', '13', '10_3', '12', '11');
+		foreach ($modes as $mode) {
+			if (! array_key_exists($mode, $allot_config)) {
+				$allot_config[$mode] = array();
+			} 
+			
+			$format_data[$mode] = $allot_config[$mode];
+		}
+		
+		$config_type = $this->_get_config_type();
+		
+		foreach ($allot_config as $mode => $each_config) {
+			if (! $mode) continue;
+			
+			$temp = array();
+			foreach ($config_type[$mode] as $each_type => $each_desc) {
+				if (! array_key_exists($each_type, $each_config)) {
+					$each_config[$each_type] = array(array());
+				}
+				
+				$temp[$each_type] = $each_config[$each_type];
+			}
+			$format_data[$mode] = $temp;
+		}
+		
+		return $format_data;
+	}
+	
+	/**
+	 * 格式化配置数据
+	 * 
+	 * @return array
+	 * 
+	 * @access private
+	 * @author yuanzhuang
+	 */
+	private function _get_config_type() {
+		return array(
+			'10' => array(
+				'unhosted' => '未托管', 
+				'hosted' => '全额托管', 
+				'hosted_apart' => '部分托管', 
+				'tender' => '投标期过半', 
+				'select' => '选标期过半', 
+				'report' => '举报'
+			),
+			'13' => array(
+				'unhosted' => '未托管', 
+				'hosted' => '全额托管', 
+				'hosted_apart' => '部分托管', 
+				'tender' => '投标期过半', 
+				'select' => '选标期过半', 
+				'report' => '举报'
+			),
+			'10_3' => array(
+				'unhosted' => '未托管', 
+				'hosted' => '全额托管', 
+				'hosted_apart' => '部分托管', 
+				'tender' => '投标期过半', 
+				'select' => '选标期过半', 
+				'report' => '举报'
+			),
+			'12' => array(
+				'unhosted' => '未托管', 
+				'cancel' => '取消订单', 
+				'report' => '举报'
+			),
+			'11' => array(
+				'unhosted' => '未托管', 
+				'cancel' => '取消订单', 
+				'report' => '举报'
+			)
+		);
+	}
+	
+	/**
+	 * 获取每个mode对应的文字描述
+	 *
+	 * @return array
+	 *
+	 * @access private
+	 * @author yuanzhuang
+	 */
+	private function _get_mode_desc() {
+		return array(
+			'10' => '比稿',
+			'13' => '招标',
+			'10_3' => '计件',
+			'12' => '雇佣',
+			'11' => '服务',
+		);
+	}
+	
+	/**
+	 * 订单分配维度
+	 */
+	public function pageAllotDimensionList($inPath) {
+		$m_dimension = new model_mk_allotdimension();
+		$dimension = $m_dimension->select()->items;
+		$this->tplvar['dimension'] = $dimension;
+		
+		$s_module = new service_module();
+		$this->tplvar['module'] = $s_module->getModule();
+		return $this->render('category/dimension/list.html',$this->tplvar);
+	}
+	public function pageAddAllotDimension($inPath) {
+		$dimension_id = zbj_lib_BaseUtils::getStr($_GET['id'], 'int', 0);
+		$s_module = new service_module();
+		$this->tplvar['module'] = $s_module->getModule();
+		if ($_POST){
+			$data['dimension_name'] = zbj_lib_BaseUtils::getStr($_POST['dimension_name']);
+			$data['desc'] = zbj_lib_BaseUtils::getStr($_POST['desc']);
+			$data['state'] = zbj_lib_BaseUtils::getStr($_POST['state'], 'int');
+			$data['module_id'] = zbj_lib_BaseUtils::getStr($_POST['mid'], 'int');
+			$did = zbj_lib_BaseUtils::getStr($_POST['dimension_id'], 'int', 0);
+			
+			$m_dimension = new model_mk_allotdimension();
+			$m_allot_config = new zbj_model_cp_allotconfig();
+			if ($did) {
+				$dimension = $m_dimension->selectOne(array('dimension_id'=>$did), 'allot_config_id');
+				if ($dimension['allot_config_id']) {
+					$m_allot_config->update(array('id'=>$dimension['allot_config_id']), array('name'=>$data['dimension_name'], 'comment'=>$data['dimension_name']));
+				}
+				if ($m_dimension->update(array('dimension_id'=>$did), $data) === false) {
+					return $this->printmsg("操作失败", 0);
+				}else{
+					return $this->printmsg("操作成功", 2, null, '/category/AllotDimensionList');
+				}
+			}else{
+				$m_allot_config->insert(array('pid'=>1,'name'=>$data['dimension_name'], 'comment'=>$data['dimension_name']));
+				$allot_config_id = $m_allot_config->lastInsertId();
+				$data['allot_config_id'] = $allot_config_id;
+				if ($m_dimension->insert($data) === false) {
+					return $this->printmsg("操作失败", 0);
+				}else{
+					return $this->printmsg("操作成功", 2, null, '/category/AllotDimensionList');
+				}
+			}
+			
+		}
+		return $this->render('category/dimension/add.html',$this->tplvar);
+	}
+	
+	public function pageExcel(){
+		$module_id = zbj_lib_BaseUtils::getStr($_GET['mid'], 'int');
+		$dimension_id = zbj_lib_BaseUtils::getStr($_GET['did'], 'int', 0);
+		if (! $dimension_id) $this->printmsg("参数错误");
+		$m_dimension = new model_mk_allotdimension();
+		/*
+		$dimension = $m_dimension->select()->items;
+		*/
+		$info=$m_dimension->selectOne(array('dimension_id'=>$dimension_id));
+		$excel=new lib_excel();
+		$mode_config=$this->_get_config_type();
+		$s_cpoption = new service_cpoption();
+		$cp_options = $s_cpoption->getFullItems();
+			$condition = array();
+			$items = array('category_id','category_name','parent_id','level');
+			$categories = $this->_mdlCategory->select($condition, $items, '', 'ORDER BY level DESC, sort')->items;
+			
+			$s_module = new service_module($module_id);
+			$category_ids = explode(',', $s_module->getCategoryIdStrByModuleId());
+			$three_level = array();
+			$second_level = array();
+			$temp = array();
+			foreach ($categories as $key=> $category){
+				if (3 == $category['level']) {
+					if (! in_array($category['category_id'], $category_ids)) {
+						continue;
+					}
+				
+					$three_level[$category['parent_id']][] = $category;
+				} elseif (2 == $category['level']) {
+					if (! $three_level[$category['category_id']]) {
+						continue;
+					}
+				
+					$second_level[$category['parent_id']][$category['category_id']] = $category;
+					$second_level[$category['parent_id']][$category['category_id']]['children'] = $three_level[$category['category_id']];
+				} else {
+					if (! $second_level[$category['category_id']]) {
+						continue;
+					}
+				
+					$temp[$category['category_id']] = $category;
+					$temp[$category['category_id']]['children'] = $second_level[$category['category_id']];
+				
+				}
+				
+			}
+			//配置
+			$m_module_config = new model_mk_moduleConfig();
+			$allot_config = array();
+			$allot_config_temp = $m_module_config->select(array('dimension_id' => $dimension_id))->items;
+			foreach ($allot_config_temp as $value) {
+				$allot_config[$value['category_id']] = json_decode($value['allot_config_option'], true);
+			}
+			$result=array();
+			foreach ($temp as $category){
+				if ($category['children']) {
+					foreach ($category['children'] as $second_level){
+						
+						if ($second_level['children']) {
+							foreach ($second_level['children'] as $three_level){
+								
+								$temp_data['category_name1']=$category['category_name'];
+								$temp_data['category_name2']=$second_level['category_name'];
+								$temp_data['category_name3']=$three_level['category_name'];
+								$str='';
+								foreach ($mode_config as $mode=>$types){
+									$str='';
+									foreach ($types as $type =>$type_desc){
+										if ($allot_config[$three_level['category_id']][$mode][$type]) {
+											$str.=$type_desc.":";
+											
+											foreach ($allot_config[$three_level['category_id']][$mode][$type] as $value){
+												if ($value['min']) {
+													$str.="　>= ".$value['min'];
+												}
+												if ($value['max']) {
+													$str.=" <".$value['max'];
+												}else{
+													if ($value['min'] == 0) {
+														$str.="不限金额";
+													}
+												}
+												
+												$str.="   ";
+												
+												if ($value['allot_type'] == 378) {
+													;$str.="延时".$value['extend']."分钟分配";
+												}else{
+													$str.=$cp_options[$value['allot_type']]."\n";
+												}
+											}
+											$str.="\n";
+										}
+									}
+									$temp_data[$mode]=(string) $str;
+								}
+								$data[]=$temp_data;
+							}
+						}
+						
+					}
+				}
+			}
+			$excel->title=array("一级分类","二级分类","三级分类",'比稿','招标','计件','雇佣','服务');
+			$excel->file_name=$info['dimension_name']."导出".date("Y-m-d H:i:s");
+			$excel->exportExcel($data);
+			exit;
+		
+	}
+
+    /**
+     * 取前台分类下拉
+     * @param $inPath
+     * @return string
+     */
+    public function pageVCategoryChildren($inPath) {
+        $parent_id = intval($_GET['pid']);
+        $rtn = array(
+            'state' => -1,
+            'msg' => 'error',
+            'data' => array(),
+        );
+        if ($parent_id < 0) {
+            $rtn['msg'] = '父id不能小于0';
+            return $this->json($rtn);
+        }
+        $srv = new zbj_service_categoryvirtual($parent_id);
+        $tree = $srv->getEnabledTree();
+        $rtn_ok = array(
+            'state' => 1,
+            'msg' => 'OK',
+            'data' => array(),
+        );
+        if ($parent_id === 0) {
+            $rtn_ok['data'] = $srv->getEnabledLevel1IdName();
+        } else {
+            $info = $srv->getVirtualTree($parent_id);
+            $rtn_ok['data'] = $this->vCategoryChildrenListIdName($info['list']);
+        }
+        return $this->json($rtn_ok);
+    }
+
+    /**
+     * 从前台分类子树中提取分类id和名称
+     * @param $tree
+     * @return array
+     */
+    private function vCategoryChildrenListIdName($tree) {
+        $rtn = array();
+        foreach ($tree as $cid => &$v) {
+            if (isset($v['list'])) unset($v['list']);
+            $rtn[$cid] = $v['virtual_name'];
+        }
+        return $rtn;
+    }
+
+
+    /**
+     * 导购类目
+     * @param $inPath
+     * @return mixed
+     */
+    public function pageGuide($inPath) {
+        //define(DEBUG, 1);
+        $mdlGuide = new zbj_model_mk_categoryguide();
+        $item = 'sort,mk_category_guide.guide_id,guide_name,parent_id,guide1id,guide2id,level,cndir';
+        $order = 'order by level asc,sort desc,guide_id asc';
+        $aGuide = $mdlGuide->select("",$item , "",$order)->items;
+        //绑定基础类目
+        $mdlG2c = new zbj_model_mk_categoryg2c();
+        $item = 'guide_id,group_concat(distinct category_id) category_id';
+        $aG2c = $mdlG2c->select("guide_id>0",$item , "group by guide_id")->items;
+        if ($aG2c) {
+            foreach($aG2c as $v) {
+                $g2c[$v['guide_id']] = $v;
+            }
+        }
+        $aData = array();
+        if (!empty($aGuide)) {
+            foreach ($aGuide as $k=>$v) {
+                $aGuide[$k]['category_id'] = $g2c[$v['guide_id']]['category_id'];
+            }
+            foreach ($aGuide as $key=>$value) {
+                $level = $value['level'];
+                if ($level == 1 && $value['guide_id']) {
+                    $aData[(int)$value['guide_id']] = $value;
+                    unset($aGuide[$key]);
+                }
+            }
+            foreach ($aGuide as $ky=>$val) {
+                $level = $val['level'];
+                if ($level == 2 && $val['parent_id']) {
+                    $aData[(int)$val['parent_id']]['sub'][(int)$val['guide_id']] = $val;
+                    unset($aGuide[$ky]);
+                }
+            }
+            foreach ($aGuide as $k=>$val) {
+                $level = $val['level'];
+                if ($level == 3 && $val['parent_id'] && $val['guide1id']) {
+                    $aData[(int)$val['guide1id']]['sub'][$val['parent_id']]['sub'][] = $val;
+                    unset($aGuide[$k]);
+                }
+            }
+        }
+
+        $lv1 = $this->_mdlVirtual->selectOne("level=1","count(0) as n");
+        $lv1 = $lv1['n'];
+        $lv2 = $this->_mdlVirtual->selectOne("level=2","count(0) as n");
+        $lv2 = $lv2['n'];
+        $lv3 = $this->_mdlVirtual->selectOne("level=3","count(0) as n");
+        $lv3 = $lv3['n'];
+        //游离频道
+        $freeGuide = $mdlGuide->select("parent_id = 0 and level <> 1", "guide_id,guide_name,parent_id,guide1id,guide2id,level,cndir")->items;
+        if ($freeGuide) {
+            foreach ($freeGuide as $k => $v) {
+                $freeGuide[$k]['category_id'] = $g2c[$v['guide_id']]['category_id'];
+            }
+        }
+
+        $this->tplvar['data'] = $aData;
+        $this->tplvar['total'] = array('lv1'=>$lv1, 'lv2'=>$lv2, 'lv3'=>$lv3);
+        $this->tplvar['freeguide'] = $freeGuide;
+
+        return $this->render('category/guide.html', $this->tplvar);
+    }
+
+    /**
+     * 添加导购分类
+     * array $inPath
+     */
+    public function pageAddGuide($inPath) {
+        $path = $this->getUrlParams($inPath);
+        $level = zbj_lib_BaseUtils::getStr($path['level'], 'int');
+        if (!in_array($level, array(1,2,3))) {
+            $level = 1;
+        }
+        $mdlGuide = new zbj_model_mk_categoryguide();
+        $mdlG2C = new zbj_model_mk_categoryg2c();
+        $mdlCategory = new zbj_model_mk_category();
+        $srvGuide = new zbj_service_categoryguide();
+        $this->tplvar['level'] = $level;
+        if (count($_POST) <= 0) {
+            if ($level == 2) {
+                //所有一级类目
+                $oneGuide = $mdlGuide->select("level=1", "guide_id,guide_name")->items;
+                $this->tplvar['oneguide'] = $oneGuide;
+            } elseif ($level == 3) {
+                //所有二级类目
+                $twoGuide = $mdlGuide->select("level=2", "guide_id,guide_name")->items;
+                $this->tplvar['twoguide'] = $twoGuide;
+            }
+            //所有基础类目
+            $aCategory = $mdlCategory->select("level=1",'category_id,category_name')->items;
+            $this->tplvar['category'] = $aCategory;
+            return $this->render('category/addguide.html', $this->tplvar);
+        } else {
+            $sGname = zbj_lib_BaseUtils::getStr($_POST['gname'], 'string');
+            $sGdir = trim(zbj_lib_BaseUtils::getStr($_POST['gdir'], 'string'));
+            $pGuide = zbj_lib_BaseUtils::getStr($_POST['pguide'], 'int');
+            $categoryid = $_POST['categoryid'];//关联基础类目
+            //需求页状态
+            $tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+            $tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+            $tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+            $tDesc = zbj_lib_BaseUtils::getStr($_POST['tdesc'], 'string');
+            //服务商页状态
+            $uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+            $uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+            $uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+            $uDesc = zbj_lib_BaseUtils::getStr($_POST['udesc'], 'string');
+            //服务商页状态
+            $sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+            $sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+            $sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+            $sDesc = zbj_lib_BaseUtils::getStr($_POST['sdesc'], 'string');
+            //展示
+            $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+            $fwslist = zbj_lib_BaseUtils::getStr($_POST['fwslist'], 'int');
+            $fwlist = zbj_lib_BaseUtils::getStr($_POST['fwlist'], 'int');
+            $ishot = zbj_lib_BaseUtils::getStr($_POST['ishot'], 'int');
+            $ishome = zbj_lib_BaseUtils::getStr($_POST['ishome'], 'int');
+            $information = zbj_lib_BaseUtils::getStr($_POST['information'], 'string');
+            //增值服务
+            $pfee = zbj_lib_BaseUtils::getStr($_POST['pfee'], 'float');//需求置顶费用
+            $pnum = zbj_lib_BaseUtils::getStr($_POST['pnum'], 'int');//需求置顶个数
+            $ptips = zbj_lib_BaseUtils::getStr($_POST['ptips'], 'string');//需求置顶说明
+            $ffee1 = zbj_lib_BaseUtils::getStr($_POST['ffee1'], 'float');//店铺排名页底部店铺推荐位费用
+            $ffee2 = zbj_lib_BaseUtils::getStr($_POST['ffee2'], 'float');//需求最终页右侧店铺推荐位费用
+            $ftfee = zbj_lib_BaseUtils::getStr($_POST['ftfee'], 'float');//频道页店铺推荐位费用
+            $ftfee2 = zbj_lib_BaseUtils::getStr($_POST['ftfee2'], 'float');//店铺排名页右侧店铺推荐位费用
+            $fwfee = zbj_lib_BaseUtils::getStr($_POST['fwfee'], 'float');//服务排名页右侧服务推荐位费用
+            $fwfee2 = zbj_lib_BaseUtils::getStr($_POST['fwfee2'], 'float');//服务排名页底部服务推荐位费用
+            $ftfee3 = zbj_lib_BaseUtils::getStr($_POST['ftfee3'], 'float');//店铺排名页顶部店铺推荐位费用
+            $fwfee3 = zbj_lib_BaseUtils::getStr($_POST['fwfee3'], 'float');//服务排名页顶部服务推荐位费用
+            $customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+            if (empty($sGname)) return $this->printmsg('请输入分类名称',0,'gname');
+            if (empty($sGdir)) return $this->printmsg('请输入分类目录',0 ,'gdir');
+            if (empty($categoryid)) return $this->printmsg('请关联基础类目',0);
+            if (!empty($customUrl)) {
+                if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+                    return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+                }
+            }
+            if ($pGuide) {
+                $aGir = $mdlGuide->selectOne("guide_id={$pGuide}");
+                if (empty($aGir)) return $this->printmsg('父级不存在',0,'pguide');
+            }
+            $items = array(
+                'guide_name'=>trim($sGname),
+                'cndir'=> trim($sGdir),
+                'parent_id'=>$pGuide ? $pGuide : 0,
+                'show_index'=>0,
+                'show_channel'=>0,
+                'ico'=>'',
+                'level'=>$level,
+                'is_show'=>$isShow,
+                'redirect_url'=>trim($customUrl),
+                'user_show_type'=>$fwslist,
+                'ser_show_type'=>$fwlist,
+                'is_red'=>$ishot,
+                'is_home'=>$ishome,
+                'information'=>$information,
+            );
+            //seo
+            if ($tState == 1) {
+                $items['is_show_trade'] = 1;
+                $items['title_trade'] = $tTitle;
+                $items['keywords_trade'] = $tKey;
+                $items['description_trade'] = $tDesc;
+            }
+            if ($uState == 1) {
+                $items['is_show_user'] = 1;
+                $items['title_user'] = $uTitle;
+                $items['keywords_user'] = $uKey;
+                $items['description_user'] = $uDesc;
+            }
+            if ($sState == 1) {
+                $items['is_show_service'] = 1;
+                $items['title_service'] = $sTitle;
+                $items['keywords_service'] = $sKey;
+                $items['description_service'] = $sDesc;
+            }
+            //pfee
+            $items['paid_listing_fee'] = $pfee ? $pfee : 0;
+            $items['task_top_num'] = $pnum ? $pnum : 0;
+            $items['recommend_fws_fee1'] = $ffee1 ? $ffee1 : 0;
+            $items['recommend_fws_fee2'] = $ffee2 ? $ffee2 : 0;
+            $items['fws_top_fee'] = $ftfee ? $ftfee : 0;
+            $items['fws_top_fee2'] = $ftfee2 ? $ftfee2 : 0;
+            $items['fw_top_fee'] = $fwfee ? $fwfee : 0;
+            $items['fw_top_fee2'] = $fwfee2 ? $fwfee2 : 0;
+            $items['fws_vas_fee'] = $ftfee3 ? $ftfee3 : 0;
+            $items['fw_vas_fee'] = $fwfee3 ? $fwfee3 : 0;
+            $items['task_top_tips'] = trim($ptips);//需求置顶说明
+            //关联基础类目
+            if ($categoryid) {
+                if ($level>1) {
+                    $parent_id = $pGuide;
+                    $pg2c = $mdlG2C->select("guide_id={$parent_id}")->items;
+                    if (empty($pg2c)) {
+                        return $this->printmsg('父级类目未关联基础类目', 0);
+                    }
+                    foreach($pg2c as $v) {
+                        $allowCate[] = $v['category_id'];
+                    }
+                }
+                $allCateIds = array();
+                foreach ($categoryid as $v) {
+                    $category_id = (int)$v;
+                    if (empty($category_id)) continue;
+                    if ($level > 1) {
+                        $cateInfo = $mdlCategory->selectOne("category_id={$category_id}");
+                        if (!in_array($category_id,$allowCate) && !in_array($cateInfo['category2id'],$allowCate) && !in_array($cateInfo['category1id'],$allowCate)) {
+                            return $this->printmsg('所选类目不在父级关联的范围内', 0);
+                        }
+                    }
+                    if (!in_array($category_id, $allCateIds)) {
+                        $eval = zbj_lib_BaseUtils::getStr($_POST['propsID-'.$category_id]);
+                        if ($eval) {
+                            $mdlExtVal = new zbj_model_mk_categoryextval();
+                            $vallist = $mdlExtVal->select("val_id in({$eval})")->items;
+                            if ($vallist) {
+                                foreach ($vallist as $val) {
+                                    $items['category_id'][] = array(
+                                        'category_id' => $category_id,
+                                        'ext_id' => (int)$val['ext_id'],
+                                        'val_id' => (int)$val['val_id'],
+                                    );
+                                }
+                            }
+                        } else {
+                            $items['category_id'][] = array('category_id' => $category_id);
+                        }
+                        $allCateIds[] = $category_id;
+                    }
+                }
+            }
+
+            $rs = $srvGuide->addGuide($items);
+            //清缓存
+            zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET,30,array('zbj_cate_sdk'));
+            $api = new com\zhubajie\category\interfaces\GuideServiceClient(NULL);
+            zbj_lib_ApiClient::build($api);
+            $con_result = $api->clearCache();
+            if (!$rs) {
+                return $this->printmsg('添加失败~'.$srvGuide->getError(), 0);
+            }
+            return $this->printmsg('添加成功',1,'', $_SERVER['HTTP_REFERER']);
+        }
+    }
+
+    /**
+     * 编辑导购分类
+     * @param array $inPath
+     * $vid 虚拟分类ID
+     */
+    public function pageEditGuide($inPath) {
+        //define(DEBUG, 1);
+        $path = $this->getUrlParams($inPath);
+        $guideId = zbj_lib_BaseUtils::getStr($path['gid'], 'int');
+        if (!$guideId) {
+            return $this->printmsg('缺少类目Id');
+        }
+        $mdlGuide = new zbj_model_mk_categoryguide();
+        $mdlG2C = new zbj_model_mk_categoryg2c();
+        $mdlCategory = new zbj_model_mk_category();
+        $srvGuide = new zbj_service_categoryguide($guideId);
+        $aInfo = $srvGuide->get();
+        if (empty($aInfo)) {
+            return $this->printmsg('该类目不存在');
+        }
+        $aInfo['options'] = unserialize($aInfo['options']);
+        $level = $aInfo['level'];
+        $this->tplvar['level'] = $level;
+        $this->tplvar['ginfo'] = $aInfo;
+
+        if (count($_POST) <= 0) {
+            if ($level == 1) {
+                //已选二级类目
+                $aSubGuide = $mdlGuide->select("level=2 and parent_id={$guideId}", "guide_id,guide_name")->items;
+                $this->tplvar['subguide'] = $aSubGuide;
+            } elseif ($level == 2) {
+                //已选三级类目
+                $aSubGuide = $mdlGuide->select("level=3 and parent_id={$guideId}", "guide_id,guide_name")->items;
+                $this->tplvar['subguide'] = $aSubGuide;
+                //所有一级类目
+                $oneGuide = $mdlGuide->select("level=1", "guide_id,guide_name")->items;
+                $this->tplvar['oneguide'] = $oneGuide;
+            } elseif ($level == 3) {
+                //所有二级类目
+                $twoGuide = $mdlGuide->select("level=2", "guide_id,guide_name")->items;
+                $this->tplvar['twoguide'] = $twoGuide;
+            }
+            //关联基础类目
+            $g2c = $mdlG2C->select("guide_id={$guideId}")->items;
+            if ($g2c) {
+                foreach($g2c as $v) {
+                    $categoryidArr[] = $v['category_id'];
+                    if ($v['val_id']) {
+                        $valArr[$v['category_id']][] = $v['val_id'];
+                    }
+                }
+                $categoryidStr = implode(',',$categoryidArr);
+                $aGCategory = $mdlCategory->select("category_id in({$categoryidStr})")->items;
+                if ($aGCategory) {
+                    foreach($aGCategory as $k => $v) {
+                        if ($valArr[$v['category_id']]) {
+                            $aGCategory[$k]['extval'] = implode(',', $valArr[$v['category_id']]);
+                        }
+                    }
+                }
+                $this->tplvar['guidecategory'] = $aGCategory;
+            }
+            //所有基础类目
+            $aCategory = $mdlCategory->select("level=1",'category_id,category_name')->items;
+            $this->tplvar['category'] = $aCategory;
+            return $this->render('category/editguide.html', $this->tplvar);
+        } else {
+            $sGname = zbj_lib_BaseUtils::getStr($_POST['gname'], 'string');
+            $sGdir = trim(zbj_lib_BaseUtils::getStr($_POST['gdir'], 'string'));
+            $pGuide = zbj_lib_BaseUtils::getStr($_POST['pguide'], 'int');
+            $categoryid = $_POST['categoryid'];//关联基础类目
+            //需求页状态
+            $tState = zbj_lib_BaseUtils::getStr($_POST['tstate'], 'int');
+            $tTitle = zbj_lib_BaseUtils::getStr($_POST['ttitle'], 'string');
+            $tKey = zbj_lib_BaseUtils::getStr($_POST['tkey'], 'string');
+            $tDesc = zbj_lib_BaseUtils::getStr($_POST['tdesc'], 'string');
+            //服务商页状态
+            $uState = zbj_lib_BaseUtils::getStr($_POST['ustate'], 'int');
+            $uTitle = zbj_lib_BaseUtils::getStr($_POST['utitle'], 'string');
+            $uKey = zbj_lib_BaseUtils::getStr($_POST['ukey'], 'string');
+            $uDesc = zbj_lib_BaseUtils::getStr($_POST['udesc'], 'string');
+            //服务商页状态
+            $sState = zbj_lib_BaseUtils::getStr($_POST['sstate'], 'int');
+            $sTitle = zbj_lib_BaseUtils::getStr($_POST['stitle'], 'string');
+            $sKey = zbj_lib_BaseUtils::getStr($_POST['skey'], 'string');
+            $sDesc = zbj_lib_BaseUtils::getStr($_POST['sdesc'], 'string');
+            //展示
+            $isShow = zbj_lib_BaseUtils::getStr($_POST['isshow'], 'int');
+            $fwslist = zbj_lib_BaseUtils::getStr($_POST['fwslist'], 'int');
+            $fwlist = zbj_lib_BaseUtils::getStr($_POST['fwlist'], 'int');
+            $ishot = zbj_lib_BaseUtils::getStr($_POST['ishot'], 'int');
+            $ishome = zbj_lib_BaseUtils::getStr($_POST['ishome'], 'int');
+            $information = zbj_lib_BaseUtils::getStr($_POST['information'], 'string');
+            //增值服务
+            $pfee = zbj_lib_BaseUtils::getStr($_POST['pfee'], 'float');//需求置顶费用
+            $pnum = zbj_lib_BaseUtils::getStr($_POST['pnum'], 'int');//需求置顶个数
+            $ptips = zbj_lib_BaseUtils::getStr($_POST['ptips'], 'string');//需求置顶说明
+            $ffee1 = zbj_lib_BaseUtils::getStr($_POST['ffee1'], 'float');//店铺排名页底部店铺推荐位费用
+            $ffee2 = zbj_lib_BaseUtils::getStr($_POST['ffee2'], 'float');//需求最终页右侧店铺推荐位费用
+            $ftfee = zbj_lib_BaseUtils::getStr($_POST['ftfee'], 'float');//频道页店铺推荐位费用
+            $ftfee2 = zbj_lib_BaseUtils::getStr($_POST['ftfee2'], 'float');//店铺排名页右侧店铺推荐位费用
+            $fwfee = zbj_lib_BaseUtils::getStr($_POST['fwfee'], 'float');//服务排名页右侧服务推荐位费用
+            $fwfee2 = zbj_lib_BaseUtils::getStr($_POST['fwfee2'], 'float');//服务排名页底部服务推荐位费用
+            $ftfee3 = zbj_lib_BaseUtils::getStr($_POST['ftfee3'], 'float');//店铺排名页顶部店铺推荐位费用
+            $fwfee3 = zbj_lib_BaseUtils::getStr($_POST['fwfee3'], 'float');//服务排名页顶部服务推荐位费用
+            $customUrl = zbj_lib_BaseUtils::getStr($_POST['customurl'], 'string');
+            if (empty($sGname)) return $this->printmsg('请输入分类名称',0,'gname');
+            if (empty($sGdir)) return $this->printmsg('请输入分类目录',0 ,'gdir');
+            if (empty($categoryid)) return $this->printmsg('请关联基础类目',0);
+            if (!empty($customUrl)) {
+                if (!preg_match('/http:\/\/[\w.]+[\w\/]*[\w.]*\??[\w=&\+\%]*/is',$customUrl)){
+                    return $this->printmsg('请输入正确的自定义链接地址',0 ,'customurl');
+                }
+            }
+            if ($pGuide) {
+                $aGir = $mdlGuide->selectOne("guide_id={$pGuide}");
+                if (empty($aGir)) return $this->printmsg('父级不存在',0,'pguide');
+            }
+            $items = array(
+                'guide_id'=>$guideId,
+                'guide_name'=>trim($sGname),
+                'cndir'=> trim($sGdir),
+                'parent_id'=>$pGuide ? $pGuide : 0,
+                'show_index'=>0,
+                'show_channel'=>0,
+                'ico'=>'',
+                'level'=>$level,
+                'is_show'=>$isShow,
+                'redirect_url'=>trim($customUrl),
+                'user_show_type'=>$fwslist,
+                'ser_show_type'=>$fwlist,
+                'is_red'=>$ishot,
+                'is_home'=>$ishome,
+                'information'=>$information,
+            );
+            //seo
+            if ($tState == 1) {
+                $items['is_show_trade'] = 1;
+                $items['title_trade'] = $tTitle;
+                $items['keywords_trade'] = $tKey;
+                $items['description_trade'] = $tDesc;
+            }
+            if ($uState == 1) {
+                $items['is_show_user'] = 1;
+                $items['title_user'] = $uTitle;
+                $items['keywords_user'] = $uKey;
+                $items['description_user'] = $uDesc;
+            }
+            if ($sState == 1) {
+                $items['is_show_service'] = 1;
+                $items['title_service'] = $sTitle;
+                $items['keywords_service'] = $sKey;
+                $items['description_service'] = $sDesc;
+            }
+            //pfee
+            $items['paid_listing_fee'] = $pfee ? $pfee : 0;
+            $items['task_top_num'] = $pnum ? $pnum : 0;
+            $items['recommend_fws_fee1'] = $ffee1 ? $ffee1 : 0;
+            $items['recommend_fws_fee2'] = $ffee2 ? $ffee2 : 0;
+            $items['fws_top_fee'] = $ftfee ? $ftfee : 0;
+            $items['fws_top_fee2'] = $ftfee2 ? $ftfee2 : 0;
+            $items['fw_top_fee'] = $fwfee ? $fwfee : 0;
+            $items['fw_top_fee2'] = $fwfee2 ? $fwfee2 : 0;
+            $items['fws_vas_fee'] = $ftfee3 ? $ftfee3 : 0;
+            $items['fw_vas_fee'] = $fwfee3 ? $fwfee3 : 0;
+            $items['task_top_tips'] = trim($ptips);//需求置顶说明
+            //关联基础类目
+            if ($categoryid) {
+                if ($level>1) {
+                    $parent_id = $pGuide>0 ? $pGuide : $aInfo['parent_id'];
+                    $pg2c = $mdlG2C->select("guide_id={$parent_id}")->items;
+                    if (empty($pg2c)) {
+                        return $this->printmsg('父级类目未关联基础类目', 0);
+                    }
+                    foreach($pg2c as $v) {
+                        $allowCate[] = $v['category_id'];
+                    }
+                }
+                $allCateIds = array();
+                foreach ($categoryid as $v) {
+                    $category_id = (int)$v;
+                    if (empty($category_id)) continue;
+                    if ($level > 1) {
+                        $cateInfo = $mdlCategory->selectOne("category_id={$category_id}");
+                        if (!in_array($category_id,$allowCate) && !in_array($cateInfo['category2id'],$allowCate) && !in_array($cateInfo['category1id'],$allowCate)) {
+                            return $this->printmsg('所选类目不在父级关联的范围内', 0);
+                        }
+                    }
+                    if (!in_array($category_id, $allCateIds)) {
+                        $eval = zbj_lib_BaseUtils::getStr($_POST['propsID-'.$category_id]);
+                        if ($eval) {
+                            $mdlExtVal = new zbj_model_mk_categoryextval();
+                            $vallist = $mdlExtVal->select("val_id in({$eval})")->items;
+                            if ($vallist) {
+                                foreach ($vallist as $val) {
+                                    $items['category_id'][] = array(
+                                        'category_id' => $category_id,
+                                        'ext_id' => (int)$val['ext_id'],
+                                        'val_id' => (int)$val['val_id'],
+                                    );
+                                }
+                            }
+                        } else {
+                            $items['category_id'][] = array('category_id' => $category_id);
+                        }
+                        $allCateIds[] = $category_id;
+                    }
+                }
+            }
+            $rs = $srvGuide->editGuide($items);
+            //清缓存
+            zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET,30,array('zbj_cate_sdk'));
+            $api = new com\zhubajie\category\interfaces\GuideServiceClient(NULL);
+            zbj_lib_ApiClient::build($api);
+            $con_result = $api->clearCache();
+            if (!$rs) {
+                return $this->printmsg('修改失败~'.$srvGuide->getError(), 0);
+            }
+            return $this->printmsg('修改成功',1,'', $_SERVER['HTTP_REFERER']);
+        }
+    }
+
+    /**
+     * 获取基础类目的子级类目
+     */
+    public function pageGetChildCategory() {
+        $parent_id = (int) $_REQUEST['pid'];
+        $mdlCategory = new zbj_model_mk_category();
+        $list = $mdlCategory->select(array('is_show'=>1, 'parent_id'=>$parent_id), '', '', "order by sort desc")->items;
+        $result = array();
+        if ($list) {
+            foreach ($list as $value) {
+                $result[$value['category_id']] = $value;
+            }
+        }
+        $category = array_values($result);
+        return $this->apiout($category, 1);
+    }
+
+    /**
+     * 获取导购类目关联扩展属性
+     * @param $inPath
+     * @return bool
+     */
+    public function pageGetGuideExt($inPath) {
+        $path = $this->getUrlParams($inPath);
+        $category_id = intval($path['cid']);
+        $guide_id = intval($path['gid']);
+
+        $srvCategory = new zbj_service_category($category_id);
+        $list = $srvCategory->getExt(0);
+        $ext = array();
+        if ($guide_id) {
+            $mdlG2c = new zbj_model_mk_categoryg2c();
+            $g2c = $mdlG2c->select("guide_id={$guide_id}")->items;
+            if ($g2c) {
+                foreach ($g2c as $v) {
+                    if ($v['val_id'] > 0) {
+                        $ext[] = $v['val_id'];
+                    }
+                }
+            }
+        }
+        if ($_POST['oid']) {
+            $ext = explode(',', $_POST['oid']);
+        }
+
+        $this->tplvar['ext'] = $ext;
+        $this->tplvar['list'] = $list;
+        $msg = $this->render('category/guide_ext.html', $this->tplvar);
+        return $this->printmsg($msg,1);
+    }
+}

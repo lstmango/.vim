@@ -1,0 +1,1274 @@
+/*
+Navicat MySQL Data Transfer
+
+Source Server         : 192.168.1.68
+Source Server Version : 50625
+Source Host           : 192.168.1.68:3306
+Source Database       : zhubajie_market
+
+Target Server Type    : MYSQL
+Target Server Version : 50625
+File Encoding         : 65001
+
+Date: 2015-11-04 14:17:31
+*/
+
+SET FOREIGN_KEY_CHECKS=0;
+
+-- ----------------------------
+-- Table structure for `mk_allot_analyse`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_analyse`;
+CREATE TABLE `mk_allot_analyse` (
+  `task_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '任务号',
+  `type` tinyint(1) unsigned NOT NULL DEFAULT '1' COMMENT '任务类型:1订单，2商机',
+  `source` tinyint(1) unsigned DEFAULT '0' COMMENT '来源',
+  `status` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0失败，1成功',
+  `createtime` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间戳',
+  `reason` text COMMENT '原因',
+  PRIMARY KEY (`task_id`,`createtime`,`type`),
+  KEY `createtime` (`createtime`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统分发统计分析表';
+
+-- ----------------------------
+-- Records of mk_allot_analyse
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for `mk_allot_bsdimension`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_bsdimension`;
+CREATE TABLE `mk_allot_bsdimension` (
+  `bsdimension_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `bsdimension_name` varchar(100) DEFAULT NULL COMMENT '商机分配维度名称',
+  `state` tinyint(1) unsigned NOT NULL DEFAULT '1' COMMENT '是否启用，1启用，0未启用',
+  PRIMARY KEY (`bsdimension_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8 COMMENT='商机分配维度表';
+
+-- ----------------------------
+-- Records of mk_allot_bsdimension
+-- ----------------------------
+INSERT INTO `mk_allot_bsdimension` VALUES ('104', '商机-专业设计', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('105', '商机-文案营销', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('106', '商机-网站悬赏', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('107', '商机-网站建设', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('108', '商机-软件开发', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('109', '商机-平面设计', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('110', '商机-建筑设计', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('111', '商机-app', '1');
+INSERT INTO `mk_allot_bsdimension` VALUES ('112', '商机-其他', '1');
+
+-- ----------------------------
+-- Table structure for `mk_allot_grabpool`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_grabpool`;
+CREATE TABLE `mk_allot_grabpool` (
+  `task_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '任务id',
+  `type` int(1) unsigned NOT NULL COMMENT '1:正常订单，2:商机订单',
+  `status` int(1) unsigned DEFAULT '0' COMMENT '状态，0默认，1成功，2失败',
+  `weights` int(10) DEFAULT '0' COMMENT '权重值',
+  `createtime` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间搓',
+  `grabtime` int(10) unsigned DEFAULT '0' COMMENT '抢单时间',
+  PRIMARY KEY (`task_id`,`type`),
+  KEY `createtime,status` (`createtime`,`status`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-盲抢池';
+
+-- ----------------------------
+-- Records of mk_allot_grabpool
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for `mk_allot_group`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_group`;
+CREATE TABLE `mk_allot_group` (
+  `group_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '顾问分组id',
+  `group_name` varchar(200) NOT NULL DEFAULT '分组名',
+  PRIMARY KEY (`group_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8 COMMENT='订单分配顾问分组表';
+
+-- ----------------------------
+-- Records of mk_allot_group
+-- ----------------------------
+INSERT INTO `mk_allot_group` VALUES ('12', 'APP一组');
+INSERT INTO `mk_allot_group` VALUES ('13', 'APP二组');
+INSERT INTO `mk_allot_group` VALUES ('14', 'APP三组');
+INSERT INTO `mk_allot_group` VALUES ('15', '平面设计一组');
+INSERT INTO `mk_allot_group` VALUES ('16', '网建一组');
+INSERT INTO `mk_allot_group` VALUES ('17', '平面设计二组');
+INSERT INTO `mk_allot_group` VALUES ('18', '网建二组');
+INSERT INTO `mk_allot_group` VALUES ('19', '专业设计组');
+INSERT INTO `mk_allot_group` VALUES ('20', '网建三组');
+INSERT INTO `mk_allot_group` VALUES ('21', '文案营销一组');
+INSERT INTO `mk_allot_group` VALUES ('22', '文案营销二组');
+INSERT INTO `mk_allot_group` VALUES ('23', '建筑设计取经团');
+
+-- ----------------------------
+-- Table structure for `mk_allot_mode`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_mode`;
+CREATE TABLE `mk_allot_mode` (
+  `mode_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `mode_name` varchar(100) DEFAULT NULL COMMENT '任务模式名称',
+  `state` tinyint(1) unsigned DEFAULT '1' COMMENT '是否启用，1启用，0未启用',
+  PRIMARY KEY (`mode_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8 COMMENT='订单分配任务模式表';
+
+-- ----------------------------
+-- Records of mk_allot_mode
+-- ----------------------------
+INSERT INTO `mk_allot_mode` VALUES ('1', '招标', '1');
+INSERT INTO `mk_allot_mode` VALUES ('2', '比稿', '1');
+INSERT INTO `mk_allot_mode` VALUES ('3', '计件', '1');
+INSERT INTO `mk_allot_mode` VALUES ('4', '雇佣', '1');
+INSERT INTO `mk_allot_mode` VALUES ('5', '购买服务', '1');
+
+-- ----------------------------
+-- Table structure for `mk_allot_onlinetime`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_onlinetime`;
+CREATE TABLE `mk_allot_onlinetime` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL COMMENT '顾问id',
+  `type` tinyint(1) NOT NULL DEFAULT '0' COMMENT '上下班状态：1上班，0下班',
+  `createtime` int(10) NOT NULL DEFAULT '0' COMMENT '操作时间戳',
+  `createymd` date DEFAULT NULL,
+  `totalsecond` int(10) DEFAULT '0' COMMENT '当前下班距离上次上班秒数',
+  PRIMARY KEY (`id`),
+  KEY `k_manager_id` (`manager_id`),
+  KEY `k_createymd` (`createymd`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=48 DEFAULT CHARSET=utf8 COMMENT='订单分配系统-上下班时间记录表';
+
+-- ----------------------------
+-- Records of mk_allot_onlinetime
+-- ----------------------------
+INSERT INTO `mk_allot_onlinetime` VALUES ('43', '90', '1', '1446613155', '2015-11-04', '0');
+INSERT INTO `mk_allot_onlinetime` VALUES ('44', '90', '0', '1446613161', '2015-11-04', '6');
+INSERT INTO `mk_allot_onlinetime` VALUES ('45', '90', '1', '1446613162', '2015-11-04', '0');
+INSERT INTO `mk_allot_onlinetime` VALUES ('46', '90', '0', '1446613917', '2015-11-04', '762');
+INSERT INTO `mk_allot_onlinetime` VALUES ('47', '90', '1', '1446614275', '2015-11-04', '0');
+
+-- ----------------------------
+-- Table structure for `mk_allot_pool`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_pool`;
+CREATE TABLE `mk_allot_pool` (
+  `task_id` int(10) NOT NULL DEFAULT '0' COMMENT '任务号',
+  `type` tinyint(1) NOT NULL COMMENT '任务类型：1正式订单，2商机',
+  `needallot` int(2) NOT NULL DEFAULT '0' COMMENT '是否需要分配：1需要，0不需要',
+  `allotstate` tinyint(1) DEFAULT '0' COMMENT '分配状态：0,未分配，1成功，2失败',
+  `weights` int(10) DEFAULT '0' COMMENT '权重值',
+  `allottime` int(10) DEFAULT '0' COMMENT '分配时间',
+  `amount` decimal(12,2) unsigned NOT NULL DEFAULT '0.00' COMMENT '需求当时金额',
+  `createtime` int(10) NOT NULL DEFAULT '0' COMMENT '创建时间戳',
+  `next_chktime` int(10) DEFAULT '0' COMMENT '下次检测时间',
+  `begin_chktime` int(10) DEFAULT '0' COMMENT '开始检测时间',
+  PRIMARY KEY (`task_id`,`type`),
+  KEY `needallot_allotstatus` (`needallot`,`allotstate`),
+  KEY `createtime` (`createtime`),
+  KEY `weights` (`weights`),
+  KEY `next_chktime` (`next_chktime`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-分配池';
+
+-- ----------------------------
+-- Records of mk_allot_pool
+-- ----------------------------
+INSERT INTO `mk_allot_pool` VALUES ('5619', '2', '1', '1', '50', '0', '0.00', '1446614399', '1446614535', '1446614404');
+INSERT INTO `mk_allot_pool` VALUES ('5620', '2', '1', '1', '50', '0', '0.00', '1446614415', '1446614535', '1446614420');
+INSERT INTO `mk_allot_pool` VALUES ('5621', '2', '1', '1', '50', '1446617281', '0.00', '1446617268', '1446617361', '1446617273');
+
+-- ----------------------------
+-- Table structure for `mk_allot_user`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_user`;
+CREATE TABLE `mk_allot_user` (
+  `manager_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '顾问id',
+  `manager_name` varchar(200) NOT NULL COMMENT '交易顾问姓名',
+  `group_id` int(10) unsigned DEFAULT '0' COMMENT '分组id',
+  `max` int(10) unsigned DEFAULT '0' COMMENT '最大可分配数量',
+  `interval_time` int(10) unsigned DEFAULT '600' COMMENT '分配间隔时间(s)',
+  `leader` tinyint(1) unsigned DEFAULT '0' COMMENT '是否组长：0不是，1是',
+  `assistant` tinyint(1) unsigned DEFAULT '0' COMMENT '是否助理：0不是，1是',
+  `nextallottime` int(10) unsigned DEFAULT '0' COMMENT '下次可分配时间',
+  `isonline` tinyint(1) unsigned DEFAULT '0' COMMENT '是否上班，0下班，1上班',
+  `status` tinyint(1) unsigned DEFAULT '1' COMMENT '交易顾问状态：0锁定，1启用',
+  `allot_num` int(10) unsigned DEFAULT '0' COMMENT '今天已分配的数量',
+  PRIMARY KEY (`manager_id`),
+  KEY `group_id` (`group_id`),
+  KEY `nextallottime` (`nextallottime`) USING BTREE,
+  KEY `allot_num` (`allot_num`) USING BTREE,
+  KEY `max` (`max`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='订单分配系统-交易顾问配置表';
+
+-- ----------------------------
+-- Records of mk_allot_user
+-- ----------------------------
+INSERT INTO `mk_allot_user` VALUES ('90', '周雪梅', '16', '20', '300', '0', '0', '1446617581', '1', '1', '1');
+INSERT INTO `mk_allot_user` VALUES ('105', '朱晓锋', '18', '20', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('626', '曾琴', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('632', '陈名', '16', '20', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('1000', '高畅', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('1036', '弓敏', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('1122', '李孟阳', '17', '100', '300', '0', '1', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2289', '何平建', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2291', '苏圆媛', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2294', '秦露', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2296', '邹敏', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2302', '杜中晏', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2410', '孙庆花', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2603', '荣华', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2651', '田敏', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2672', '胡洪凤', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2673', '邓宗梅', '23', '100', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2752', '吴静', '18', '20', '300', '0', '1', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2784', '黄常平', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2785', '鲁洁珊', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('2811', '周窈羽', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3111', '李舒窈', '23', '100', '360', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3691', '左泉', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3770', '熊涛', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3832', '杨鹏', '23', '100', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3844', '刘伟', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3847', '杨廷', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3872', '余颂庆', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3904', '喻露', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3986', '王林', '21', '120', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3989', '刘子阳', '22', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3990', '黄绍伟', '21', '120', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('3992', '何银春', '22', '100', '240', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4006', '罗雨婷', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4007', '徐丹a', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4008', '魏林', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4013', '崔劲', '15', '100', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4019', '罗天崖', '21', '120', '240', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4026', '彭竞瑶', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4028', '张静b', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4089', '刘志桐', '19', '100', '600', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4100', '胡俊a', '12', '20', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4117', '王磊', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4126', '孙浩', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4141', '陈廷立', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4203', '邓建渝', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4283', '张莞馨', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4315', '董雅楠', '22', '100', '240', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4317', '顾文福', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4318', '李楠', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4345', '何敏', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4356', '张鑫c', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4367', '唐成兵', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4408', '杨玉亭', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4420', '孙华丽', '12', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4471', '蒋小琴', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4489', '刘波', '22', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4502', '黎珍', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4503', '柴涛', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4504', '龙世星', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4505', '陈星若', '21', '120', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4511', '张小红', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4514', '王露a', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4540', '冯立', '20', '30', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4542', '刘艳', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4597', '冉付', '21', '120', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4598', '罗勤海', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4599', '夏开波', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4602', '郭俊男', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4618', '曹燎', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4620', '张婷a', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4632', '汤肖汝', '21', '120', '480', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4655', '刘雨杉', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4662', '尹文倩', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4675', '杨涛b', '22', '100', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4676', '李胜洪', '22', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4677', '杨健萍', '22', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4678', '谭俊a', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4691', '黎武权', '13', '20', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4692', '陈炫燐', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4693', '李先', '17', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4694', '胡丽娜', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4696', '蒲丽丽', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4708', '易靖', '18', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4709', '谭娇', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4711', '谭玲玲', '21', '120', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4724', '廖竟成', '21', '120', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4726', '龚洪雁', '21', '120', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4728', '陶家锐', '20', '30', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4730', '蔡军', '22', '100', '480', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4746', '陈敏', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4747', '何丽丽', '13', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4760', '邓诗惠', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4761', '王伦', '16', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4762', '龙翅', '21', '120', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4794', '王勇刚', '14', '20', '300', '1', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4914', '向茜', '22', '100', '480', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4915', '雷丽', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4919', '邓淇元', '23', '100', '360', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4933', '魏巴丹', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4934', '王春琼', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4935', '陈浩', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4936', '陈芙蓉', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4937', '张微微', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('4975', '曲雯晴', '14', '20', '300', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('5060', '王晨辰', '19', '100', '600', '0', '0', '0', '0', '1', '0');
+INSERT INTO `mk_allot_user` VALUES ('5113', '陈奕圻', '15', '100', '300', '0', '0', '0', '0', '1', '0');
+
+-- ----------------------------
+-- Table structure for `mk_allot_user_bsdimension`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_user_bsdimension`;
+CREATE TABLE `mk_allot_user_bsdimension` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '交易顾问id',
+  `bsdimension_id` int(10) NOT NULL DEFAULT '0' COMMENT '商机分配维度id',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=717 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联商机分配维度表';
+
+-- ----------------------------
+-- Records of mk_allot_user_bsdimension
+-- ----------------------------
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('484', '2673', '110');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('486', '3832', '110');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('487', '4919', '110');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('488', '3989', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('489', '3989', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('494', '4489', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('495', '4489', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('498', '4676', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('499', '4676', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('500', '4677', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('501', '4677', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('506', '4007', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('507', '4007', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('508', '4008', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('509', '4008', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('510', '4028', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('511', '4028', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('512', '4117', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('513', '4117', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('514', '4356', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('515', '4356', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('516', '4471', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('517', '4471', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('518', '4504', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('519', '4504', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('522', '4598', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('523', '4598', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('524', '4728', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('525', '4728', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('526', '2785', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('527', '2785', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('528', '3770', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('529', '3770', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('532', '4345', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('533', '4345', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('534', '4367', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('535', '4367', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('536', '4408', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('537', '4408', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('538', '4655', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('539', '4655', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('540', '4662', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('541', '4662', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('542', '4696', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('543', '4696', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('544', '4709', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('545', '4709', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('554', '1000', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('555', '1000', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('556', '1036', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('557', '1036', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('558', '2289', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('559', '2289', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('560', '2752', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('561', '2752', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('562', '2784', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('563', '2784', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('564', '3847', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('565', '3847', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('566', '3872', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('567', '3872', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('568', '4502', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('569', '4502', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('570', '4708', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('571', '4708', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('572', '1122', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('573', '2410', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('574', '2672', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('575', '2811', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('576', '3691', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('577', '4026', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('578', '4693', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('579', '90', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('580', '90', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('581', '626', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('582', '626', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('585', '2291', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('586', '2291', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('587', '2296', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('588', '2296', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('589', '2302', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('590', '2302', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('591', '2603', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('592', '2603', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('593', '2651', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('594', '2651', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('595', '4511', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('596', '4511', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('597', '4761', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('598', '4761', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('599', '2294', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('600', '2294', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('601', '3904', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('602', '3904', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('603', '4006', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('604', '4006', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('607', '4503', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('608', '4503', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('609', '4694', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('610', '4694', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('611', '4760', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('612', '4760', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('613', '5113', '109');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('614', '5113', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('615', '4514', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('616', '4514', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('617', '4542', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('618', '4542', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('619', '4746', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('620', '4746', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('623', '4915', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('624', '4915', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('625', '4933', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('626', '4933', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('627', '4934', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('628', '4934', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('629', '4935', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('630', '4935', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('631', '4975', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('632', '4975', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('633', '4599', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('634', '4599', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('635', '4602', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('636', '4602', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('637', '4618', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('638', '4618', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('639', '4620', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('640', '4620', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('641', '4678', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('642', '4678', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('645', '4692', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('646', '4692', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('647', '4747', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('648', '4747', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('649', '3844', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('650', '3844', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('653', '4126', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('654', '4126', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('655', '4141', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('656', '4141', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('657', '4203', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('658', '4203', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('659', '4283', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('660', '4283', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('661', '4317', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('662', '4317', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('663', '4318', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('664', '4318', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('665', '4420', '111');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('666', '4420', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('668', '3992', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('669', '3992', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('670', '4315', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('671', '4315', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('673', '4730', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('674', '4730', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('675', '4914', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('676', '4914', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('677', '3986', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('678', '3986', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('685', '4597', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('686', '4597', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('693', '4726', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('694', '4726', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('697', '4019', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('698', '4019', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('699', '4505', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('700', '4505', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('701', '4711', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('702', '4711', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('703', '4724', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('704', '4724', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('705', '4632', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('706', '4632', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('707', '4762', '105');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('708', '4762', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('709', '4540', '107');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('710', '4540', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('711', '5060', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('712', '5060', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('713', '4937', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('714', '4937', '112');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('715', '4936', '104');
+INSERT INTO `mk_allot_user_bsdimension` VALUES ('716', '4936', '112');
+
+-- ----------------------------
+-- Table structure for `mk_allot_user_dimension`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_user_dimension`;
+CREATE TABLE `mk_allot_user_dimension` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '顾问id',
+  `dimension_id` int(10) NOT NULL DEFAULT '0' COMMENT '分配维度id',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`),
+  KEY `dimension_id` (`dimension_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=1003 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联分配维度表';
+
+-- ----------------------------
+-- Records of mk_allot_user_dimension
+-- ----------------------------
+INSERT INTO `mk_allot_user_dimension` VALUES ('854', '2673', '7');
+INSERT INTO `mk_allot_user_dimension` VALUES ('856', '3832', '7');
+INSERT INTO `mk_allot_user_dimension` VALUES ('857', '4919', '7');
+INSERT INTO `mk_allot_user_dimension` VALUES ('858', '3989', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('861', '4489', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('863', '4676', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('864', '4677', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('867', '4007', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('868', '4008', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('869', '4028', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('870', '4117', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('871', '4356', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('872', '4471', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('873', '4504', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('875', '4598', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('876', '4728', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('877', '2785', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('878', '2785', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('879', '2785', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('880', '3770', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('881', '3770', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('882', '3770', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('886', '4345', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('887', '4345', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('888', '4345', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('889', '4367', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('890', '4367', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('891', '4367', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('892', '4408', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('893', '4408', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('894', '4408', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('895', '4655', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('896', '4655', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('897', '4655', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('898', '4662', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('899', '4662', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('900', '4662', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('901', '4696', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('902', '4696', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('903', '4696', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('904', '4709', '8');
+INSERT INTO `mk_allot_user_dimension` VALUES ('905', '4709', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('906', '4709', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('917', '1000', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('918', '1036', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('919', '2289', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('920', '2752', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('921', '2784', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('922', '3847', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('923', '3872', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('924', '4502', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('925', '4708', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('926', '1122', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('927', '2410', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('928', '2672', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('929', '2811', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('930', '3691', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('931', '4026', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('932', '4693', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('933', '90', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('934', '626', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('936', '2291', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('937', '2296', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('938', '2302', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('939', '2603', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('940', '2651', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('941', '4511', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('942', '4761', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('943', '2294', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('944', '3904', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('945', '4006', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('947', '4503', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('948', '4694', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('949', '4760', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('950', '5113', '1');
+INSERT INTO `mk_allot_user_dimension` VALUES ('951', '4514', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('952', '4542', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('953', '4746', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('955', '4915', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('956', '4933', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('957', '4934', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('958', '4935', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('959', '4975', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('960', '4599', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('961', '4602', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('962', '4618', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('963', '4620', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('964', '4678', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('966', '4692', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('967', '4747', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('968', '3844', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('970', '4126', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('971', '4141', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('972', '4203', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('973', '4283', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('974', '4317', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('975', '4318', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('976', '4420', '4');
+INSERT INTO `mk_allot_user_dimension` VALUES ('977', '3992', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('978', '4315', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('979', '4730', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('980', '4914', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('981', '3986', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('985', '4597', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('989', '4726', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('991', '4019', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('992', '4505', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('993', '4711', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('994', '4724', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('995', '4632', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('996', '4762', '5');
+INSERT INTO `mk_allot_user_dimension` VALUES ('997', '4540', '6');
+INSERT INTO `mk_allot_user_dimension` VALUES ('998', '5060', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('999', '4937', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('1000', '4937', '10');
+INSERT INTO `mk_allot_user_dimension` VALUES ('1001', '4936', '9');
+INSERT INTO `mk_allot_user_dimension` VALUES ('1002', '4936', '10');
+
+-- ----------------------------
+-- Table structure for `mk_allot_user_mode`
+-- ----------------------------
+DROP TABLE IF EXISTS `mk_allot_user_mode`;
+CREATE TABLE `mk_allot_user_mode` (
+  `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '自增id',
+  `manager_id` int(10) NOT NULL DEFAULT '0' COMMENT '交易顾问id',
+  `mode_id` int(10) NOT NULL DEFAULT '0' COMMENT '任务模式',
+  PRIMARY KEY (`id`),
+  KEY `manager_id` (`manager_id`),
+  KEY `mode_id` (`mode_id`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=998 DEFAULT CHARSET=utf8 COMMENT='交易顾问关联分配任务模式';
+
+-- ----------------------------
+-- Records of mk_allot_user_mode
+-- ----------------------------
+INSERT INTO `mk_allot_user_mode` VALUES ('392', '2673', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('393', '2673', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('394', '2673', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('395', '2673', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('396', '2673', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('402', '3832', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('403', '3832', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('404', '3832', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('405', '3832', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('406', '3832', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('407', '4919', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('408', '4919', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('409', '4919', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('410', '4919', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('411', '4919', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('412', '3989', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('413', '3989', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('414', '3989', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('415', '3989', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('416', '3989', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('427', '4489', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('428', '4489', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('429', '4489', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('430', '4489', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('431', '4489', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('437', '4676', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('438', '4676', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('439', '4676', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('440', '4676', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('441', '4676', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('442', '4677', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('443', '4677', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('444', '4677', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('445', '4677', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('446', '4677', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('457', '4007', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('458', '4007', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('459', '4007', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('460', '4007', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('461', '4007', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('462', '4008', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('463', '4008', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('464', '4008', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('465', '4008', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('466', '4008', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('467', '4028', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('468', '4028', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('469', '4028', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('470', '4028', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('471', '4028', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('472', '4117', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('473', '4117', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('474', '4117', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('475', '4117', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('476', '4117', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('477', '4356', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('478', '4356', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('479', '4356', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('480', '4356', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('481', '4356', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('482', '4471', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('483', '4471', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('484', '4471', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('485', '4471', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('486', '4471', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('487', '4504', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('488', '4504', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('489', '4504', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('490', '4504', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('491', '4504', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('497', '4598', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('498', '4598', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('499', '4598', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('500', '4598', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('501', '4598', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('502', '4728', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('503', '4728', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('504', '4728', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('505', '4728', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('506', '4728', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('507', '2785', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('508', '2785', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('509', '2785', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('510', '2785', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('511', '2785', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('512', '3770', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('513', '3770', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('514', '3770', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('515', '3770', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('516', '3770', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('522', '4345', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('523', '4345', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('524', '4345', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('525', '4345', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('526', '4345', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('527', '4367', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('528', '4367', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('529', '4367', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('530', '4367', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('531', '4367', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('532', '4408', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('533', '4408', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('534', '4408', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('535', '4408', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('536', '4408', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('537', '4655', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('538', '4655', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('539', '4655', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('540', '4655', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('541', '4655', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('542', '4662', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('543', '4662', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('544', '4662', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('545', '4662', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('546', '4662', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('547', '4696', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('548', '4696', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('549', '4696', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('550', '4696', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('551', '4696', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('552', '4709', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('553', '4709', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('554', '4709', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('555', '4709', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('556', '4709', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('577', '1000', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('578', '1000', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('579', '1000', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('580', '1000', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('581', '1000', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('582', '1036', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('583', '1036', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('584', '1036', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('585', '1036', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('586', '1036', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('587', '2289', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('588', '2289', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('589', '2289', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('590', '2289', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('591', '2289', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('592', '2752', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('593', '2752', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('594', '2752', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('595', '2752', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('596', '2752', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('597', '2784', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('598', '2784', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('599', '2784', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('600', '2784', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('601', '2784', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('602', '3847', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('603', '3847', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('604', '3847', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('605', '3847', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('606', '3847', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('607', '3872', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('608', '3872', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('609', '3872', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('610', '3872', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('611', '3872', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('612', '4502', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('613', '4502', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('614', '4502', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('615', '4502', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('616', '4502', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('617', '4708', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('618', '4708', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('619', '4708', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('620', '4708', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('621', '4708', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('622', '1122', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('623', '1122', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('624', '1122', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('625', '1122', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('626', '1122', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('627', '2410', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('628', '2410', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('629', '2410', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('630', '2410', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('631', '2410', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('632', '2672', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('633', '2672', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('634', '2672', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('635', '2672', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('636', '2672', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('637', '2811', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('638', '2811', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('639', '2811', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('640', '2811', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('641', '2811', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('642', '3691', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('643', '3691', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('644', '3691', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('645', '3691', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('646', '3691', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('647', '4026', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('648', '4026', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('649', '4026', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('650', '4026', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('651', '4026', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('652', '4693', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('653', '4693', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('654', '4693', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('655', '4693', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('656', '4693', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('657', '90', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('658', '90', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('659', '90', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('660', '90', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('661', '90', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('662', '626', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('663', '626', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('664', '626', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('665', '626', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('666', '626', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('672', '2291', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('673', '2291', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('674', '2291', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('675', '2291', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('676', '2291', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('677', '2296', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('678', '2296', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('679', '2296', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('680', '2296', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('681', '2296', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('682', '2302', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('683', '2302', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('684', '2302', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('685', '2302', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('686', '2302', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('687', '2603', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('688', '2603', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('689', '2603', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('690', '2603', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('691', '2603', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('692', '2651', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('693', '2651', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('694', '2651', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('695', '2651', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('696', '2651', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('697', '4511', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('698', '4511', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('699', '4511', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('700', '4511', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('701', '4511', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('702', '4761', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('703', '4761', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('704', '4761', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('705', '4761', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('706', '4761', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('707', '2294', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('708', '2294', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('709', '2294', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('710', '2294', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('711', '2294', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('712', '3904', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('713', '3904', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('714', '3904', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('715', '3904', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('716', '3904', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('717', '4006', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('718', '4006', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('719', '4006', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('720', '4006', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('721', '4006', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('727', '4503', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('728', '4503', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('729', '4503', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('730', '4503', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('731', '4503', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('732', '4694', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('733', '4694', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('734', '4694', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('735', '4694', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('736', '4694', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('737', '4760', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('738', '4760', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('739', '4760', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('740', '4760', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('741', '4760', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('742', '5113', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('743', '5113', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('744', '5113', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('745', '5113', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('746', '5113', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('747', '4514', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('748', '4514', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('749', '4514', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('750', '4514', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('751', '4514', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('752', '4542', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('753', '4542', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('754', '4542', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('755', '4542', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('756', '4542', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('757', '4746', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('758', '4746', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('759', '4746', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('760', '4746', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('761', '4746', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('767', '4915', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('768', '4915', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('769', '4915', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('770', '4915', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('771', '4915', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('772', '4933', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('773', '4933', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('774', '4933', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('775', '4933', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('776', '4933', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('777', '4934', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('778', '4934', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('779', '4934', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('780', '4934', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('781', '4934', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('782', '4935', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('783', '4935', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('784', '4935', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('785', '4935', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('786', '4935', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('787', '4975', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('788', '4975', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('789', '4975', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('790', '4975', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('791', '4975', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('792', '4599', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('793', '4599', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('794', '4599', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('795', '4599', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('796', '4599', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('797', '4602', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('798', '4602', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('799', '4602', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('800', '4602', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('801', '4602', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('802', '4618', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('803', '4618', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('804', '4618', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('805', '4618', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('806', '4618', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('807', '4620', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('808', '4620', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('809', '4620', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('810', '4620', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('811', '4620', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('812', '4678', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('813', '4678', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('814', '4678', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('815', '4678', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('816', '4678', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('822', '4692', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('823', '4692', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('824', '4692', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('825', '4692', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('826', '4692', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('827', '4747', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('828', '4747', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('829', '4747', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('830', '4747', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('831', '4747', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('832', '3844', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('833', '3844', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('834', '3844', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('835', '3844', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('836', '3844', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('842', '4126', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('843', '4126', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('844', '4126', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('845', '4126', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('846', '4126', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('847', '4141', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('848', '4141', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('849', '4141', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('850', '4141', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('851', '4141', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('852', '4203', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('853', '4203', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('854', '4203', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('855', '4203', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('856', '4203', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('857', '4283', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('858', '4283', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('859', '4283', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('860', '4283', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('861', '4283', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('862', '4317', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('863', '4317', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('864', '4317', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('865', '4317', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('866', '4317', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('867', '4318', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('868', '4318', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('869', '4318', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('870', '4318', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('871', '4318', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('872', '4420', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('873', '4420', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('874', '4420', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('875', '4420', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('876', '4420', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('877', '3992', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('878', '3992', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('879', '3992', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('880', '3992', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('881', '3992', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('882', '4315', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('883', '4315', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('884', '4315', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('885', '4315', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('886', '4315', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('887', '4730', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('888', '4730', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('889', '4730', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('890', '4730', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('891', '4730', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('892', '4914', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('893', '4914', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('894', '4914', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('895', '4914', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('896', '4914', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('897', '3986', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('898', '3986', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('899', '3986', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('900', '3986', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('901', '3986', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('917', '4597', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('918', '4597', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('919', '4597', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('920', '4597', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('921', '4597', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('937', '4726', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('938', '4726', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('939', '4726', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('940', '4726', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('941', '4726', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('947', '4019', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('948', '4019', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('949', '4019', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('950', '4019', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('951', '4019', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('952', '4505', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('953', '4505', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('954', '4505', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('955', '4505', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('956', '4505', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('957', '4711', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('958', '4711', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('959', '4711', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('960', '4711', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('961', '4711', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('962', '4724', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('963', '4724', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('964', '4724', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('965', '4724', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('966', '4724', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('967', '4632', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('968', '4632', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('969', '4632', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('970', '4632', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('971', '4632', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('972', '4762', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('973', '4762', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('974', '4762', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('975', '4762', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('976', '4762', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('977', '4089', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('978', '4540', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('979', '4540', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('980', '4540', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('981', '4540', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('982', '4540', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('983', '5060', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('984', '5060', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('985', '5060', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('986', '5060', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('987', '5060', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('988', '4937', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('989', '4937', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('990', '4937', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('991', '4937', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('992', '4937', '5');
+INSERT INTO `mk_allot_user_mode` VALUES ('993', '4936', '1');
+INSERT INTO `mk_allot_user_mode` VALUES ('994', '4936', '2');
+INSERT INTO `mk_allot_user_mode` VALUES ('995', '4936', '3');
+INSERT INTO `mk_allot_user_mode` VALUES ('996', '4936', '4');
+INSERT INTO `mk_allot_user_mode` VALUES ('997', '4936', '5');
+
+
+
+ALTER TABLE `mk_task_allot_grab`
+DROP PRIMARY KEY,
+ADD PRIMARY KEY (`task_id`, `type`);
+
+
+cp_allot执行
+INSERT INTO `cp_allot` VALUES ('5337', '130', '1', '1', '494', '何丽丽', '4747', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5338', '130', '1', '1', '405', '何平建', '2289', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5339', '130', '1', '1', '437', '何敏', '4345', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5340', '130', '1', '1', '408', '何银春', '3992', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5341', '130', '1', '1', '434', '余颂庆', '3872', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5342', '130', '1', '1', '408', '冉付', '4597', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5343', '130', '1', '1', '438', '冯立', '4540', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5344', '130', '1', '1', '373', '刘伟', '3844', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5345', '130', '1', '1', '408', '刘子阳', '3989', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5346', '130', '1', '1', '437', '刘志桐', '4089', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5347', '130', '1', '1', '408', '刘波', '4489', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5348', '130', '1', '1', '455', '刘艳', '4542', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5349', '130', '1', '1', '437', '刘雨杉', '4655', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5350', '130', '1', '1', '510', '向茜', '4914', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5351', '130', '1', '1', '22', '吴静', '2752', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5352', '130', '1', '1', '455', '周窈羽', '2811', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5353', '130', '1', '1', '405', '周雪梅', '90', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5354', '130', '1', '1', '437', '唐成兵', '4367', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5355', '130', '1', '1', '404', '喻露', '3904', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5356', '130', '1', '1', '494', '夏开波', '4599', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5357', '130', '1', '1', '443', '孙华丽', '4420', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5358', '130', '1', '1', '404', '孙庆花', '2410', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5359', '130', '1', '1', '443', '孙浩', '4126', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5360', '130', '1', '1', '437', '尹文倩', '4662', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5361', '130', '1', '1', '404', '崔劲', '4013', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5362', '130', '1', '1', '404', '左泉', '3691', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5363', '130', '1', '1', '408', '廖竟成', '4724', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5364', '130', '1', '1', '434', '弓敏', '1036', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5365', '130', '1', '1', '455', '张小红', '4511', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5366', '130', '1', '1', '437', '张微微', '4937', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5367', '130', '1', '1', '443', '张莞馨', '4283', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5368', '130', '1', '1', '438', '张鑫c', '4356', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5369', '130', '1', '1', '438', '张静b', '4028', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5370', '130', '1', '1', '404', '彭竞瑶', '4026', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5371', '130', '1', '1', '438', '徐丹a', '4007', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5372', '130', '1', '1', '434', '易靖', '4708', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5373', '130', '1', '1', '533', '曲雯晴', '4975', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5374', '130', '1', '1', '405', '曾琴', '626', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5375', '130', '1', '1', '541', '李先', '4693', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5376', '130', '1', '1', '404', '李孟阳', '1122', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5377', '130', '1', '1', '457', '李楠', '4318', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5378', '130', '1', '1', '510', '李胜洪', '4676', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5379', '130', '1', '1', '386', '李舒窈', '3111', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5380', '130', '1', '1', '405', '杜中晏', '2302', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5381', '130', '1', '1', '510', '杨健萍', '4677', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5382', '130', '1', '1', '434', '杨廷', '3847', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5383', '130', '1', '1', '510', '杨涛b', '4675', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5384', '130', '1', '1', '437', '杨玉亭', '4408', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5385', '130', '1', '1', '386', '杨鹏', '3832', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5386', '130', '1', '1', '455', '柴涛', '4503', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5387', '130', '1', '1', '437', '熊涛', '3770', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5388', '130', '1', '1', '405', '王伦', '4761', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5389', '130', '1', '1', '533', '王勇刚', '4794', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5390', '130', '1', '1', '533', '王春琼', '4934', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5391', '130', '1', '1', '437', '王晨辰', '5060', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5392', '130', '1', '1', '408', '王林', '3986', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5393', '130', '1', '1', '438', '王磊', '4117', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5394', '130', '1', '1', '455', '王露a', '4514', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5395', '130', '1', '1', '405', '田敏', '2651', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5396', '130', '1', '1', '404', '秦露', '2294', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5397', '130', '1', '1', '405', '罗勤海', '4598', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5398', '130', '1', '1', '408', '罗天崖', '4019', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5399', '130', '1', '1', '404', '罗雨婷', '4006', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5400', '130', '1', '1', '404', '胡丽娜', '4694', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5401', '130', '1', '1', '443', '胡俊a', '4100', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5402', '130', '1', '1', '404', '胡洪凤', '2672', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5403', '130', '1', '1', '405', '苏圆媛', '2291', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5404', '130', '1', '1', '455', '荣华', '2603', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5405', '130', '1', '1', '408', '董雅楠', '4315', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5406', '130', '1', '1', '438', '蒋小琴', '4471', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5407', '130', '1', '1', '437', '蒲丽丽', '4696', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5408', '130', '1', '1', '510', '蔡军', '4730', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5409', '130', '1', '1', '494', '谭俊a', '4678', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5410', '130', '1', '1', '437', '谭娇', '4709', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5411', '130', '1', '1', '408', '谭玲玲', '4711', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5412', '130', '1', '1', '386', '邓宗梅', '2673', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5413', '130', '1', '1', '443', '邓建渝', '4203', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5414', '130', '1', '1', '386', '邓淇元', '4919', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5415', '130', '1', '1', '404', '邓诗惠', '4760', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5416', '130', '1', '1', '405', '邹敏', '2296', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5417', '130', '1', '1', '494', '郭俊男', '4602', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5418', '130', '1', '1', '405', '陈名', '632', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5419', '130', '1', '1', '404', '陈奕圻', '5113', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5420', '130', '1', '1', '443', '陈廷立', '4141', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5421', '130', '1', '1', '533', '陈敏', '4746', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5422', '130', '1', '1', '408', '陈星若', '4505', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5423', '130', '1', '1', '533', '陈浩', '4935', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5424', '130', '1', '1', '494', '陈炫燐', '4692', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5425', '130', '1', '1', '437', '陈芙蓉', '4936', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5426', '130', '1', '1', '438', '陶家锐', '4728', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5427', '130', '1', '1', '533', '雷丽', '4915', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5428', '130', '1', '1', '443', '顾文福', '4317', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5429', '130', '1', '1', '434', '高畅', '1000', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5430', '130', '1', '1', '533', '魏巴丹', '4933', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5431', '130', '1', '1', '438', '魏林', '4008', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5432', '130', '1', '1', '437', '鲁洁珊', '2785', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5433', '130', '1', '1', '434', '黄常平', '2784', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5434', '130', '1', '1', '408', '黄绍伟', '3990', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5435', '130', '1', '1', '494', '黎武权', '4691', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5436', '130', '1', '1', '455', '黎珍', '4502', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5437', '130', '1', '1', '455', '龙世星', '4504', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5438', '130', '1', '1', '408', '龙翅', '4762', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5439', '130', '1', '1', '408', '龚洪雁', '4726', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5464', '130', '1', '1', '494', '张婷a', '4620', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5465', '130', '1', '1', '494', '曹燎', '4618', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5466', '130', '1', '1', '434', '朱晓锋', '105', '100', '0', '0.000', '0.000', '0.000');
+INSERT INTO `cp_allot` VALUES ('5467', '130', '1', '1', '408', '汤肖汝', '4632', '100', '0', '0.000', '0.000', '0.000');
+
+三点半执行的sql
+insert into mk_allot_pool (task_id,type,needallot,allotstate,weights, createtime,next_chktime,begin_chktime) select task_id,1,1,0,66,createtime,next_chktime,begin_chktime from mk_task_allot_pool where needallot=1 and allotstate=0 and createtime>1445788800
+
+insert into mk_allot_pool (task_id,type,needallot,allotstate,weights, createtime,next_chktime,begin_chktime) select task_id,1,needallot,0,68,createtime,next_chktime,begin_chktime from mk_task_allot_pool where needallot=2 and allotstate=0 and createtime>1445788800
+
+insert into mk_allot_grabpool (task_id,type,weights,createtime) select task_id,1,68,createtime from mk_task_allot_pool where needallot=2 and allotstate=0 and createtime>1445788800
+
+

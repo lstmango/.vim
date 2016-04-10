@@ -1,0 +1,51 @@
+<?php
+/*
+ *交易系统-订单分配系统2.0
+ *2015-10-20
+ */
+
+class consumer_service_allot_bschance extends components_baseservice{
+	
+	//当前业务主数据表
+	protected $marter_table = 'zbj_model_mk_bstoct';
+	
+	public function __construct($id=0){
+		parent::__construct();
+		$this->setId($id);
+	}
+
+	/*
+	 *检查商机是否需要分配顾问，并将需求放入分配池子
+	 *待扩展
+	 */
+	public function bschecker($data){
+		return true;
+	}
+
+	/*
+	 *商机分配入口
+	 */
+	public function bsallot($data){
+		$zbjAllotBsCheck=new zbj_service_allot_bscheck();
+		$result=$zbjAllotBsCheck->bsallot($data);
+		if(!$result){
+			throw new Exception($zbjAllotBsCheck->getError());
+		}
+		return $result;
+	}
+
+	/**
+	 * 重置交易顾问【manager_id】
+	 * @parma	array	$data
+	 * @return bool
+	 * @throw Exception
+	 * */
+	public function resetManager($data){
+		$zbjAllotBsCheck=new zbj_service_allot_bscheck();
+		$result=$zbjAllotBsCheck->resetManager($data);
+		if(!$result){
+			throw new Exception($zbjAllotBsCheck->getError());
+		}
+		return $result;
+	}
+}

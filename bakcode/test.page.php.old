@@ -1,0 +1,427 @@
+<?php
+//class controller_test extends components_basepage{
+//class controller_test extends zbj_service_task_base {
+//class controller_test extends zbj_service_user{
+//class controller_test extends zbj_service_task_base{
+//class controller_test extends controller_task_base{
+//class controller_test extends zbj_service_categoryguide{
+//class controller_test extends controller_task_base{
+//class controller_test extends zbj_lib_cms{
+//class controller_test extends zbj_service_sellerpac{
+//class controller_test extends zbj_service_ssebatch{
+#class controller_test extends consumer_service_allot_manager1 {
+class controller_test extends zbj_components_baseservice {
+#class controller_test extends zbj_service_taskallotpool {
+#class controller_test extends  consumer_service_allot_manager2{
+	function __construct(){
+		//parent::__construct(5179722);
+		//parent::__construct(18);
+		//parent::__construct(5179722);
+        //$this->oSe = new Sse(zbj_lib_Constant::SEARCH_API_HOST, zbj_lib_Constant::SEARCH_API_PORT,$httpHeader);
+        //$this->oSe = new Sse(zbj_lib_Constant::SEARCH_API_HOST, zbj_lib_Constant::SEARCH_API_PORT);
+		parent::__construct();
+	}
+	
+	function pageTest(){
+		$srvTask = new zbj_service_task(6045034);
+		$srvTask = $srvTask->init();
+		$taskinfo = $srvTask->get('task_info.*');
+		$task = $srvTask->get();
+		var_dump($task);
+	}
+	public function pageIndex(){
+		$taskid=6041716;
+		$taskid=6041896;
+		$taskid=6043039;
+		//$taskid=6043231;
+		$data = array(
+			'task_id'	=> $taskid,
+		);
+		$alloter = new consumer_service_allot_manager1();
+		$back = $alloter->checker($data);
+		//$back = $alloter->manager($data);
+		var_dump($back);
+
+	 /*
+	  *   $managerid=2288;
+	  *$alloter = new consumer_service_allot_manager1();
+	  *$param = array('manager_id'=>$managerid,'task_id'=>6041486,'type'=>1);
+	  *$back = $alloter->resetManagerConf($param);
+	  *   die();
+	  */
+
+		/*
+		 *$taskid=6041716;
+		 *$taskid=6041896;
+		 *$data = array(
+		 *    'task_id'	=> $taskid,
+		 *);
+		 *$alloter = new consumer_service_allot_manager1();
+		 *#$back = $alloter->checker($data);
+		 *$back = $alloter->cutManagerTodayAllotConf($data);
+		 *var_dump($back);
+		 */
+
+		/*
+		 *$taskid=6041716;
+		 *$taskid=6041896;
+		 *$managerid=2288;
+		 *$data = array(
+		 *    'task_id'	=> $taskid,
+		 *    'manager_id'	=> $managerid
+		 *);
+		 */
+		#$alloter = new consumer_service_allot_manager1();
+		#$alloter = new consumer_service_allot_manager1();
+		//$alloter = new controller_crontab_allot();
+		#$back = $alloter->checker($data);
+		#$back = $alloter->resetManager($data);
+		#$back = $alloter->cutManagerNeedFollowNum($data);
+		#$back = $alloter->count();
+		//$back = $alloter->resetcfg();
+		//var_dump($back);
+
+
+
+
+
+
+
+
+
+
+		/*
+		 *$taskid='5182525';
+		 *$taskid='6041486';
+		 *$taskid='6041491';
+		 *$taskid='6041495';
+		 *$taskid='6041496';
+         *$data = array(
+         *    'task_id'	=> $taskid,
+         *);
+		 *$this->toVerifyManager($data);
+		 *echo 111;
+		 */
+
+
+		 /*
+          *$data = array(
+          *    'task_id'	=> 6041496,
+          *);
+		  */
+		//$srvTask = new zbj_service_task(6041486);
+		/*
+		 *$srvTask = new zbj_service_task(5181765);
+		 *$srvTask = $srvTask->init();
+		 *$task = $srvTask->get();
+		 * //var_dump($srvTask);
+		 * //var_dump($task);
+		 * $this->repushToAllotPool($srvTask);
+		 */
+
+
+
+
+
+		die();
+	}
+
+	public function pageGrab(){
+		 /*
+		  *$sGrab = new zbj_service_randgrab();
+		  *$result = $sGrab->releaseFromGrabPoolToVerify();
+		  *var_dump($result);
+		  */
+		 $sGrab = new zbj_service_randgrab();
+		 $srvTask = $sGrab->doGrab();
+		 /*
+		  *$sGrab = new controller_crontab_allot();
+		  *$result = $sGrab->releaseFromGrabPoolToVerify();
+		  $*/
+		  /*
+		   *$sGrab = new consumer_service_allot_grab();
+		   *$data=array(
+		   *    'task_id'=>'6045021'
+		   *);
+		   *$result = $sGrab->removeGrabPool($data);
+		   *var_dump($result);
+		   */
+		//$lsdata=array('task_id'=>124);
+		//new lsdebug($lsdata,'test');
+	//include '/data/www/html/test/debug.php';
+		//$lsdata=array('task_id'=>123);
+		//new lsdebug($lsdata,'test');
+	}
+	function pagexx(){
+		$a=new consumer_service_job();
+		//$a->checkPostedQuote(array('works_id'=>77478672));
+		$a->checkPostedQuote(array('works_id'=>77478700));
+		//$a->checkPostedQuote(array('works_id'=>77478735));//new
+	}
+
+	function pagedabo(){
+		  zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET,5);
+		  $api = new com\zhubajie\task\interfaces\TaskAgreementServiceClient(null);
+		  zbj_lib_ApiClient::build($api);
+
+		  $result = $api->agree(19182243,1025);
+		  var_dump($result);
+	}
+
+	public function pageaaa(){
+		$cplog_obj = new zbj_service_cplog();
+		//$manager_id 用户ID  $task_id 任务ID $log_reservation 日志内容 $type = 'task' 类型默认为task $origin = 1 来源 1为前台用户 0为后台用户 $time 创建时间 时间戳
+		$a=$cplog_obj->addLog(18,6045801, 'test', 'task', 1, 1); 
+		var_dump($a);
+		//$cplog_obj->addLog($manager_id,$task_id, $log_reservation, $type = 'task', $origin = 1, $time); 
+	}
+
+	function pagetestcurl(){
+		/*
+		 *$data['_d']=1;
+		 *$data['appid']='trade';
+		 *$data['service']='FollowFirstService';
+		 *$data['method']='addFirstFollow';
+		 *$data['param']='{"data":{"taskId":20,"worksId":20,"userId":100,"userRole":2,"contactType":1,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		 *$c=new zbj_lib_ApiHttpClient($data);
+		 *$abc=$c->execute();
+		 */
+		$data['_d']=1;
+		$data['appid']='trade';
+		$data['service']='WtCommonService';
+		//$data['method']='getFormById';
+		$data['method']='getFormsByBizId';
+		$data['param']='{"data":2}';
+		$c=new zbj_lib_ApiHttpClient($data);
+		$abc=$c->execute();
+		var_dump($abc);
+		/*
+		 *$data['_d']=1;
+		 *$data['appid']='trade';
+		 *$data['service']='ReasonService';
+		 *$data['method']='getReasonStatByTaskId';
+		 *$data['param']='{"data":20}';
+		 *$c=new zbj_lib_ApiHttpClient($data);
+		 *$abc=$c->execute();
+		 *var_dump($abc);
+		 */
+	}
+	function pagePost2(){
+		$url='http://task.t6.zbj.com/httpapi/SubmitSecondFollow';
+		//$data['param']='{"data":{"terminal":11,"taskId":24,"worksId":24,"userId":100,"userRole":2,"contactType":1,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		//$data['param']='{"data":{"terminal":11,"taskId":81,"worksId":82,"userId":80,"userRole":2,"followSecondValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":"","selected":1},{"questionId":2,"answerId":1,"answerTxt":"","selected":1},{"questionId":3,"answerId":0,"answerTxt":"2015-09-21","selected":1}]}}';
+		$data['param']='{"data":{"terminal":41,"taskId":6045834,"worksId":77478743,"userId":44,"userRole":2,"contactType":2,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		$result=zbj_lib_BaseUtils::file_get_contents_safe($url,$data,'POST',5);
+		echo $result;
+		//var_dump($result);
+	}
+	function pagePost(){
+//{"data":{"terminal":11,"taskId":24,"worksId":24,"userId":100,"userRole":2,"contactType":1,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}
+		$url='http://task.t6.zbj.com/httpapi/SubmitFirstFollow';
+		//$url='http://task.t6.zbj.com/worktask/FirstFollow';
+		/*
+		 *$data['terminal']=41;
+		 *$data['taskId']=6046244;
+		 *$data['worksId']='77478774';
+		 *$data['userId']=35;
+		 *$data['userRole']=2;
+		 *$data['contactType']=1;
+		 */
+		//$data['param']='{"data":{"terminal":11,"taskId":24,"worksId":24,"userId":100,"userRole":2,"contactType":1,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		$data['param']='{"data":{"terminal":41,"taskId":6045583,"worksId":77478739,"userId":35,"userRole":2,"contactType":2,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		//$data['param']='{"data":{"terminal":11,"taskId":30,"worksId":30,"userId":100,"userRole":2,"contactType":2,"reasonItemNdto":{"formCfgId":4,"relationId":19,"inputTxt":""}}}';
+		$result=zbj_lib_BaseUtils::file_get_contents_safe($url,$data,'POST',5);
+		echo $result;
+		//var_dump($result);
+	}
+	function pagexdebug(){
+		$i=1;
+		$i++;
+		$i++;
+		echo $i;
+	}
+
+	function pagePost3(){
+		$url='http://task.t6.zbj.com/httpapi/SubmitFirstFollow';
+		$url='http://task.t6.zbj.com/httpapi/SubmitSecondFollow';
+		//$data['param']='{"data":{"terminal":11,"taskId":24,"worksId":24,"userId":100,"userRole":2,"contactType":1,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		$data['param']='{"data":{"terminal":41,"taskId":6045583,"worksId":77478739,"userId":35,"userRole":2,"contactType":2,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}';
+		$data['debug']=1;
+		//$data['param']='{"data":{"terminal":11,"taskId":30,"worksId":30,"userId":100,"userRole":2,"contactType":2,"reasonItemNdto":{"formCfgId":4,"relationId":19,"inputTxt":""}}}';
+		$data['sign']=sha1('debug=1&param={"data":{"terminal":41,"taskId":6045583,"worksId":77478739,"userId":35,"userRole":2,"contactType":2,"followFirstValNdtoList":[{"questionId":1,"answerId":1,"answerTxt":""},{"questionId":2,"answerId":1,"answerTxt":""},{"questionId":3,"answerId":2,"answerTxt":""},{"questionId":4,"answerId":0,"answerTxt":"给我要钱"}]}}signkey=ZHUBAJIESIGNKEY');
+
+
+		$result=zbj_lib_BaseUtils::file_get_contents_safe($url,$data,'POST',5);
+		echo $result;
+		//var_dump($result);
+	}
+public function pagecs(){
+     $taskfollow = new zbj_service_taskfollow();
+     $data = array(
+				  /*
+                   *'task_id' => '6046612',
+                   *'works_id' => '77478906',
+                   *'user_id' => '30',
+                   *'feedbacktime' => time(),
+				   */
+                  'task_id' => '6046611',
+                  'works_id' => '77478903',
+                  'user_id' => '33',
+                  'feedbacktime' => time(),
+                  'reason' => array(0=>'ajfowehifopawie'),
+             );
+	 define('debug',1);
+     $taskfollow->addCannotContactData($data);
+    }
+
+	public function pageCommit(){
+		$m = new zbj_model_mk_cannotcontactreason();
+		$sql="insert into mk_cannot_contact_reason (cn_id,reason_key,reason_value,createtime,createymd) values(30,0,'agewgawegew',1443427705,2015-09-28)";
+		$back = $m->query($sql);
+	}
+	public function pagexxx(){
+		$m = new zbj_model_mk_cannotcontactreason();
+		$m->beginTransaction('mk');
+		$this->pageCommit();
+		$m->rollback('mk');
+		//$m->commit('mk');
+
+	}
+	public function pageabc(){
+		$sDate=strtotime('2015-10-01 00:00:00');
+		$eDate=strtotime('2015-10-08 23:59:59');
+		if(time()>=$sDate && time()<=$eDate){
+			echo 123;
+		}
+		var_dump($sDate);
+		var_dump($eDate);
+	}
+
+	public function pageallot(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6358846;
+		$r=$abc->checker($data);
+	}
+	public function pageallot2(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6358846;
+		$r=$abc->manager($data);
+		var_dump($r);
+
+	}
+	public function pagebsallot(){
+		$abc=new consumer_service_allot_order();
+		$data['bstoct_id']=6047857;
+		$r=$abc->bschecker($data);
+		var_dump($r);
+
+	}
+	public function pagebsallot2(){
+		$abc=new consumer_service_allot_bschance();
+		$data['task_id']=3337;
+		$r=$abc->bsallot($data);
+		var_dump($r);
+
+	}
+
+	public function pageallot3(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6047857;
+		$data['manager_id']=69;
+		$r=$abc->cutManagerTodayAllotConf($data);
+		var_dump($r);
+
+	}
+	public function pageallot4(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6047857;
+		$data['manager_id']=69;
+		$r=$abc->resetManager($data);
+		var_dump($r);
+
+	}
+	public function pageallot5(){
+		$abc=new consumer_service_follow();
+		$data['task_id']=6047857;
+		$r=$abc->reset($data);
+		var_dump($r);
+
+	}
+	public function pageallot6(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6047857;
+		$r=$abc->resetManager($data);
+		var_dump($r);
+
+	}
+
+	public function pageallot7(){
+		$abc=new controller_crontab_allot();
+		$data['task_id']=6047857;
+		$r=$abc->getTaskManagerType1();
+		var_dump($r);
+
+	}
+
+	public function pageallot8(){
+		$abc=new zbj_service_allot_taskpool ();
+		$data['task_id']=6047857;
+		$r=$abc->pushPoolTaskToAlloter();
+		var_dump($r);
+
+	}
+	public function pageVerify(){
+		$a=new zbj_service_taskverify();
+		$srvTask = new zbj_service_task(6047857);
+		$srvTask = $srvTask->init();
+		$t=$a->toVerify($srvTask);
+		var_dump($t);
+	}
+	public function pagealluser(){
+		$a=new zbj_service_allot_taskallot();
+		$t=$a->getAllotDimensionManagers(0,true,false);
+		var_dump($t);
+	}
+	public function pagea1(){
+		$str='123订单我00xx';
+		$strlen=mb_strlen($str,'utf-8');
+		echo $strlen;
+
+
+		die();
+		$srvTask = new zbj_service_task(6359083);
+		$srvTask = $srvTask->init();
+		$task=$srvTask->get();
+		$nowdate = '2015-11-13';
+		$tof=$nowdate==$task['createymd'] || $nowdate==date('Y-m-d',(strtotime($task['createymd'])+86400));
+		var_dump($nowdate);
+		var_dump(date('Y-m-d',(strtotime($task['createymd'])+86400)));
+		var_dump($tof);
+		die();
+		$tid=6048213;
+		if(zbj_lib_Api::taskNeedAllotManager($tid) !== true){
+			throw new Exception(zbj_lib_Api::getError());
+		}
+	}
+	public function pageReset(){
+		$abc=new consumer_service_allot_order();
+		$data['task_id']=6358846;
+		$r=$abc->resetManager($data);
+		var_dump($r);
+
+	}
+	public function pageab(){
+		$cache = new zbj_lib_cache('memcache');
+		$task['task_id']=6358846;
+		$cacheName='task.allot.editcategory.tag.task_id='.$task['task_id'];
+		$cacheData=$cache->get($cacheName);
+		var_dump($cacheData);
+	}
+	public function pageqq(){
+		$a=new consumer_service_allot_bschance();
+		$data['task_id']=3364;
+		$r=$a->resetManager($data);
+		var_dump($r);
+	}
+}
+?>

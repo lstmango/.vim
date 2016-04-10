@@ -1,0 +1,1338 @@
+<?php
+/**
+ * 交易顾问的订单分配
+ * @author lidacheng
+ */
+class zbj_service_taskalloter extends zbj_components_baseservice {
+	
+	protected $id;
+	protected $marter_table = 'zbj_model_mk_taskallotrole';
+	
+	protected $srvAllotLog = null;
+	
+	static $amounts = array(
+			1	=> array('min'=>0,'max'=>500,'level'=>1),
+			2	=> array('min'=>501,'max'=>1000,'level'=>2),
+			3	=> array('min'=>1001,'max'=>2000,'level'=>3),
+			4	=> array('min'=>2001,'max'=>3000,'level'=>4),
+			5	=> array('min'=>3001,'max'=>5000,'level'=>5),
+			6	=> array('min'=>5001,'max'=>10000,'level'=>6),
+			7	=> array('min'=>10001,'max'=>20000,'level'=>7),
+			8	=> array('min'=>20001,'max'=>50000,'level'=>8),
+			9	=> array('min'=>50001,'max'=>100000,'level'=>9),
+		);
+	
+	static $filter = array(
+			'rand'	=> 'rand',	// 随机筛选的
+			'suitable'	=> 'suitable', // 最适合的 
+			'previous'	=> 'previous', // 上一次分配的
+			'special'	=> 'special', // 直接指定的
+			'grab'	=> 'grab' // 盲抢
+		);
+	
+	/**
+	 * 构造函数
+	 */
+	public function __construct($id=0) {
+		parent::__construct();
+		$this->id = $id;
+		$this->srvAllotLog = new zbj_service_taskallotlog();
+	}
+	
+	
+	// =================================  分配交易顾问 ==================================
+	
+	/**
+	 * 获取交易顾问并执行分配动作「带事务」
+	 * @param	object	$srvTask
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function getNextManagerAndDoAllot(&$srvTask){
+		if(empty($srvTask) || !is_object($srvTask)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		
+		// 寻找交易顾问
+		try{
+			$this->_beginTransaction('mk');
+			$this->setLock();
+			$manager = $this->getNextAllotManager($srvTask); 
+			if($manager===false){
+				throw new Exception($this->getError());
+			}
+			
+			// 未找到交易顾问
+			if(empty($manager['manager']['manager_id'])){
+				$srvTaskPool = new zbj_service_taskallotpool();
+				$srvTaskPool->setTransaction(false);
+				if($srvTaskPool->repushToAllotPool($srvTask) === false){
+					throw new Exception($srvTaskPool->getError());
+				}
+				$this->_commit('mk');
+				return true;
+			}
+			
+			// 执行分配
+			$srvAlloter = new zbj_service_taskalloter();
+			$srvAlloter->setTransaction(false);
+			if($srvAlloter->doAllot($srvTask,$manager) === false){
+				throw new Exception($srvAlloter->getError());
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$this->srvAllotLog->addTaskAllotLog($task['task_id'],array($e->getMessage()));
+			return false;
+		}
+		
+		return true;
+	}
+		
+	/**
+	 * 执行分配动作
+	 * @param	object	$srvTask
+	 * @param	array	$toManager	调用getNextAllotManager（）方法返回的结果
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function doAllot(&$srvTask,array $toManager){
+		if(empty($srvTask) || !is_object($srvTask) || 
+			!is_array($toManager['manager']) || empty($toManager['filter'])){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		$task = $srvTask->get();
+		if(empty($task['task_id'])){
+			$this->setError(0,'需求不存在!');
+			return false;
+		}
+		
+		$filter = strtolower($toManager['filter']);
+		$wmanager = (array)$toManager['manager'];
+		if(empty($wmanager['manager_id'])){
+			$this->setError(0,'请指定需要分配的交易顾问');
+			return false;
+		}
+		
+		$chkresult = $task['open_state']==0;
+		if(!$chkresult){	// 不需分配
+			$this->setError(0,'需求状态异常，不可分配交易顾问');
+			return false;
+		}
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$srvManager = new zbj_service_manager($wmanager['manager_id']);
+			$manager = $srvManager->get('*');
+			$mname = !empty($manager['truename'])?$manager['truename']:$manager['name'];
+			
+			// 更新需求标记
+			$uptask = array(
+				'manager_id'	=> $wmanager['manager_id'],
+				'manager_name'	=> $mname,
+				'manager_teamid'=> (int)$manager['group_id'],
+				'm_is_at'		=> 1,
+				'task_opis.follow_tag'	=> 1,
+			);
+			
+			$task['isaudit']<0 && $uptask['isaudit'] = 1;
+			
+			// 是直接指定的交易顾问
+			if($filter==self::$filter['special'] || $filter==self::$filter['previous']){ 
+				$option = @unserialize($srvTask->get('task_info.option'));
+				if(!is_array($option) || empty($option)){
+					throw new Exception('获取需求数据失败');
+				}
+				
+				unset($option['followed']);
+				$task['manager_id']>0 && $option['changedmgr1'] = 1; // 表示换过交易顾问
+				$option['allot_filter'] = $filter; // 手动分配、同雇主标记
+				$uptask['task_info.option'] = serialize($option);
+			}
+			
+			if($srvTask->set($uptask) === false){
+				throw new Exception('设置需求数据失败');
+			}
+			if($srvTask->save() === false){
+				throw new Exception('分配交易顾问失败');
+			}
+			
+			// 更新分配池子需求
+			if($filter!=self::$filter['special']){
+				$uppool = array(
+					'allotstate'	=> 1,
+					'allottime'		=> $this->_time,
+					'amount'		=> round($task['amount'],2),
+				);
+				
+				$srvTaskPool = new zbj_service_taskallotpool($task['task_id']);
+				if($srvTaskPool->set($uppool) === false){
+					throw new Exception('设置分配池子数据失败');
+				}
+				if($srvTaskPool->save() === false){
+					throw new Exception('更新分配池子数据失败 '.$srvTaskPool->getError());
+				}
+			}
+			// 更新抢单状态
+			if($filter==self::$filter['grab']){
+				$condition=array(
+					'task_id'  => $task['task_id']
+				);
+				$grabData = array(
+					'status'	=> 1
+				);
+				$taskAllotGrabModule = zbj_model_api::get('zbj_model_mk_taskallotgrab');
+				$saveResult = $taskAllotGrabModule->update($condition,$grabData);
+				if($taskAllotGrabModule->save() === false){
+					throw new Exception('更新抢单状态失败'.$taskAllotGrabModule->getError());
+				}
+			}
+			// 更新分配参数
+			$task['filter'] = $filter;
+			$srvAlloter = new zbj_service_taskalloter();
+			$srvAlloter->setTransaction(false);
+			if($toManager['from']!='businessOrder'){
+				if($srvAlloter->upManagerAllotConf($wmanager['manager_id'],$task['manager_id'],$task) !==  true){
+					throw new Exception($srvAlloter->getError());
+				}
+			}
+
+			$throw = zbj_lib_Api::taskAllotedManager($task['task_id'],$wmanager['manager_id'],1);
+			if($throw !==  true){
+				throw new Exception(zbj_lib_Api::getError());
+			}
+			$this->_commit('mk');
+			
+			$srvAllotDayLog = new zbj_service_taskallotdaylog();
+			$srvAllotDayLog->addTaskAllotDayLog($srvTask,$wmanager['manager_id']);
+			
+			switch($filter){
+				case self::$filter['rand']:
+					$tailmsg = '「随机分配」'; break;
+				case self::$filter['previous']:
+					$tailmsg = '「同雇主同顾问」'; break;
+				case self::$filter['special']:
+					$tailmsg = '「直接指定」'; break;
+				case self::$filter['grab']:
+					$tailmsg = '「主动认领」'; break;
+				default:
+					$tailmsg = '「匹配模式」'; break;
+			}
+			//加入扩展统计
+			$extends_data = array("last_allot_amount"=>$task['amount'],"allotymd"=>date('Y-m-d',time()));
+			$srvTask->updateTaskExtends($extends_data);
+			
+			if($toManager['from']!='businessOrder'){
+				$this->srvAllotLog->addTaskAllotLog($task['task_id'],array("分配交易顾问「{$mname}」成功".$tailmsg));
+			}
+			else{
+				$this->srvAllotLog->addTaskAllotLog($task['task_id'],array("交易顾问指定为商机顾问「{$mname}」成功".$tailmsg));
+			}
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$this->srvAllotLog->addTaskAllotLog($task['task_id'],array($e->getMessage().",顾问「{$mname}」"));
+			return false;
+		}
+		
+		return true;
+	}
+	
+	/**
+	 * 分配成功后调用，更新交易顾问(新的和旧的)的分配配额[不带事务]
+	 * 		不懂的请不要随便调用
+	 * @param	mixed	$srvTask
+	 * @param	string	$filter 	$this->filter的值
+	 * @param	int		$managerid		新分配的交易顾问ID
+	 * @param	int		$oldManagerid	旧的交易顾问ID，不传则视为第一次分配交易顾问，不会更新旧交易顾问的配额
+	 * @param	array	$params		包括下标：filter , amount , task_id
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function upManagerAllotConf($managerid=0,$oldManagerid=0,$params=array()){
+		$managerid = intval($managerid);
+		$oldManagerid = intval($oldManagerid);
+				
+		$params['task_id'] = intval($params['task_id']);
+		$params['amount'] = round((float)$params['amount'],2);
+
+		$upManager = $upOldManager = true;
+		
+		if(($params['filter'] == 'rand' && $params['amount']==0) || $managerid<=0){
+			$upManager = false;
+		}
+		
+		$oldManagerid<=0 && $upOldManager = false;
+		
+		// 不用更新
+		if(!$upManager && !$upOldManager){
+			return true;
+		}
+		
+		$amountLevel = $this->getOnlyOneLevel($params['amount']);
+		$amountLevel = end(array_keys($amountLevel));
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$acfgModel = zbj_model_api::get('zbj_model_mk_taskallotconfig');
+			
+			if($upManager){ // 增加新交易顾问的配额
+				$srvManager1 = new zbj_service_taskalloter($managerid);
+				$conf1 = $srvManager1->get();
+				if(empty($conf1['manager_id'])){
+					throw new Exception('获取交易顾问的配置数据失败[1]');
+				}
+				// 更新分配参数，为了考虑效率方面，准确度并不高
+				$allot_num = (int)$conf1['today_alloted_num'] + 1;
+				$allot_amount = (float)$conf1['alloted_amount'] + $params['amount'];
+				
+				$updata1 = array(
+					'today_alloted_num'	=> $allot_num,
+					'today_num_rate'	=> intval(($allot_num*1.0/(float)$conf1['today_target_num']) * 100),
+					'alloted_amount'	=> $allot_amount,
+					'amount_rate'		=> intval(($allot_amount*1.0/(float)$conf1['target_amount'])*100),
+					'lastallot_ymd'		=> $this->_ymd,
+					'lastallot_time'	=> $this->_time,
+					'need_follow_num'	=> (int)$conf1['need_follow_num'] + 1,
+				);
+				
+				if($srvManager1->set($updata1) === false){
+					throw new Exception('设置分配阀值数据失败[1]');
+				}
+				if($srvManager1->save() === false){
+					throw new Exception('更新分配阀值数据失败[1]'.$srvManager1->getError());
+				}
+				
+				$condition1 = array(
+					"year=0 and month=0",
+					"manager_id='{$managerid}'",
+					"level='{$amountLevel}'",
+				);
+				$upcfg1 = array();
+				$upcfg1[] = "lastallottime='{$this->_time}'";
+				$upcfg1[] = "allotednum=allotednum+1";
+				$upcfg1[] = "allotedamount=allotedamount+{$params['amount']}";
+				
+				if($acfgModel->update($condition1,$upcfg1) === false){
+					throw new Exception('更新分配数据失败[1]');
+				}
+				
+				if($updata1['today_num_rate']>=80 || $updata1['amount_rate']>=80){
+					zbj_lib_Api::allotMgrGt80($managerid,1);
+				}
+				
+				$this->srvAllotLog->addTaskAllotLog($params['task_id'],array("修改新顾问「{$conf1['manager_name']}」分配阀值、待跟进数成功"));
+			}
+			
+			if($upOldManager){ // 减少旧交易顾问的配额
+				$srvManager2 = new zbj_service_taskalloter($oldManagerid);
+				$conf2 = $srvManager2->get();
+				if(empty($conf2['manager_id'])){
+					throw new Exception('获取交易顾问的配置数据失败[2]');
+				}
+			}
+			if($upOldManager && (int)$conf2['need_follow_num']>0){ // 减少旧交易顾问的配额
+				
+				// 更新分配参数，为了考虑效率方面，准确度并不高
+				$allot_num = (int)$conf2['today_alloted_num'] - 1;
+				$allot_num <= 0 && $allot_num = 0;
+				$allot_amount = (float)$conf2['alloted_amount'] - $params['amount'];
+				$allot_amount <= 0 && $allot_amount = 0;
+				
+				$follownum = (int)$conf2['need_follow_num'] - 1;
+				$follownum <= 0 && $follownum = 0;
+				
+				$updata2 = array(
+					'today_alloted_num'	=> $allot_num,
+					'today_num_rate'	=> intval(($allot_num*1.0/(float)$conf2['today_target_num']) * 100),
+					'alloted_amount'	=> $allot_amount,
+					'amount_rate'		=> intval(($allot_amount*1.0/(float)$conf2['target_amount'])*100),
+					'lastallot_ymd'		=> $this->_ymd,
+					'lastallot_time'	=> $this->_time,
+					'need_follow_num'	=> $follownum,
+				);
+				
+				if($srvManager2->set($updata2) === false){
+					throw new Exception('设置分配阀值数据失败[2]');
+				}
+				if($srvManager2->save() === false){
+					throw new Exception('更新分配阀值数据失败[2]'.$srvManager2->getError());
+				}
+				
+				$condition2 = array(
+					"year=0 and month=0",
+					"manager_id='{$oldManagerid}'",
+					"level='{$amountLevel}'",
+				);
+				$upcfg2 = array();
+				$upcfg2[] = "allotednum=allotednum-1";
+				$upcfg2[] = "allotedamount=allotedamount-{$params['amount']}";
+				
+				if($acfgModel->update($condition2,$upcfg2) === false){
+					throw new Exception('更新分配数据失败[2]');
+				}
+				
+				$this->srvAllotLog->addTaskAllotLog($params['task_id'],array("减少顾问「{$conf2['manager_name']}」分配阀值、待跟进数成功"));
+				/*
+				if($updata1['today_num_rate']>=80 || $updata1['amount_rate']>=80){
+					zbj_lib_Api::allotMgrGt80($oldManagerid,1);
+				}*/
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$this->srvAllotLog->addTaskAllotLog($params['task_id'],array($e->getMessage()));
+			return false;
+		}
+		
+		return true;
+	}
+
+	
+	// =================================  验证需求是否满足分配规则 ==================================
+	
+	
+	/**
+	 * 检查需求是否满足分配要求
+	 * @return mixed
+	 * @author lidacheng
+	 * */
+	public function checkTaskNeedAllot(&$srvTask,$boolback=true){
+		$task = $srvTask->get();
+		$taskinfo = $srvTask->get('task_info.*');
+		if(in_array($task['mode'],array(11,12)) && $taskinfo['end_type']>=1){
+			return false;
+		}
+		$srvModuleConf = new zbj_service_moduleconfig();
+		$dimensions = $srvModuleConf->getTaskAllotDimensionConfig($srvTask);
+		if(!$boolback) return $dimensions;
+		return is_array($dimensions) && $dimensions[0]['dimension_id']>0?true:false;
+	}
+	
+	/**
+	 * 检查需求上已分配过的交易顾问是否满足分配要求
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function checkTaskManagerNeedReset(&$srvTask){
+		$task = $srvTask->get();
+		if($task['manager_id']==0) return true;
+		
+		$manageids = $this->getAllotDimensionManagers($srvTask,false,false); // 取出某分配规则下的所有交易顾问
+		if($manageids===false || !is_array($manageids) || empty($manageids)){
+			return false;
+		}
+		
+		return !in_array($task['manager_id'],$manageids);
+	}
+	
+	
+	
+	// ================================= 获取交易顾问 ==================================
+	
+	/**
+	 * 获取需求应分配的交易顾问
+	 * @param	object	$srvTask
+	 * @param	int		$managerid
+	 * @return array [index:manager,filter]
+	 * */
+	public function getNextAllotManager(&$srvTask,$managerid=0){
+		$managerid = intval($managerid);
+		if(empty($srvTask) || !is_object($srvTask)){
+			$this->setError(0,'传递的需求对象异常'); 
+			return false;
+		}
+		
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])) {
+			$this->setError(0,'需求不存在');
+			return false;
+		}
+		
+		$allotlog = array();
+		$onlineOnly = zbj_lib_Constant::DOMAIN=='zhubajie.com'?true:false; // 测试环境不取在线交易顾问
+
+		// 取指定交易顾问
+		if($managerid > 0){
+			$manager = $this->getSpecialManager($managerid);
+			if(empty($manager)) return false;
+			return array('manager'=>$manager,'filter'=>self::$filter['special']);
+		}
+		
+		// 同雇主需求
+		$manager = $this->getPreManager($srvTask);
+
+		if(!empty($manager) && is_array($manager)){
+			$chkOnline = !$onlineOnly || $manager['isonline']==1;
+			$chkNeedAllot = !$onlineOnly || $manager['need_follow_num']<=0?true:false;
+			
+			if($chkOnline && $chkNeedAllot){
+				return array('manager'=>$manager,'filter'=>self::$filter['previous']);
+			}
+			
+			$allotlog[] = "顾问「{$manager['manager_name']}」";
+			if(!$chkOnline){
+				$allotlog[] = "不在线";
+			}
+			if(!$chkNeedAllot){
+				$allotlog[] = "有待跟进订单";
+			}
+                        
+		}
+
+		// 最合适的 , 对0元需求也生效 2015.09.22
+		$task['amount']>=0 && $manager = $this->getNextSuitableManager($srvTask,$onlineOnly);
+		if(!empty($manager) && is_array($manager)){
+			return array('manager'=>$manager,'filter'=>self::$filter['suitable']);
+		}
+		$allotlog[] = '没有可分配的顾问「匹配模式」';
+		
+		// 随机的 (暂时只对0元需求启用)
+		if($task['amount']==0 && false){ // 0元需求随机分配暂时关闭 2015.09.22
+			$manager = $this->getNextRandManager($srvTask,$onlineOnly);
+			if(!empty($manager) && is_array($manager)){
+				return array('manager'=>$manager,'filter'=>self::$filter['rand']);
+			}else{
+				$allotlog[] = '没有可分配的顾问「随机模式」';
+			}
+		}
+		
+		if(!empty($allotlog[0])){
+			$this->srvAllotLog->addTaskAllotLog($task['task_id'],$allotlog);
+		}
+		
+		return array();
+	}
+	
+	/**
+	 * 获取指定的交易顾问
+	 * @param	int		$managerid
+	 * @param	bool	$online
+	 * @return array
+	 * */
+	public function getSpecialManager($managerid){
+		$condition = array("manager_id='{$managerid}'");
+		
+		$field = "*,1 as level";
+		
+		$manager = $this->model()->selectOne($condition,$field);
+		$manager = (array)$manager;
+		if(empty($manager['manager_id'])){
+			$this->setError(0,'指定的交易顾问不存在'); 
+			return false;
+		}
+		
+		$allotModel = zbj_model_api::get('zbj_model_cp_allot');
+		$condition = array("manager_id='{$manager['manager_id']}' and state=1");
+		$managers = $allotModel->selectOne($condition,'isonline','','order by isonline desc');
+		$managers = (array)$managers;
+		
+		$manager['isonline'] = intval($managers['isonline']);
+		
+		return $manager;
+	}
+	
+	/**
+	 * 获取需求上一次跟进的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$online
+	 * @return array
+	 * */
+	public function getPreManager(&$srvTask){
+		$srvAllotDayLog = new zbj_service_taskallotdaylog();
+		$managerid = $srvAllotDayLog->getPreManager($srvTask);
+		if($managerid === false){
+			$this->setError(0,$srvAllotDayLog->getError()); 
+			return false;
+		}
+		
+		if($managerid === 0){
+			return array();
+		}
+		
+		return $this->getSpecialManager((int)$managerid);
+	}
+	
+	/**
+	 * 获取随机的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$onlineOnly
+	 * @return array
+	 * */
+	public function getNextRandManager(&$srvTask,$onlineOnly=true,$verifyData){
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])) {
+			$this->setError(0,'需求不存在'); 
+			return false;
+		}
+
+		$manageids = $this->getAllotDimensionManagers($srvTask,$onlineOnly,false,$verifyData);
+		if($manageids === false){  return false; }
+		if(is_array($manageids) && empty($manageids)){
+			//$this->setError(0,'获取在线交易顾问失败'); 
+			return array();
+		}
+		$idindex = array_rand($manageids,1);
+		$managerid = (int)$manageids[$idindex];
+		
+		$condition = array("manager_id='{$managerid}'");
+		
+		$field = "*,1 as level";
+		
+		$manager = $this->model()->selectOne($condition,$field);
+		if($manager === false){
+			$this->setError(0,$this->model()->getError()); 
+			return false;
+		}
+		
+		return (array)$manager;
+	}
+		
+	/**
+	 * 获取需求应分配的交易顾问
+	 * @param	object	$srvTask
+	 * @param	bool	$onlineOnly
+	 * @return array
+	 * */
+	public function getNextSuitableManager(&$srvTask,$onlineOnly=true){
+		$task = $srvTask->get('*');
+		if(empty($task['task_id'])) {
+			$this->setError(0,'需求不存在'); 
+			return false;
+		}
+
+		$manageids = $this->getAllotDimensionManagers($srvTask,$onlineOnly,false);
+
+		if($manageids === false){  return false; }
+		if(is_array($manageids) && empty($manageids)){
+			//$this->setError(0,'获取在线交易顾问失败'); 
+			return array();
+		}
+		
+		$level = $this->getOnlyOneLevel($task['amount']);
+		$level = end(array_keys($level));
+
+		if(empty($level)){
+			$this->setError(0,'获取金额等级失败'); 
+			return false;
+		}
+
+		$tabrole = $this->getTableName();
+		$tabcfg = 'mk_task_allot_config';
+		
+		$condition = array(
+			"{$tabrole}.state=1 and {$tabrole}.today_num_rate<100 and {$tabrole}.amount_rate>=0",
+			"{$tabrole}.lastallot_time>=0 and {$tabrole}.need_follow_num=0",
+			"{$tabcfg}.level='{$level}' and {$tabcfg}.totalnum>{$tabcfg}.allotednum",
+		);
+		!empty($manageids) && $condition[] = "{$tabrole}.manager_id in(".implode(',',$manageids).')';
+		
+		if($level>=6){ // 大金额
+			$orderby = "order by {$tabrole}.amount_rate asc";	
+		}else{ // 小金额
+			$orderby = "order by {$tabrole}.today_num_rate asc,{$tabrole}.amount_rate asc";
+		}
+		
+		$leftjoin = array($tabcfg => "{$tabrole}.manager_id={$tabcfg}.manager_id");
+		
+		$param = $this->lock?array('lock'=>'FOR UPDATE','type'=>'main'):array('type'=>'query');
+		
+		$field = "{$tabrole}.*,{$tabcfg}.level";
+		$manager = $this->model()->selectOne($condition,$field,'',$orderby,$leftjoin,$param);
+                
+		if($manager === false){
+			$this->setError(0,$this->model()->getError()); 
+			return false;
+		}
+		
+		return (array)$manager;
+	}
+	
+	
+	/**
+	 * 获取所有分配规则下的售前交易顾问
+	 * @param	mixed	$srvTask
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getAllotDimensionManagers($srvTask,$onlineOnly=true,$getinfo=false,$verifyData=array()){
+           
+		if(is_object($srvTask) && stripos(get_class($srvTask),'zbj_service_task') !== false){
+			$srvModCfg = new zbj_service_moduleconfig();
+			$modcfg = $srvModCfg->getTaskAllotDimensionConfig($srvTask);
+                        
+			if($modcfg === false){
+				$this->setError(0,'获取需求对应分配配置失败'.$srvModCfg->getError()); 
+				return false;
+			}
+			$dimensionids = array();
+			foreach((array)$modcfg as $mod){
+				$mid = intval($mod['dimension_id']);
+				$mid > 0 && $dimensionids[] = $mid;
+			}
+                        
+			$dbManagers = $this->getDimensionAllManager($dimensionids,$onlineOnly);
+                        
+		}else{ // 取全部行业下的
+			$dbManagers = $this->getAllManager($onlineOnly);
+		}
+
+		$manages = array();
+		foreach($dbManagers as $manage){
+			$mid = intval($manage['manager_id']);
+			$mid>0 && $manages[] = $mid;
+		}
+		
+                //过滤还有订单待审核的顾问
+                if(!empty($manages) && $verifyData['is_verify']==1 ){
+                    $manages = array_unique($manages);
+                    $managerIds = implode(',',$manages);
+                    $taskModel = zbj_model_api::get('zbj_model_mk_task');
+                    $condi[] = zbj_lib_Constant::DOMAIN == 'zhubajie.com' ? 'task_id > 5000000' : 'task_id > 4000000';
+                    $condi[] = "createymd > '" . date('Y-m-d', strtotime('-7 days')) . "'";
+                    $condi[] = "manager_id2 in($managerIds)";
+                    $condi[] = 'audit_state = 0';
+                    $groupBy = 'group by manager_id2';
+                    $items = 'manager_id2';
+                    $auditManager = $taskModel->select($condi, $items, $groupBy)->items;
+
+                    if(!empty($auditManager)){
+                        $audit = array();
+                        foreach($auditManager as $val){
+                        $audit[] = $val['manager_id2'];
+                        }
+                        
+                        $manages = array_diff($manages, $audit);
+                        
+                    }
+                }
+                
+		if($getinfo && !empty($manages)){
+                        $managerIds = implode(',', $manages);
+			$condition = '`user_id` in('.$managerIds.')';
+			$cpuserModel = zbj_model_api::get('zbj_model_cp_user');
+			$field = 'user_id as manager_id,group_id,truename as manager_name,isleader,isonline';
+			$manages = $cpuserModel->select($condition,$field)->items;
+                        
+		}
+		
+		return $manages;
+	}
+	
+	/**
+	 * 获取所有售前交易顾问
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getAllManager($onlineOnly=true){
+		$allotcfgModel = zbj_model_api::get('zbj_model_cp_allotconfig');
+		$allotcfg = $allotcfgModel->select('pid=1','id')->items;
+		$allotcfg = (array)$allotcfg;
+		
+		if(empty($allotcfg)) return array();
+		$configids = array();
+		foreach($allotcfg as $cfg){
+			$cid = intval($cfg['id']);
+			$cid>0 && $configids[] = $cid;
+		}
+		if(empty($configids)) return array();
+		
+		$allotModel = zbj_model_api::get('zbj_model_cp_allot');
+		$condition = array('config_id in('.implode(',',$configids).') and state=1');
+		if($onlineOnly) $condition[] = 'isonline=1';
+		$fields = 'state,isonline,manager_teamid,manager as manager_name,manager_id';
+		$managers = $allotModel->select($condition,'*','group by manager_id')->items;
+				
+		return (array)$managers;
+	}
+	
+	/**
+	 * 获取所有指定行业的售前交易顾问
+	 * @param	int		$dimensionids
+	 * @param	bool	$onlineonly
+	 * @return array
+	 * */
+	public function getDimensionAllManager($dimensionids,$onlineOnly=true){
+		if(!is_array($dimensionids) || empty($dimensionids)) return array();
+		sort($dimensionids);
+		$cache = new zbj_lib_cache('memcache');
+		$cachekey = 'task.zhubajie.module.managers.'.implode('_',$dimensionids).'.'.intval($onlineOnly);
+		$managers = $cache->get($cachekey);
+		if (!is_array($managers) || zbj_lib_Constant::DOMAIN!='zhubajie.com') {
+			$allotRelModel = zbj_model_api::get('zbj_model_mk_allotdimension');
+			$allotcfg = $allotRelModel->select('dimension_id in('.implode(',',$dimensionids).') and state=1','allot_config_id as cfgid')->items;
+			$allotcfg = (array)$allotcfg;
+			
+			if(empty($allotcfg)) return array();
+			$configids = array();
+			foreach($allotcfg as $cfg){
+				$cid = intval($cfg['cfgid']);
+				$cid>0 && $configids[] = $cid;
+			}
+			if(empty($configids)) return array();
+			
+			$allotModel = zbj_model_api::get('zbj_model_cp_allot');
+			$condition = array('config_id in('.implode(',',$configids).') and state=1');
+			if($onlineOnly) $condition[] = 'isonline=1';
+			$fields = 'state,isonline,manager_teamid,manager as manager_name,manager_id';
+			$managers = $allotModel->select($condition,'*','group by manager_id')->items;
+			$managers = (array)$managers;
+			$cache->set($cachekey, $managers, 60);
+		}
+		return $managers;
+	}
+	
+	
+	
+	
+	
+	
+	// =================================  分配配置区 ==================================
+	
+	/**
+	 * 每天晚上 重置交易顾问的分配数据 Mk_task_allot_role【每个交易顾问每天应只执行1次】
+	 * @param	int		$managerid
+	 * @param	bool	$force 	是否强制执行
+	 * @return bool
+	 * */
+	public function resetManagerAllotData($force=false){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$nowdate = date('Y-m-d');
+		$managercfg = $this->get('*');
+		if(empty($managercfg) || empty($managercfg['manager_id'])){
+			$this->setError(0,'交易顾问不存在');
+			return false;
+		}
+		if(!$force && $managercfg['updateymd'] == $nowdate){ // 如果更新过则不更新了
+			return true;
+		}
+				
+		$srvManager = new zbj_service_manager($this->id);
+		$manager = $srvManager->get('*');
+		
+		// 当月总共分配金额
+		$begintime = strtotime(date('Y-m').'-01 00:00:00');
+		$endtime = $this->getMonthLastDayTime();
+		
+		$srvAllotCount = new zbj_service_taskallotcount();
+		$alloted = $srvAllotCount->getTotalAllotData($this->id,$begintime,$endtime);
+		$targetAmount = $this->getTotalTargetAmount($manager);
+		if($alloted === false || $targetAmount === false){
+			$this->setError(0,'获取交易顾问历史分配数据失败');
+			return false;
+		}
+		// Mk_task_allot_role
+		
+		$targetNum = $this->getTodayTargetNum($manager['isleader']);
+		$allotedNum = $managercfg['updateymd']==$nowdate?(int)$managercfg['today_alloted_num']:0; // 当天多次更新，保持已分配数量
+		
+		// 累加上次未分配数量，月初1号重置
+		if($managercfg['updateymd']<$nowdate && $managercfg['today_num_rate']>0 && date('d')>1){
+			$targetNum += ((int)$managercfg['today_target_num']-(int)$managercfg['today_alloted_num']);
+		}
+		
+		$allotedAmount = round((float)$alloted['total_amount'],2);
+		$updata = array(
+			'today_target_num'	=> $targetNum,
+			'today_alloted_num'	=> $allotedNum,
+			'today_num_rate'	=> intval(((float)$allotedNum/(float)$targetNum) * 100),
+			
+			'target_amount'		=> $targetAmount,
+			'alloted_amount'	=> $allotedAmount,
+			'amount_rate'		=> intval(((float)$allotedAmount/(float)$targetAmount) * 100),
+			
+			'updateymd'			=> $nowdate,
+			'resetymd'			=> (date('d')<=15?date('Y-m-1'):date('Y-m-16')),
+			'need_follow_num'	=> 0,
+		);
+		
+		if(($set = $this->set($updata)) === false){
+			$this->setError(0,'设置保存的参数失败');
+			return false;
+		}
+		if(($back = $this->save()) === false){
+			$this->setError(0,'交易顾问分配数据重置失败 '.$this->getError());
+			return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * 重置交易顾问的分配阀值数据，运行于 resetManagerAllotData（）之后， MK_task_allot_config【每天应至少执行一次，或者需要时每分配一个订单更新一次】
+	 * @return bool
+	 * */
+	public function resetManagerAllotConfig(){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$managercfg = $this->get('*');
+		if(empty($managercfg) || empty($managercfg['manager_id'])){
+			$this->setError(0,'交易顾问不存在');
+			return false;
+		}
+		
+		// 距目标金额还差的金额
+		$needAmount = round((float)$managercfg['target_amount']-(float)$managercfg['alloted_amount'],2);
+		
+		$srvManager = new zbj_service_manager($this->id);
+		$manager = $srvManager->get('*');
+		
+		$oneDayNum = $this->getTodayTargetNum($manager['isleader']);
+		$moreNum = (int)$managercfg['today_target_num'] - $oneDayNum;
+	//	$moreNum < 0 && $moreNum = 0;  // 为了满足分配足够多的金额，某天会存在超分情况，第二天则存在相应数量的少分，暂不重置为0
+		// 累加以前未分配的数量
+		$totalNum = $this->getTotalTargetNum($manager['isleader']) + $moreNum - (int)$managercfg['today_alloted_num']; // 除去已分配的数量
+		$totalNum < 1 && $totalNum = 0;
+		
+		// 开始重置
+		if($_GET['_d']) echo '<br>manager_id:'.$this->id.'<br>';
+		$levelNeedTaskNums = $this->getNeedTaskNum($needAmount,$totalNum);
+		if($levelNeedTaskNums === false){
+			$this->setError(0,'计算分配数量失败');
+			return false;
+		}
+		if(is_array($levelNeedTaskNums) && empty($levelNeedTaskNums)){
+			return true;
+		}
+		
+		// test
+		$allotedAmount = 0;
+		foreach($levelNeedTaskNums as $level=>$tasknum){
+			$allotedAmount += self::$amounts[$level]['max'] * $tasknum;
+		}
+		if($_GET['_d']) echo '<br>$allotedAmount:'.$allotedAmount.'<br>';
+		if($_GET['_d']) print_r($levelNeedTaskNums);
+		
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			// 重置mk_task_allot_config表的totalnum,allotednum,allotedamount
+			$upallotcfg = array(
+				'totalnum'	=> 0,
+				'allotednum'=> 0,
+				'allotedamount'	=> 0,
+			);
+			$allotcfgModel = zbj_model_api::get('zbj_model_mk_taskallotconfig');
+			$invoke = $allotcfgModel->update("manager_id='{$managercfg['manager_id']}'",$upallotcfg);
+			
+			if($invoke === false){
+				throw new Exception('重置配置数据失败[1]'.$allotcfgModel->getError());
+			}
+			
+			foreach($levelNeedTaskNums as $level=>$tasknum){
+				if($tasknum<=0) continue;
+				$upallotcfg = array('totalnum' => $tasknum);
+				$upcondition = array(
+					"manager_id='{$managercfg['manager_id']}'",
+					"level='{$level}' and year=0 and month=0",
+				);
+				$upresult = $allotcfgModel->update($upcondition,$upallotcfg);
+				if($upresult === false){
+					throw new Exception('重置配置数据失败[2]'.$allotcfgModel->getError());
+				}
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError($e->getMessage(),$e->getCode());
+			return false;
+		}
+		
+		return true;
+	}
+
+	/**
+	 * 重置交易顾问已分配金额
+	 * @return array
+	 * */
+	public function resetManagerAllotRate(){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$begintime = strtotime(date('Y-m').'-01 00:00:00');
+		$endtime = $this->getMonthLastDayTime();
+		
+		$srvAllotCount = new zbj_service_taskallotcount();
+		$alloted = $srvAllotCount->getTotalAllotData($this->id,$begintime,$endtime);
+		
+		if($alloted===false){
+			$this->setError(0,$srvAllotCount->getError());
+			return false;
+		}
+		
+		$allotedAmount = round((float)$alloted['total_amount'],2);
+		$allotRate = intval(($allotedAmount/$this->get('target_amount'))*100); 
+		
+		$this->set('alloted_amount',$allotedAmount);
+		$this->set('amount_rate',$allotRate);
+		
+		return $this->save();
+	}
+			
+	/**
+	 * 减少交易顾问需要跟进的订单数量
+	 * @param	int		$num	减少的数量
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function cutManagerNeedFollowNum($num){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$num = intval($num);
+		if($num<=0) return true;
+		
+		
+		$allotRole = $this->get();
+		if(empty($allotRole['manager_id'])){
+			$this->setError(0,'获取交易顾问待跟进数量失败');
+			return false;
+		}
+		
+		$savedNum = (int)$allotRole['need_follow_num']-$num;
+		$savedNum<0 && $savedNum = 0;
+					
+		$this->set('need_follow_num',$savedNum);
+			
+		return $this->save();
+	}
+	
+	// ==========================  组成交易顾问配置参数的基础方法  ===============================
+		
+	
+	/**
+	 * 获取目标任务总金额，每半月进行计算
+	 * @return float
+	 * */
+	public function getTotalTargetAmount($manager){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$day = date('d');
+		$month = date('m');
+		
+		$oneDayAmount = $this->getOnedayTargetAmount($this->id);
+		$oneDayAmount === false && $oneDayAmount = 50000; // 默认为5W
+		
+		$oneDayAmount = $manager['isleader']==1?$oneDayAmount/2.0:$oneDayAmount; // leader目标减半
+		
+		$resetymd = explode('-',$this->get('resetymd'));
+		$resetday = intval(end($resetymd));
+		
+		if($month!=$resetymd[1]){ // 跨月
+			$endymd = $day<=15?date('Y-m-15'):date('Y-m-d',$this->getMonthLastDayTime());
+			$workdays = $this->getTotalWorkDay($endymd);
+			$targetAmount = $oneDayAmount * $workdays;
+			return round((float)$targetAmount,2);
+		}
+		
+		// 有分配过
+		$targetAmount = $this->get('target_amount');
+		// 检查是否重置
+		if($day>15 && $resetday!=16){ // 说明到后半月了,取整月目标金额，并且没有更新 累加，1月仅执行1次
+			$workdays = $this->getTotalWorkDay(date('Y-m-d',$this->getMonthLastDayTime()));
+			$targetAmount = $targetAmount+($oneDayAmount * $workdays);
+		}
+		
+		return round((float)$targetAmount,2);
+	}
+	
+	/**
+	 * 获取交易顾问1天的目标金额
+	 * */
+	public function getOnedayTargetAmount(){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		
+		$cache = new zbj_lib_cache('memcache');
+		$cachekey = 'task.zhubajie.allot.manager.module.'.$this->id;
+		$module = $cache->get($cachekey);
+		
+		if(empty($module['oneday_amount'])){
+			$tabcfg = 'cp_allot_config';
+			$tabalt = 'cp_allot';
+			
+			$condition = array(
+				"{$tabalt}.state=1 and {$tabalt}.manager_id='{$this->id}'",
+				"{$tabcfg}.pid=1",
+			);
+			$leftjoin = array(
+				$tabcfg	=> "{$tabalt}.config_id={$tabcfg}.id"
+			);
+			
+			$allotModel = zbj_model_api::get('zbj_model_cp_allot');
+			$configs = $allotModel->select($condition,"{$tabalt}.config_id",'','',$leftjoin)->items;
+			$configids = array();
+			foreach((array)$configs as $conf){
+				if($conf['config_id']>0) $configids[] = $conf['config_id'];
+			}
+			$configids = array_unique($configids);
+			if(empty($configids)){  return false;	}
+			
+			// 同一交易顾问不允许同时出现到多个分配规则中
+			$condition = array(
+				'allot_config_id in('.implode(',',$configids).') and state=1'
+			);
+			$allotRelModel = zbj_model_api::get('zbj_model_mk_allotdimension');
+			$allotrel = $allotRelModel->selectOne($condition,'dimension_id','','order by dimension_id desc');
+			
+			$module = array();
+			switch($allotrel['dimension_id']){
+				case 1: // 平面设计
+					$module['oneday_amount'] = 26000;
+					break;
+				case 2: // 专业设计
+					$module['oneday_amount'] = 68000;
+					break;
+				case 3: // 网站建设
+					$module['oneday_amount'] = 58000;
+					break;
+				case 4: // app
+					$module['oneday_amount'] = 148000;//68000;
+					break;	
+				case 5: // 文案营销
+					$module['oneday_amount'] = 28000;
+					break;
+				case 12: // 悬赏订单
+					$module['oneday_amount'] = 20000;
+					break;
+				default:
+					$module['oneday_amount'] = 50000;
+					break;
+			}
+			
+			$cache->set($cachekey,$module,86400);
+		}
+		
+		return round((float)$module['oneday_amount'],2);
+	}
+	
+	/**
+	 * 获取目标任务总数量，每半月进行计算
+	 * @return int
+	 * */
+	public function getTotalTargetNum($isleader){
+		if(!$this->id){
+			$this->setError(0,'请指定交易顾问ID号');
+			return false;
+		}
+		$day = date('d');
+		
+		$isleader = intval($isleader);
+		
+		$targetNum = $this->getTodayTargetNum($isleader);
+		
+		$endday = $day<=15?date('Y-m-15'):date('Y-m-d',$this->getMonthLastDayTime());
+		$workdays = $this->getTotalWorkDay($endday);
+		$targetNum = $targetNum * $workdays;
+		
+		return (int)$targetNum;
+		
+	}
+		
+	/**
+	 * 获取到指定日期的工作日天数
+	 * @param	string	$today	截至日期
+	 * @param	string	$fromday	开始日期
+	 * @return int
+	 * */
+	public function getTotalWorkDay($today,$fromday=''){
+		empty($fromday) && $fromday = date('Y-m-d');
+		
+		$begintime = strtotime($fromday.' 00:00:00');
+		$endtime = strtotime($today.' 00:00:00');
+		if(empty($endtime) || $endtime<$begintime) return 0;
+		
+		$days = ($endtime - $begintime) / (24*3600)*1.0;
+		$days = (ceil($days)+1);
+		$workday = 0;
+		for($i=0;$i<$days;$i++){
+			$day = date('w',$begintime+$i*86400);
+			if(!in_array($day,array(0,6))){
+				$workday ++;
+			}
+		}
+		// 临时让月中和月末，周末也有单子
+		$workday<=0 && $workday = 1;
+		return $workday;
+	}
+	
+	/**
+	 * 获取目标任务数
+	 * @return int
+	 * */
+	public function getTodayTargetNum($isleader){
+		$isleader = intval($isleader);
+		return $isleader==1?5:($isleader==2?40:20); // 每人每天应分数量
+	}
+	
+	/**
+	 * 获取到本月最后一天的时间戳
+	 * @return int
+	 * */
+	public function getMonthLastDayTime(){
+		return strtotime(date('Y-m-t').' 23:59:59');
+	}
+	
+	/**
+	 * 根据目标金额获取每个金额区间应该分配的需求总数量
+	 * @param	float	$amount
+	 * @param	int		$neednum
+	 * @return array
+	 * */
+	private function calcNeedTaskNum($amount,$neednum){
+		$amountcfg = self::$amounts;
+
+		if($amount<self::$amounts[1]['max'] && $neednum>=1){
+			return array(1=>$neednum);
+		}
+		if($neednum == 1){
+			return $this->getOnlyOneLevel($amount);
+		}
+		
+		$maxlevel = count(self::$amounts);
+		if($amount < 300000){
+			$maxlevel -= 1;
+		}
+		$level = rand(1,4);
+		if($neednum < $maxlevel){ // 不足分一轮
+			$endlevel = $this->getOnlyOneLevel($amount);
+			$endlevel = end(array_keys($endlevel));
+			$level = $endlevel - $neednum;
+		}
+		if(self::$amounts[$level]['max'] > $amount || $level<1){ // 小金额从最前开始
+			$level = rand(1,2);
+		}
+		if($_GET['_d']) echo '$level:'.$level.'  <br>';
+		$allotedAmount = 0;
+		$allotedcfg = array();
+		for($level;$level<=$maxlevel;$level++){
+			if($neednum<=0) break;
+			$cfg = $amountcfg[$level];
+			if($allotedAmount+$cfg['max']<=$amount){
+				$allotedAmount += $cfg['max'];
+				$allotedcfg[$level] = (int)$allotedcfg[$level] + 1;
+				$neednum -= 1;
+			}else{
+				break;
+			}
+		}
+		if(empty($allotedcfg)){ // 防止死循环
+			return $this->getOnlyOneLevel($amount);
+		}
+		return $allotedcfg;
+	}
+	
+	public function getNeedTaskNum($amount,$neednum){
+		$allotedcfg = array();
+		
+	//	$amount = 100000;
+	//	$neednum = 10;
+		
+		$redress = false;
+		$lastlevel = end(self::$amounts);
+		$lastlevel = $lastlevel['level'];
+		while($neednum > 0){
+			if($_GET['_d']) echo '<br>input:'.$amount.' '.$neednum.'<br>';
+			$allotArray = $this->calcNeedTaskNum($amount,$neednum);
+			if($_GET['_d']) print_r($allotArray);
+			foreach($allotArray as $lel=>$num){
+				$num = intval($num);
+				if($num<=0) continue;
+				
+				if($neednum>3){					
+					if($lel==9 && (int)$allotedcfg[$lel]>=1) continue;
+					if($lel==8 && (int)$allotedcfg[$lel]>=2) continue;
+					if($lel==7 && (int)$allotedcfg[$lel]>=4) continue;
+				}
+				
+				$allotedcfg[$lel] = (int)$allotedcfg[$lel] + $num;
+				
+				$amount -= self::$amounts[$lel]['max'] * $num;
+				$neednum -= $num;
+				
+				$neednum <= 0 && $neednum = 0;
+				if($neednum == 0) break;
+			}
+			if($_GET['_d']) echo '<br>$neednum:'.$neednum.'  $needAmount:'.$amount.'<br>';
+			// 纠正1次,不然是死循环
+			if(!$redress){
+				if($neednum == 0 && $amount>=10000){// 还有较大金额未分配
+					for($i=1;$i<=3;$i++){
+						if(empty($allotedcfg[$i])){ continue;	}
+						$allotedcfg[$i] -= 1;
+						$amount += self::$amounts[$i]['max'];
+						$neednum = 1; 
+						break;
+					}
+					$redress = true;
+					
+					if($_GET['_d']) echo 'gt10000-index:'.$i.' amount:'.$amount.'  num:'.$neednum;
+				}else if($neednum == 0 && $amount<=-10000){ // 分配金额超出
+					$abslevel = $this->getOnlyOneLevel(abs($amount));
+					$abslevel = end(array_keys($abslevel));
+					if(isset($allotedcfg[$abslevel])){
+						$index = $abslevel;
+					}else if(isset($allotedcfg[$abslevel-1])){
+						$index = $abslevel-1;
+					}
+					if($index){
+						$allotedcfg[$index] -= 1;
+						$amount = abs($amount + self::$amounts[$index]['max']);
+						$neednum = 1;
+					}
+					
+					$redress = true;
+					if($_GET['_d']) echo 'lt10000-index:'.$index.' amount:'.$amount.'  num:'.$neednum;
+				}
+			}
+			$amount <= 0 && $amount = 0;
+			
+			unset($allotArray);
+		}
+		return $allotedcfg;
+	}
+	
+	private function getOnlyOneLevel($amount){
+		foreach(self::$amounts as $level=>$cfg){
+			if($cfg['max']>=$amount){
+				return array($cfg['level']=>1);
+			}
+		}
+		
+		$last = end(self::$amounts);
+		return array($last['level']=>1);
+	}
+
+}

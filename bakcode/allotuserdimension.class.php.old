@@ -1,0 +1,16 @@
+<?php
+class zbj_model_mk_allotusermode extends zbj_components_basemodel{
+	/**
+	 * 设置主健名称
+	 */
+	public function primarykey(){
+		return 'id';
+	}
+
+	/**
+	 * 设置当前表名
+	 */
+	public function tableName(){
+		return 'mk_allot_user_mode';
+	}
+}

@@ -1,0 +1,272 @@
+{/capture name="bodyclass"/}class="bdcolor"{//capture/}
+{/capture name="body"/}
+<link rel="stylesheet" href="/assets/css/zbj-taskpane.css"/>
+{/if $stopLoad == 1/}
+<div class="norefresh-dlg-mask"></div>
+<div class="norefresh-dlg">{/$stopLoadNotice/}</div>
+{/else/}
+<div class="main-cnt-container">
+    <div class="pull-left">
+        <h3>订单库-任务面板</h3>
+    </div>
+    <div class="clear">&nbsp;</div>
+
+    <div class="tasksearch-common">
+        {/include file="wjtask/toptip.html"/}
+        <div class="tasksearch-relative">
+            {/include file="new/common/searchbar.html"/}
+            <div class="remind-top">
+                时间范围：{/$smarty.now|date_format:"%Y/%m/01"/}-{/$smarty.now|date_format:"%Y/%m/%d"/}
+                <table class="stats-tb">
+                    <tr class="stats-tr">
+                        <td class="stats-tit">小组已选标</td>
+                        <td>
+                            订单数：{/$managersummary.group[$groupid].selected.count/}</br>
+                            选标率：<span class="emph-color">{/$managersummary.group[$groupid].percent.allot/}</span>
+                        </td>
+                        <i class="ist-line"></i>
+                        <td>
+                            {/$managersummary.group[$groupid].selected.amount/}元</br>
+                            选标率：<span class="emph-color">{/$managersummary.group[$groupid].percent.selected/}</span>
+                        </td>
+                    </tr>
+                    <tr class="stats-tr">
+                        <td class="stats-tit">您本月已选标</td>
+                        <td>
+                            订单数：{/$managersummary.manager[$groupid][$userid].selected.count/}</br>
+                            选标率：<span
+                                class="emph-color">{/$managersummary.manager[$groupid][$userid].percent.allot/}</span>
+                        </td>
+                        <i class="ist-line2"></i>
+                        <td>
+                            {/$managersummary.manager[$groupid][$userid].selected.amount/}元</br>
+                            选标率：<span
+                                class="emph-color">{/$managersummary.manager[$groupid][$userid].percent.selected/}</span>
+                        </td>
+                    </tr>
+                    <tr class="stats-tr border-dlt">
+                        <td class="stats-tit border-dlt">您本月在小组排名</td>
+                        <td>
+                            当前排名：第<span
+                                class="emph-color"> {/$managersummary.manager[$groupid][$userid].ranking/} </span>位
+                        </td>
+                        <td>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+
+        <div class="nav-cnt">
+            <ul class="nav-cnt-ul navcnt-tabs" id="tasktab">
+                <li class="active"><a href="/wjtask/taskcase?type=0">任务面板</a></li>
+                <li class="seat-tb"><a href="/wjtask/tasklist?type=8">预约</a></li>
+                <li class="tmseat-tb"><a href="/wjtask/tasklist?type=1">所有订单</a></li>
+                <li class="tmseat-tb"><a href="/wjtask/tasklist?type=3">跟进中未选标</a></li>
+                <li class="tmseat-tb"><a href="/wjtask/tasklist?type=6">已选标未成交</a></li>
+                <li class="tmseat-tb"><a href="/wjtask/tasklist?type=7">已成交</a></li>
+            </ul>
+            <ul class="nav-cnt-ul nav-cnt-rht">
+                <li class="teamseat-tab"><a href="/wjtask/giveUpList?state=-1" type="0">放弃库</a></li>
+                <li class="teamseat-tab"><a href="/wjtask/auditrefund?audit_state=-1" type="0">关闭库</a></li>
+                <li class="teamseat-tab"><a href="/wjtask/tongji?uid={/$smarty.get.uid/}&own={/$smarty.get.own/}"
+                                            type="0">统计台</a></li>
+                <li class="teamseat-tab"><a href="/wjtask/PubReasonList?state=-2" type="0">直接公开的需求</a></li>
+            </ul>
+        </div>
+
+    </div>
+    <div class="taskcase-box">
+        <div class="taskcase-tips">
+            <div class="circle-outsd">
+                <div class="circle-insd"></div>
+            </div>
+            <div class="case-arrow"><i></i></div>
+            <dl class="tips-container">
+                <dt class="tips-tit"><span class="bigtit">待受理订单</span>普通订单10分钟内受理，商机订单5分钟内受理
+                    {/if {/$smarty.get.own/} eq 1/}
+                      {/if $canGrab eq 1/}
+                        <a class="claimOrder">抢订单 </a>
+						<span class="alert-txt">您现在没有待受理的订单，赶紧抢一个吧！(●'◡'●)。当前盲抢池订单数量为[{/$canGrabNum/}]</span>
+                      {/else/}
+                        <button class="claimOrder claimOrderDis" disabled>抢订单 </button>
+                        <span class="alert-txt">现在不能抢哦(●'◡'●)。当前盲抢池订单数量为[{/$canGrabNum/}]</span>
+                      {//if/}
+                    {//if/}
+
+                </dt>
+
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-1"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip">
+                <div class="tip-rht-tit"><img src="/assets/img/txgreen.png" class="tximg"><span class="stp">跟进小贴士</span>
+                </div>
+                <ol class="tipcnt-lst">
+                    <li>请在10分钟内受理需求，不然会被质控哦~商机订单请在5分钟内受理</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd">
+                <div class="circle-insd"></div>
+            </div>
+            <div class="case-arrow"><i></i></div>
+            <dl class="tips-container">
+                <dt class="tips-tit"><span class="bigtit">未联系上雇主</span>至少联系雇主3次以上</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-3"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip">
+                <div class="tip-rht-tit"><img src="/assets/img/txgreen.png" class="tximg"><span class="stp">跟进小贴士</span>
+                </div>
+                <ol class="tipcnt-lst">
+                    <li>继续联系雇主，直到联系上雇主为止，一直联系不上的，至少保证联系3次以上</li>
+                    <li>如果一直联系不上雇主，根据需求本身质量，也可选择直接公开出去或执行派单</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd">
+                <div class="circle-insd"></div>
+            </div>
+            <div class="case-arrow"><i></i></div>
+            <dl class="tips-container">
+                <dt class="tips-tit"><span class="bigtit">待梳理需求，暂未发布</span>请尽快梳理需求，并且派单或发布</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-2"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip">
+                <div class="tip-rht-tit"><img src="/assets/img/txgreen.png" class="tximg"><span class="stp">跟进小贴士</span>
+                </div>
+                <ol class="tipcnt-lst">
+                    <li>请尽快联系雇主梳理需求，完善需求内容</li>
+                    <li>需求清晰、价格合理的需求，请执行派单；需求不清晰、价格明显低于市场价、或长尾需求，可选择直接公开出去</li>
+                    <li>如果符合派单条件的服务商特别少，请一定记得点击“加入招商需求库”哦~</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd-two">
+                <div class="circle-insd-two"></div>
+            </div>
+            <div class="case-arrow-two"><i></i></div>
+            <dl class="tips-container-two">
+                <dt class="tips-tit-two"><span class="bigtit">二次跟进（3小时）</span>订单跟进流程中的重点时间节点，系统将为您自动建立预约</dt>
+                <dd class="tips-cnt-two">
+                    <p class="cnt-th">
+                        <span class="bigtit">投满3个标</span>请引导雇主选标或淘汰不合格稿件
+                    </p>
+
+                    <div class="case-item-table" id="case-type-16"></div>
+                </dd>
+                <dd class="tips-cnt-three">
+                    <p class="cnt-th">
+                        <span class="bigtit">投标数小于3</span>请继续寻找适合服务商投标
+                    </p>
+
+                    <div class="case-item-table" id="case-type-17"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip-two">
+                <div class="tip-rht-tit-two"><img src="/assets/img/txred.png" class="tximg"><span
+                        class="stp">跟进小贴士</span></div>
+                <ol class="tipcnt-lst">
+                    <li>请在预约到期前处理已建立的预约</li>
+                    <li>如果已投满3个标，请跟进雇主是否有意向服务商。如果雇主有意向服务商，
+                        请撮合双方选标；如果雇主没有意向服务商，请引导雇主淘汰不合格的服务商，并寻找新的服务商投标
+                    </li>
+                    <li>如果投标数不到3，请继续寻找适合的服务商投标</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd-two">
+                <div class="circle-insd-two"></div>
+            </div>
+            <div class="case-arrow-two"><i></i></div>
+            <dl class="tips-container-two">
+                <dt class="tips-tit-two"><span class="bigtit">12小时投标数小于3</span>订单跟进流程中的重点时间节点，系统将为您自动建立预约</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-18"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip-two">
+                <div class="tip-rht-tit-two"><img src="/assets/img/txred.png" class="tximg"><span
+                        class="stp">跟进小贴士</span></div>
+                <ol class="tipcnt-lst">
+                    <li>12小时以后还没有投满3个标的需求，请跟进雇主是否有意向服务商。如果雇主有意向服务商，
+                        请撮合双方选标；如果雇主没有意向服务商，请根据订单实际情况，寻找适合的服务商投标，并自行建立预约跟进
+                    </li>
+                    <li>如放弃订单，只计算80%业绩</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd-two">
+                <div class="circle-insd-two"></div>
+            </div>
+            <div class="case-arrow-two"><i></i></div>
+            <dl class="tips-container-two">
+                <dt class="tips-tit-two"><span class="bigtit">有备选</span>请引导雇主选标或淘汰不合格稿件</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-8"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip-two">
+                <div class="tip-rht-tit-two"><img src="/assets/img/txred.png" class="tximg"><span
+                        class="stp">跟进小贴士</span></div>
+                <ol class="tipcnt-lst">
+                    <li>重点跟进，尽可能促成雇主选标</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd">
+                <div class="circle-insd"></div>
+            </div>
+            <div class="case-arrow"><i></i></div>
+            <dl class="tips-container">
+                <dt class="tips-tit"><span class="bigtit">工期过1/2</span>请跟进服务商工作情况</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-11"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip">
+                <div class="tip-rht-tit"><img src="/assets/img/txgreen.png" class="tximg"><span class="stp">跟进小贴士</span>
+                </div>
+                <ol class="tipcnt-lst">
+                    <li>跟进服务商工作进展</li>
+                </ol>
+            </div>
+        </div>
+        <div class="taskcase-tips">
+            <div class="circle-outsd">
+                <div class="circle-insd"></div>
+            </div>
+            <div class="case-arrow"><i></i></div>
+            <dl class="tips-container">
+                <dt class="tips-tit"><span class="bigtit">争议处理</span>请协助雇主与服务商双方处理争议</dt>
+                <dd class="tips-cnt">
+                    <div class="case-item-table" id="case-type-10"></div>
+                </dd>
+            </dl>
+            <div class="remind-tip">
+                <div class="tip-rht-tit"><img src="/assets/img/txgreen.png" class="tximg"><span class="stp">跟进小贴士</span>
+                </div>
+                <ol class="tipcnt-lst">
+                    <li>尽可能协助双方处理争议，促成成交</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+</div>
+{//if/}
+<script src="/assets/js/zbj-taskpane.js"></script>
+{//capture/}
+{/include file="common/zhubajietpl.html"/}

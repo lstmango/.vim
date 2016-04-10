@@ -1,0 +1,76 @@
+<?php
+use com\zhubajie\boss\dataobject\bosslog\logProduct;
+/**
+ * 日志
+ *
+ */
+class service_bosslog extends service_abstract
+{
+
+    protected $id;
+
+    protected $marter_table = 'model_cp_remark';
+
+    public function __construct($id = 0)
+    {
+        parent::__construct();
+        $this->id = $id;
+    }
+
+   public function addLog(\com\zhubajie\boss\dataobject\bosslog\LogDo $logItem) {
+   	try {
+   		$data=array();
+   		if(strlen($logItem->content)<=0){
+   			throw new Exception('内容不能为空', -1);
+   		}
+   		$data['content']=$logItem->content;
+   		if(!self::checkProductType($logItem->product_type)){
+   			throw new Exception('产品类型不正确', -1);
+   		}
+   		$data['type_id']=$logItem->product_type;
+   		if($logItem->product_id){
+   			$data['pk_id']=$logItem->product_id;
+   			$data['status']=$logItem->product_status?$logItem->product_status:0;
+   		}else{
+   			$data['pk_id']=0;
+   			$data['status']=0;
+   		}
+   			$data['create_date']=date('Y-m-d',time());
+   			$data['create_time']=time();
+   			$data['local_time']=time();
+   			$data['origin']=0;
+   			$data['is_log']=1;
+   			if($logItem->cp_user_id){
+   				$data['user_id']=$logItem->cp_user_id;
+   				$s_cpuser=new service_cp_user($logItem->cp_user_id);
+   				$data['name']=$s_cpuser->get('name');
+   			}else{
+   				$data['user_id']=0;
+   				$data['name']="系统";
+   			}
+   			if($logItem->option){
+   				$data['option']=$logItem->option;
+   			}
+			new lsdebug($data,'data');
+   			$m_remark=new model_cp_remark();
+   			if($m_remark->insert($data) === false){
+   				throw new Exception('操作失败写入数据库失败', -1);
+   			}
+   	} catch (Exception $e) {
+   		$this->setError($e->getCode(),$e->getMessage());
+   		return false;
+   	}
+   	return true;
+   }
+   
+   private function checkProductType($product_type) {
+   	$reflectionClass = new ReflectionClass ( new logProduct () );
+   	$products = $reflectionClass->getConstants ();
+   	$products = array_flip ( $products );
+   	if (! isset ( $products [$product_type] )) {
+   		return false;
+   	} else {
+   		return true;
+   	}
+   } 
+}

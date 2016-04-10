@@ -1,0 +1,1488 @@
+<?php
+
+/**
+ * 任务处理
+ */
+class controller_api_taskbase extends components_basepage{
+	public $srvTask;
+	public $srvWork;
+	public $tid;
+	public $url;
+	public $task;
+	public $user;
+	public $params;
+	public $cache;
+	public $out;
+	public $_error;
+
+
+	/**
+	 * 购买服务构造函数，初始化数据，判断权限
+	 * @param int $tid
+	 * @param array $url url参数
+	 */
+	public function __construct($tid, $url=array()) {
+		parent::__construct();
+		$this->tid = $tid;
+		$this->url = $url;
+	}
+
+	/**
+	 * 初始化公用数据
+	 */
+	function init($url){
+		echo 123;
+		$this->url = $url;
+		$this->tid = intval($this->url['tid']);
+		
+		if (!$this->tid) {
+			lib_BaseUtils::jsonp('参数错误，找不到需求ID', 1, -1);
+		}
+		if (!$this->_userid) {
+			lib_BaseUtils::jsonp('请登录后进行操作', 1, -1);
+		}
+		$this->srvTask = new zbj_service_task($this->tid);
+		$this->srvTask = $this->srvTask->init();
+		$this->task = $this->srvTask->get();
+		//关闭
+		if ($this->srvTask->get ( 'open_state' ) == 1) {
+			lib_BaseUtils::jsonp('需求已经关闭!', 1, -1);
+		}
+		//冻结
+		if ($this->srvTask->get ( 'isfrozen' ) == 1) {
+			lib_BaseUtils::jsonp('需求已经冻结!', 1, -1);
+		}
+		$this->user = new zbj_service_user ( $this->_userid );
+		if(!$this->user->isAllowPost()){
+			lib_BaseUtils::jsonp('无权操作！原因：'.$this->user->getError(), 1, -1);
+		}
+		if ($this->user->isManager()) {
+			$this->params['_ismanager'] = 1;
+			$this->params['josnp'] = 1;
+		}
+		$this->params['task'] = $this->task;
+	}
+	
+	/**
+	 * 设置错误信息
+	 */
+	protected function setError($msg, $code = 0) {
+		$this->_error ['msg'] = $msg;
+		$this->_error ['code'] = $code;
+	}
+	
+	/**
+	 * 获取错误信息
+	 */
+	protected function getError($type='msg') {
+		return $this->_error [$type];
+	}
+	
+	/**
+	 * 补充详情
+	 * @param array $url url参数列表
+	 */
+	public function addAbout($url) {
+		$this->init($url);
+		if ($this->_userid != $this->task['user_id']) {
+			lib_BaseUtils::jsonp('无权操作', 1, -1);
+		}
+		if ($this->task['hosted'] <= 0) {
+			lib_BaseUtils::jsonp('当前状态无法操作', 1, -1);
+		}
+//		$num = $this->srvTask->getTaskAboutCount();
+// 		if ($num > 10) {
+// 			$this->out['html'] = '任务补充要求不能超过10次！';
+// 			return false;
+// 		}
+// 		$disadditional = unserialize($this->srvTask->get('task_info.option'));
+// 		if($disadditional['disadditional'] == 1){
+// 			$this->out['html'] = '该任务不允许补充需求！';
+// 			return false;
+// 		}
+		if ($_POST) {
+			$content = zbj_lib_BaseUtils::getStr(rawurldecode($_POST['content']));
+			
+			//检查内容是否含违规信息
+			if (SFilter::checkey($content, 2)) {
+				lib_BaseUtils::jsonp('您填写的内容不能包含违规信息', 1, -1);
+				return false;
+			}
+				
+			//检查内容是否含有联系方式
+			if (SFilter::contacts($content)) {
+				lib_BaseUtils::jsonp('您填写的内容不能包含联系方式', 1, -1);
+				return false;
+			}
+			
+			if (strlen($content) == 0) {
+				lib_BaseUtils::jsonp('任务补充不能为空', 1, -1);
+			}
+			$files = $_POST['files'];
+			$datafiles = array ();
+			if ($files) {
+				$a_files = explode ( "-,", $files );
+				$a_file = array ();
+				foreach($a_files as $key => $value) {
+					$a_file[$key] = unserialize(stripcslashes($value));
+				}
+				foreach ( $a_file as $k => $value ) {
+					if ($value) {
+						$datafiles [$k] = array ("user_id" => $this->_userid, "nickname" => $this->_nickname, "filename" => $value ["file"], "ofilename" => $value ["ofilename"], "createtime" => $value ["createtime"], "filesize" => $value ["size"], "filext" => $value ["ext"] );
+					}
+				}
+				$files = serialize($datafiles);
+			}
+			if ($this->srvTask->addAbout($content, $files) !== false) {
+				$this->srvTask->addTaskActionLog('雇主补充了需求：'.$content, 1);
+				$return_msg = '<li><p class="gray9">'.date('Y/m/d H:i:s').'</p><p>'.nl2br($content).'</p>';
+				if ($files) {
+					$return_msg .= $this->render('task/ajax/ajax_files.html', array('task_file' => $datafiles));
+				}
+				$return_msg .= '</li>';
+				if($this->srvTask->get('audit_state') == 1){
+					$updata = array(
+						'audit_state'	=> 3,
+						'manager_id2'	=> 0,
+						'manager_name2'	=> '',
+					);
+					$this->srvTask->set($updata);
+					$this->srvTask->save();
+				}
+				$this->srvTask->corntabSendMsg(3);
+				lib_BaseUtils::jsonp($return_msg);
+			} else {
+				lib_BaseUtils::jsonp('补充详情失败，请重试！', 1, -1);
+			}
+		}
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_addabout.html', $this->params));
+	}
+	
+	/**
+	 * 评论，回复
+	 * @param unknown_type $url
+	 * @param int $type 1表示评论，2表示回复评论
+	 */
+	function post($url, $type = 1) {
+		return false;
+		$ispost = (int)$_GET['ispost'];
+		$this->init($url);
+		if ($ispost) {
+			if($this->srvTask->get('user_id') == 8390083){
+				lib_BaseUtils::jsonp('当前需求不允许评论', 1, -1);
+			}
+			$content = zbj_lib_BaseUtils::getStr(rawurldecode($_GET['content']));
+			if (strlen($content) == 0) {
+				lib_BaseUtils::jsonp('内容不能为空', 1, -1);
+			}
+			if (SFilter::checkey($content, 2)) {
+				lib_BaseUtils::jsonp('您输入的信息中可能含有违规信息，请修改后再提交。', 1, -1);
+			}
+			$insert_data = array('content' => $content);
+			$mode = (int)$_REQUEST['mode'];
+			if ($mode <0 || $mode > 4) {
+				lib_BaseUtils::jsonp('表态类型错误', 1, -1);
+			}
+			$insert_data['mode'] = $mode;
+			if (in_array($mode, array(3, 4))) {
+				if (!zbj_lib_BaseUtils::isNumberNew($_REQUEST['money'])) {
+					lib_BaseUtils::jsonp('金额错误', 1, -1);
+				}
+				$money = (float)$_REQUEST['money'];
+				if ($money <= 0) {
+					lib_BaseUtils::jsonp('金额必须大于0', 1, -1);
+				}
+				$insert_data['money'] = $money;
+			}
+			//是否为回复
+			if ($type == 2) {
+				$commid = (int)$url['commid'];
+				$commid==0 && $commid=(int)$_REQUEST['comid'];
+				if ($commid <= 0) {
+					lib_BaseUtils::jsonp('请选择要回复的评论', 1, -1);
+				}
+				$parent_comment = new zbj_service_comment($commid);
+				$insert_data['isreply'] = 1;
+				$insert_data['parent_id'] = $commid;
+				$insert_data['parent_user_id'] = $parent_comment->get('user_id');
+				$insert_data['parent_nickname'] = $parent_comment->get('nickname');
+			}
+			$userobj = new zbj_service_user($this->_userid);
+			if(!$userobj->getAuthMobile()){
+				lib_BaseUtils::jsonp('您没有认证手机不能评论', 1, -1);
+			}
+			$curr_com_num = $this->srvTask->get('comment_num');
+			$comment_obj = new zbj_service_comment();
+			$newc_id = $comment_obj->add($this->srvTask, $userobj, $insert_data);
+			if ($newc_id) {
+				if ($curr_com_num == 9) { //当评论数量达到10的时候通知雇主
+					$this->srvTask->corntabSendMsg(2);
+				}
+				$newc_obj = new zbj_service_comment($newc_id);
+				$data = $newc_obj->get();
+				$data['comment_id'] = $newc_id;
+				if ($data['mode'] == 1) {
+					$data['class'] = 'fena';
+				} elseif ($data['mode'] == 2) {
+					$data['class'] = 'fenb';
+				} elseif ($data['mode'] == 3) {
+					$data['class'] = 'fenc';
+				} elseif ($data['mode'] == 4) {
+					$data['class'] = 'fend';
+				} else {
+					$data['class'] = 'fene';
+				}
+				$option = unserialize($newc_obj->get('option'));
+				$data['content'] = zbj_lib_BaseUtils::renderCommnet($data['content'], $option['atpeople']['item'], $option['atpeople']['uidArr']);
+				
+				$other = array(); //传递一些参数给js，让其处理动态添加的效果
+				if (1 or $this->task['comment_num'] == 0) {
+					$other['com_title'] = '大家正在讨论<span>（<b id="reply-count">1</b>）</span>';
+				}
+				
+				//统计表态数据
+				$model = new zbj_model_mk_taskcomment();
+				$model->setDbEntry();
+				$source_total = $model->select('state=0 and task_id='.$this->task['task_id'], 'mode,count(1) as num', 'group by mode', 'order by mode')->items;
+				$se_arr = array(
+					1 => array('mode' => 1, 'num' => 0, 'class' => 'fena', 'desc' => '我可以做，马上报名'),
+					2 => array('mode' => 2, 'num' => 0, 'class' => 'fenb', 'desc' => '需求不太明确'),
+					3 => array('mode' => 3, 'num' => 0, 'class' => 'fenc', 'desc' => '需要先托管赏金'),
+					4 => array('mode' => 4, 'num' => 0, 'class' => 'fend', 'desc' => '赏金偏低'),
+					5 => array('mode' => 0, 'num' => 0, 'class' => 'fene', 'desc' => '其他')
+				);
+				$other['mode'] = $mode == 0 ? 5 : $mode;
+				if ($source_total) {
+					$max_num = 1;
+					foreach ($source_total as $value) {
+						$index = ($value['mode'] == 0 ? 5 : $value['mode']);
+						$se_arr[$index]['num'] = $value['num'];
+						//$se_arr[$index]['width'] = (int)(90*$value['num']/$total);
+						if ($value['num'] > $max_num) {
+							$max_num = $value['num'];
+						}
+					}
+					$total_width = 92;//
+					$max_num<18 && $total_width=2+$max_num*5;
+					foreach ($se_arr as $key => $item) {
+						$se_arr[$key]['width'] = (int)(($item['num'] * $total_width) / $max_num);
+						if ($key == $other['mode']) {
+							$se_arr[$key]['width'] -= (int)($total_width / $max_num);
+							$other['curr_width'] = $se_arr[$key]['width'];
+						} elseif ($se_arr[$key]['width'] == 0) {
+							$se_arr[$key]['width'] = 2;
+						}
+						if ($item['mode'] == 4) { //赏金偏低
+							$result = $model->selectOne('state=0 and mode=4 and task_id='.$this->task['task_id'], 'max(declare_momey) as max_money, min(declare_momey) as min_money,avg(declare_momey) as avg_momey');
+							$size = (int)$item['num'];
+							if ($size > 0) {
+								$se_arr[$key]['max_money'] = sprintf('%.2f', $result['max_money']);
+								$se_arr[$key]['min_money'] = sprintf('%.2f', $result['min_money']);
+								$se_arr[$key]['avg_momey'] = sprintf('%.2f', $result['avg_momey']);
+								if ($size > 2) {
+// 									$per = ($result['max_money'] - $result['min_money']) / 10;
+// 									$l = $result['avg_momey'] - $per;
+// 									$r = $result['avg_momey'] + $per;
+									$max_times = $model->select('state=0 and mode=4 and task_id='.$this->task['task_id'], 'declare_momey, count(1) as num', 'group by declare_momey', 'order by num desc')->items;
+									$se_arr[$key]['max_times'] = $max_times[0]['num'];
+									$se_arr[$key]['max_times_money'] = $max_times[0]['declare_momey'];
+								}
+							}
+						}
+					}
+				}
+				$other['add'] = (int)($total_width / $max_num);
+				$other['statistics'] = $this->render('task/comment/statistics.html', array('comment_cate' => $se_arr, 'task_id' => $this->task['task_id']));
+				
+				$this->params['msg'] = array($data);
+				$this->params['task_userid'] = $this->task['user_id'];
+				$this->params['curr_userid'] = $this->_userid;
+				lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params), 1, 1, $other);
+			} else {
+				lib_BaseUtils::jsonp('评论失败'.$comment_obj->getError(), 1, -1);
+			}
+		}
+		$tid = (int)$url['tid'];
+		if (!$tid) {
+			lib_BaseUtils::jsonp('获取需求失败', 1, -1);
+		}
+		$taskObj = new zbj_service_task($tid);
+		$taskObj = $taskObj->init();
+		//获取回复的ID
+		//$comid = (int)$_REQUEST['comid'];
+		$m = (int)$_GET['m'];
+		
+		//不用返回其他评论内容
+		if ($m == -1) {
+			$this->params = array();
+			lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params));
+		}
+		$model = zbj_model_api::get('zbj_model_mk_taskcomment');
+		$model->setPage(1);
+		$model->setCount(true);
+		$limit = 20;
+		$model->setLimit($limit);
+		$com_condition = 'task_id='.$tid;
+		$curr_userobj = new zbj_service_user($this->_userid);
+		if ($curr_userobj->isManager()) {
+			$this->params['_ismanager'] = 1;
+		} else {
+			$com_condition .= ' and state=0';
+		}
+		$sourece = $model->select($com_condition, '*', null, 'order by comment_id desc');
+		$comment_size = $sourece->totalSize;
+		$comment_list = $sourece->items;
+		if ($comment_list) {
+			foreach ($comment_list as $k => $c) {
+				if ($c['mode'] == 1) {
+					$comment_list[$k]['class'] = 'fena';
+				} elseif ($c['mode'] == 2) {
+					$comment_list[$k]['class'] = 'fenb';
+				} elseif ($c['mode'] == 3) {
+					$comment_list[$k]['class'] = 'fenc';
+				} elseif ($c['mode'] == 4) {
+					$comment_list[$k]['class'] = 'fend';
+				} else {
+					$comment_list[$k]['class'] = 'fene';
+				}
+				$option = unserialize($c['option']);
+				$comment_list[$k]['content'] = zbj_lib_BaseUtils::renderCommnet($comment_list[$k]['content'], $option['atpeople']['item'], $option['atpeople']['uidArr']);
+			}
+		}
+		if ($comment_size > $limit) {
+			$this->params['comment_left'] = $comment_size - $limit;
+			if ($m) {
+				$this->params['needmore'] = 1;
+			} else {
+				$this->params['needmore'] = 2;
+			}
+		}
+		
+		$this->params['msg'] = $comment_list;
+		$this->params['task_id'] = $tid;
+		$this->params['task'] = $taskObj->get('');
+		$this->params['task_userid'] = $this->params['task']['user_id'];
+		$this->params['curr_userid'] = $this->_userid;
+		if ($m == 1 && $this->params['task_userid'] == $this->_userid) { //动态流请求，如果是雇主就没有评论框
+			lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params), 1, 2);
+		} else {
+			lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params));
+		}
+	}
+	
+	/**
+	 * 获取更多的评论
+	 * @param unknown_type $url
+	 */
+	function morecomment($url) {
+		//return false;
+		$tid = (int)$url['tid'];
+		if (isset($url['mode'])) {
+			$mode = (int)$url['mode'];
+		} else {
+			$mode = false;
+		}
+		if (!$tid) {
+			lib_BaseUtils::jsonp('获取需求失败', 1, -1);
+		}
+		$this->user = new zbj_service_user($this->_userid);
+		if ($this->user->isManager()) {
+			$this->params['_ismanager'] = 1;
+		}
+		$taskObj = new zbj_service_task($tid);
+		$taskObj = $taskObj->init();
+		$page = (int)$_GET['p'];
+		if (!$page) {
+			lib_BaseUtils::jsonp('参数错误', 1, -1);
+		}
+		$model = zbj_model_api::get('zbj_model_mk_taskcomment');
+		$model->setPage($page);
+		$model->setCount(true);
+		$limit = 20;
+		$model->setLimit($limit);
+		$condition = 'state in(0,2) and task_id='.$tid;
+		if ($mode !== false) {
+			$condition .= ' and mode='.$mode;
+		}
+		$sourece = $model->select($condition, '*', null, 'order by comment_id desc');
+		$comment_size = $sourece->totalSize;
+		$comment_list = $sourece->items;
+		if (!$comment_list) {
+			lib_BaseUtils::jsonp('没有更多了', 1, -1);
+		} else {
+			foreach ($comment_list as $k => $c) {
+				if ($c['mode'] == 1) {
+					$comment_list[$k]['class'] = 'fena';
+				} elseif ($c['mode'] == 2) {
+					$comment_list[$k]['class'] = 'fenb';
+				} elseif ($c['mode'] == 3) {
+					$comment_list[$k]['class'] = 'fenc';
+				} elseif ($c['mode'] == 4) {
+					$comment_list[$k]['class'] = 'fend';
+				} else {
+					$comment_list[$k]['class'] = 'fene';
+				}
+				$option = unserialize($c['option']);
+				$comment_list[$k]['content'] = zbj_lib_BaseUtils::renderCommnet($comment_list[$k]['content'], $option['atpeople']['item'], $option['atpeople']['uidArr']);
+			}
+		}
+		$this->params['msg'] = $comment_list;
+		$this->params['task_id'] = $tid;
+		$this->params['task'] = $taskObj->get('');
+		$this->params['task_userid'] = $this->params['task']['user_id'];
+		$this->params['curr_userid'] = $this->_userid;
+		if ($comment_size - $page*$limit <= 0) { //没有了
+			$p = 0;
+			$this->params['left_num'] = -1;
+			$this->params['comment_cate_size'] = $comment_size;
+		} else {
+			$p = $page + 1;
+		}
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params), 1, 1, array('p' => $p, 'lf' => $comment_size - $limit*$page));
+	}
+	/**
+	 * 获取更多的评论
+	 * @param unknown_type $url
+	 */
+	function commentcate($url) {
+		//return false;
+		$tid = (int)$url['tid'];
+		if (isset($url['mode'])) {
+			$mode = (int)$url['mode'];
+		} else {
+			$mode = false;
+		}
+		$page = (int)$_GET['p'];
+		if (!$tid) {
+			lib_BaseUtils::jsonp('获取需求失败', 1, -1);
+		}
+		$taskObj = new zbj_service_task($tid);
+		$taskObj = $taskObj->init();
+		$model = zbj_model_api::get('zbj_model_mk_taskcomment');
+		$model->setPage($page);
+		$model->setCount(true);
+		$limit = 20;
+		$model->setLimit($limit);
+		$condition = 'state in(0,2) and task_id='.$tid;
+		if ($mode !== false) {
+			$condition .= ' and mode='.$mode;
+		}
+		$sourece = $model->select($condition, '*', null, 'order by comment_id desc');
+		$comment_size = $sourece->totalSize;
+		$comment_list = $sourece->items;
+		if ($comment_list) {
+			foreach ($comment_list as $k => $c) {
+				if ($c['mode'] == 1) {
+					$comment_list[$k]['class'] = 'fena';
+				} elseif ($c['mode'] == 2) {
+					$comment_list[$k]['class'] = 'fenb';
+				} elseif ($c['mode'] == 3) {
+					$comment_list[$k]['class'] = 'fenc';
+				} elseif ($c['mode'] == 4) {
+					$comment_list[$k]['class'] = 'fend';
+				} else {
+					$comment_list[$k]['class'] = 'fene';
+				}
+				$option = unserialize($c['option']);
+				$comment_list[$k]['content'] = zbj_lib_BaseUtils::renderCommnet($comment_list[$k]['content'], $option['atpeople']['item'], $option['atpeople']['uidArr']);
+			}
+		}
+		if ($comment_size - $limit <= 0) { //没有了
+			$p = 0;
+			$this->params['left_num'] = -1;
+			$this->params['comment_cate_size'] = $comment_size;
+		} else {
+			$p = $page + 1;
+			$this->params['needmore_cate'] = 1;
+			$this->params['comment_left'] = $comment_size - $limit;
+			if ($mode !== false) {
+				$this->params['mode'] = $mode;
+			}
+		}
+		$this->params['msg'] = $comment_list;
+		$this->params['task_id'] = $tid;
+		$this->params['task'] = $taskObj->get('');
+		$this->params['task_userid'] = $this->params['task']['user_id'];
+		$this->params['curr_userid'] = $this->_userid;
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_post_msg.html', $this->params), 1, 1);
+	}
+	
+	/**
+	 * 谢谢操作
+	 * @param unknown_type $url
+	 */
+	function thanks($url, $type = 1) {
+		$this->init($url);
+		
+		//$type 1为评论，2为稿件
+		$type = (int)$url['type'];
+		if ($type != 2) {
+			$type = 1;
+			$keywords = '评论';
+			return false;
+		} else {
+			$keywords = '稿件';
+		}
+		if ($this->task['mode'] != 10) {
+			lib_BaseUtils::jsonp('当前任务模式不允许改操作', 1, -1);
+		}
+		if ($this->_userid != $this->task['user_id']) {
+			lib_BaseUtils::jsonp('对不起，您无权操作', 1, -1);
+		}
+		$option = unserialize($this->srvTask->get('task_info.option'));
+		$option || $option = array();
+		if ($type == 1) {
+			$thx_times = (int)$option['comment']['thx_times'];
+		} else {
+			$thx_times = (int)$option['works']['thx_times'];
+		}
+		$left_times = 5 - $thx_times;
+		if ($left_times <= 0) {
+			lib_BaseUtils::jsonp('您对'.$keywords.'的谢谢已达上限', 1, -1);
+		}
+		$dothx = (int)$_GET['dothx'];
+		if (!$dothx) { //第一次请求
+			lib_BaseUtils::jsonp('您只能对5个'.$keywords.'进行感谢，还剩余<span style="color:#F60">'.$left_times.'</span>次');
+		} else { //处理谢谢操作
+			if ($type == 1) {
+				$object = new zbj_service_comment((int)$_GET['comid']);
+			} else {
+				$object = new zbj_service_works((int)$_GET['wid']);
+			}
+			if ($this->srvTask->thanks($type, $object)) {
+				lib_BaseUtils::jsonp('已谢谢');
+			} else {
+				lib_BaseUtils::jsonp('谢谢失败'.$this->srvTask->getError(), 1, -1);
+			}
+		}
+	}
+	
+	/**
+	 * 编辑标签
+	 * @param array $url
+	 */
+	function editag($url) {
+		$this->init($url);
+		if (!($this->_userid && $this->_userid == $this->task['user_id'])) {
+			lib_BaseUtils::jsonp('对不起，您无权操作', 1, -1);
+		}
+		$isedit = (int)$_GET['e'];
+		if ($isedit) {
+			$tag = zbj_lib_BaseUtils::getStr($_GET['label']);
+			if ($tag) {
+				$temp = explode(',', $tag);
+				$tagArr = array();
+				foreach ($temp as $t) {
+					$tagArr[]['tag_id'] = (int)$t;
+				}
+			} else {
+				$tagArr = array();
+			}
+			if ($this->srvTask->saveTag($this->task['task_id'], $tagArr, 1)) {
+				if ($tagArr && $this->task['state'] == 1 && ($this->task['amount'] == 0 || $this->task['hosted'] == 1)) {
+					$task_option = $this->srvTask->get('task_info.option');
+					$task_option = unserialize($task_option);
+					$task_option || $task_option = array();
+					if (!(int)$task_option['was_nosearch']) {
+						if ($this->srvTask->checkTaskPub()) {
+							$other = array('tips' => '发布成功');
+						} else {
+							$other = array('tips' => -1);//没有发布成功，页面需要刷新
+						}
+					}
+				}
+				$this->srvTask->setDbEntry();
+				$new_tags = $this->srvTask->getTaskTag();
+				$return_msg = '';
+				if ($new_tags) {
+					foreach ($new_tags as $nt) {
+						//{/geturl rule="/list/index" data="tg={/$item.name/}" domain="www"/}
+						$return_msg .= '<a href="'.zbj_lib_Constant::MAIN_URL.'/topic/'.$nt['tid'].'" target="_blank">'.$nt['name'].'</a>';
+					}
+				}
+				if ($this->task['state'] > 1) {
+					//$return_msg .= '<a href="javascript:;" act-type="window" act-href="'.zbj_lib_Constant::TASK_URL.'/api/editag/tid/'.$this->task['task_id'].'" class="edwork">编辑标签</a>';
+				}
+				lib_BaseUtils::jsonp($return_msg, 1, 1, $other);
+			} else {
+				lib_BaseUtils::jsonp('操作失败,刷新后重试', 1, -1);
+			}
+		}
+		$task_tags = $this->srvTask->getTaskTag();
+		$this->params['task_tags_param'] = '';
+		if ($task_tags) {
+			foreach ($task_tags as $t) {
+				$this->params['task_tags_param'] .= '{tid:'.$t['tid'].',name:"'.$t['name'].'"},';
+			}
+			$this->params['task_tags_param'] = substr($this->params['task_tags_param'], 0, -1);
+		}
+		
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_editag.html', $this->params));
+	}
+	
+	/**
+	 * 检查用户是否可以投标
+	 */
+	protected function checkAllowSign(){
+		$iscatcha = false;
+		$this->cache = new zbj_lib_cache ( 'memcache' );
+		$limitCacheName = "task.handle.base.jg." . $this->_userid;
+		$speedLimit = $this->cache->get ( $limitCacheName );
+		$allowTime = intval($speedLimit ['allowTime']);
+		if ($allowTime > $this->_time) {
+			$this->setError ( "您的投标速度比孙悟空还快，歇一歇，喝杯茶，休息一分钟再来投标吧。" );
+			return false;
+		}
+		if ($this->srvTask->get ( 'endtime' ) <= $this->_time) {
+			$this->setError ( "该任务已经到期，不接受新的投标！" );
+			return false;
+		}
+		if ($this->srvTask->get ( 'is_sysselect' ) == 1) {
+			$this->setError ( "该任务进入系统选稿流程，不接受新的投标！" );
+			return false;
+		}
+		if ($this->srvTask->get ( 'state' ) != 2) {
+			$this->setError ( "该任务当前状态不接受新的投标！" );
+			return false;
+		}
+		if ($this->_userid == $this->srvTask->get ( 'user_id' )) {
+			$this->setError ( '不能够参加自己的任务！' );
+			return false;
+		}
+		if (!$this->user->isAllowPost ()) {
+			$this->setError ( "您的账户已被锁定，不能参与任务投标！" );
+			return false;
+		}
+		//是否符合投标要求
+		if(!$this->user->checkQuota(6)){
+			$this->setError('很遗憾！由于您当前信用度小于80分，处于违规处罚期，禁止投标！');
+			return false;
+		}
+		//检查是否需要验证码
+		$this->params ['iscatcha'] = $iscatcha ? $iscatcha : $this->user->isCatcha ( 'postworks' );
+		if ($this->srvTask->isAllowSign($this->user) === false){
+			switch ($this->srvTask->getError ('code')){
+				case '-1':
+					$this->setError('您没有通过实名认证');
+					break;
+				case '-2':
+					$this->setError ( "您的手机号码还未认证，无法投标");
+					break;
+				case '-4':
+					$this->setError('您的能力不满足投标条件');
+					break;
+				default:
+					$this->setError($this->srvTask->getError());
+			}
+			return false;
+		}else{
+			return true;
+		}
+	}
+	
+ 	/**
+	 *返回订单状态字符串
+	 *@param array $billinfo 订单信息
+	 */
+	public function getBillStatus($binfo, $showtype = true) {
+		$fn_state = $binfo['fn_state'];
+		$post_type = $binfo['post_type'];
+		$post_state = $binfo['post_state'];
+		$error_msg = $binfo['error_msg'];
+		$bill_state = $binfo['bill_state'];
+		if ( $bill_state == 2 && $post_state == 0 && $fn_state == 0 ) {
+			$str = '<font class="orange bill-state">申请失败</font>';
+			$error = $binfo['error_msg'];
+			$type =1;
+		} elseif ( $bill_state == 0 && $post_state == 2 && $fn_state == 1) {
+			$str = '<font class="orange bill-state">已退回</font>';
+			$error = $binfo['error_msg'];
+			$type = 2;
+		} elseif ( $bill_state == 0 && $post_state == 1 && $fn_state == 1) {
+			switch($post_type) {
+			case 0:
+				$type_str = '挂号信';
+				$url = 'http://yjcx.chinapost.com.cn/index.jsp';
+				break;
+			case 1:
+				$type_str = '中通快递';
+				$url = 'http://www.zto.cn/billselect.aspx';
+				break;
+			case 2:
+				$type_str = '顺丰快递';
+				$url = 'http://www.sf-express.com/cn/sc/';
+				break;
+			case 3:
+				$type_str = '邮政EMS';
+				$url = 'http://www.11183.com.cn/mailtracking/you_jian_cha_xun.html';
+				break;
+			}
+			if ( ! empty($binfo['post_code']) ) {
+				$link = '[&nbsp;<a target="_blank" href="' . $url . '">' . $binfo['post_code'] .'</a>&nbsp;]';
+				$str = $showtype ? '<font class="blue2 bill-state">已寄出</font>-' . $type_str . $link : '<font class="blue2 bill-state">已寄出</font>-' . '跟踪号' . $link;
+			} else {
+				$str = '<font class="blue2 bill-state">已寄出</font>';
+			}
+			$type = 3;
+		} elseif($bill_state == 0 && $fn_state == 1 && $binfo['is_net']==1){ // 电子发票
+			$str = '查看发票';
+			$type = 3;
+		} elseif ($binfo['bill_state'] == 1) {
+			$str = '<font class="bill-state">申请已取消</font>';
+			$type = 6;
+		} elseif ($binfo['is_audited'] == 1 && $binfo['is_net']==0) {
+			$str = '<font class="bill-state">待寄出</font>';
+			$type = 4;
+		} else {
+			$str = '<font class="bill-state">待开票</font>';
+			$type = 5;
+		}
+		$array = array(
+			'type' => $type,
+			'str' => $str
+		);
+		if ( in_array($type, array(1,2)) ) {
+			$array['error'] = $error;
+		}
+		return $array;
+	}
+	
+	/**
+	 * 评价
+	 * @param int $role 1雇主操作 2服务商操作
+	 * @param int $isbuy 1表示购买服务
+	 */
+	protected function evaluation($role = 1, $isbuy = 0) {
+		if (!in_array($role, array(1,2))) {
+			lib_BaseUtils::jsonp("参数错误", 1, -1);
+		}
+	
+		if ($this->task['allot'] == 3 || $this->task['state'] != 4 || $this->task['open_state'] == 1) {
+			lib_BaseUtils::jsonp("任务模式或状态不对，不允许操作", 1, -1);
+		}
+	
+		$disputeMode = zbj_model_api::get('zbj_model_mk_newdispute');
+		$dispute = $disputeMode->selectOne('status in (1,4,7) and task_id='.$this->task['task_id']);
+		if($dispute){//存在维权
+			lib_BaseUtils::jsonp("任务存在维权不能够进行该操作！", 1, -1);
+		}
+	
+		$order = $this->srvTask->getOneWinOrder();
+		if (!$order) {
+			lib_BaseUtils::jsonp("获取订单信息失败", 1, -1);
+		}
+		if ($order['isevaluation'] == 0) {
+			lib_BaseUtils::jsonp("该交易不能评价", 1, -1);
+		}
+		
+		if ($role == 1) {
+			if ($order['isevaluation_buy'] == 1) {
+				lib_BaseUtils::jsonp("您已经评价过了！", 1, -1);
+			}
+			$this->params['to_who'] = $order['sl_user_id'];
+			$this->params['salerId'] = $order['sl_user_id'];
+		} elseif ($role == 2) {
+			if ($order['isevaluation_sl'] == 1) {
+				lib_BaseUtils::jsonp("您已经评价过了！", 1, -1);
+			}
+			$this->params['to_who'] = $order['user_id'];
+		}
+		$this->params['role'] = $role;
+		$this->params['score'] = 2;
+		$this->params['over'] = (int)$this->url['over'];
+		$this->params['over'] || ($this->params['over'] = $_REQUEST['over']);
+		$this->params['taskId'] = $this->task['task_id'];
+		$this->params['worksId'] = $this->wid;
+	
+		if ($_POST) {
+			$this->out['state'] = -1;
+			$items = array ();
+			$items["score"] = (int)$_POST['score']>=2 ?2 : ((int)$_POST['score']<=0 ? 0 :1);
+			$items["comment"] = lib_BaseUtils::getstr($_POST["comment"]);
+			$items["yx"] = lib_BaseUtils::getstr($_POST ["yx"]);//印象
+			$items['recommend']['score'] = lib_BaseUtils::getstr($_POST["recommend_score"]); //推荐意愿评分
+			$items['recommend']['exp'] = lib_BaseUtils::getstr($_POST["recommend_exp"]); //产品体验
+			$items['recommend']['service'] = lib_BaseUtils::getstr($_POST["recommend_service"]); //人工服务
+
+			$items['recommend']['comment'] = lib_BaseUtils::getstr($_POST["recommend_comment"]); //推荐意愿内容
+
+			if (SFilter::checkey ( $items ["comment"], 2 ) || SFilter::checkey ( $items ["yx"], 2) || SFilter::checkey($items['recommend']['comment'], 2) ) {
+				lib_BaseUtils::jsonp("您输入的信息中可能有违规信息，请修改后再提交。", 1, -1);
+			}
+			if (mb_strlen ( $items["comment"], 'UTF8' ) < 6) {
+				lib_BaseUtils::jsonp("评论字数必须大于6个字。", 1, -1);
+			}
+			if (mb_strlen ( $items["comment"], 'UTF8' ) > 140) {
+				lib_BaseUtils::jsonp("评论字数必须小于140个字。", 1, -1);
+			}
+			if (mb_strlen ( $items["recommend"]['comment'], 'UTF8' ) > 140) {
+				lib_BaseUtils::jsonp("亲，请言简意赅一点嘛，对猪八戒的感受请保证在140个字以内～", 1, -1);
+			}
+			if (!$items["comment"]) {
+				$items["comment"] = '好评';
+			}
+			if (mb_strlen ( str_replace(",","",$items ["yx"]), 'UTF8' ) > 30) {
+				lib_BaseUtils::jsonp("印象不能够超过30字", 1, -1);
+			}
+	
+			$items["yx"] = str_replace ( "，", ",", $items ["yx"] );
+			$items["yx"] = implode ( ',', array_unique ( explode ( ',', $items ["yx"] ) ) );
+	
+			if ($role == 1) {
+				$items['speed'] = (int)$_POST["speed"]>=5 || (int)$_POST["speed"]<=0 ? 5 : (int)$_POST["speed"];
+				$items['attitude'] = (int)$_POST["attitude"]>=5 || (int)$_POST["attitude"]<=0 ? 5 : (int)$_POST["attitude"];
+				$items['quality'] = (int)$_POST["quality"]>=5 || (int)$_POST["quality"]<=0 ? 5 : (int)$_POST["quality"];
+			} else {
+				$items['timeliness'] = (int)$_POST["timeliness"]>=5 || (int)$_POST["timeliness"]<=0 ? 5 : (int)$_POST["timeliness"];
+				$items['cooperation'] = (int)$_POST["cooperation"]>=5 || (int)$_POST["cooperation"]<=0 ? 5 : (int)$_POST["cooperation"];
+			}
+	
+			$evaluation = new zbj_service_evaluation();
+			if ($evaluation->create($order['order_id'], $this->user, $items, array())) {
+				if ($items["score"] == 0) {
+					$log_msg = '差评';
+				} elseif ($items["score"] == 1) {
+					$log_msg = '中评';
+				} else {
+					$log_msg = '好评';
+				}
+				$log_msg = '给出了一个'.$log_msg;
+				$this->srvTask->addTaskActionLog($log_msg,$role);
+				//处理日志
+				$params['type'] = 3;
+				$params['score'] = $items["score"];
+				if($this->srvWork->addWorksSourceLog($role, 1, $items["comment"], $params) === false){
+					$this->srvTask->addTaskActionLog($this->srvWork->getError(),$role);
+				}
+				lib_BaseUtils::jsonp('评价成功', 1, 1);
+
+			} else {
+				lib_BaseUtils::jsonp('评价出错！'.$evaluation->getError(), 1, -1);
+			}
+		}
+		$this->params['is_eval'] = 1;
+		$this->params['isbuy'] = $isbuy;
+		$this->params['wid'] = (int)$this->url['wid'];
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_evaluation.html', $this->params));
+	}
+	
+	/**
+	 * 修改评价
+	 * @param int $role 1雇主操作 2服务商操作
+	 * @param int $isbuy 1表示购买服务
+	 */
+	function editEvaluation($role=1, $isbuy=0){
+		$evalModel = zbj_model_api::get('zbj_model_mb_evaluation');
+		$order = $this->srvTask->getOneWinOrder();
+		if ($role == 1) {
+			$this->params['to_who'] = $order['sl_user_id'];
+			$userId = $order['sl_user_id'];
+		} else {
+			$this->params['to_who'] = $order['user_id'];
+			$userId = $this->task['user_id'];
+		}
+	
+		$evaluation = $evalModel->selectOne("task_id={$this->task['task_id']} and user_id=$userId");
+		if (empty($evaluation)) {
+			lib_BaseUtils::jsonp('查询评价信息失败', 1, -1);
+			exit;
+		}
+		if ($evaluation['score'] == 2 || ($this->_time-$evaluation['dateline'])/86400 > 30) {
+			lib_BaseUtils::jsonp('该评论不允许修改', 1, -1);
+			exit;
+		}
+		if ($evaluation['changetimes'] > 0) {
+			lib_BaseUtils::jsonp('您已经修改过评价，不允许再次修改', 1, -1);
+			exit;
+		}
+	
+		if ($_POST || $_GET['ispost'] == 1) {
+			$items = array ();
+			if ($_POST) {
+				$items["score"] = (int)$_POST['score']>=2 ?2 : ((int)$_POST['score']<=0 ? 0 :1);
+				$items["comment"] = lib_BaseUtils::getstr($_POST["comment"]);
+				$items["yx"] = lib_BaseUtils::getstr($_POST ["yx"]);//印象
+			} else {
+				$items["score"] = (int)$_GET['score']>=2 ?2 : ((int)$_GET['score']<=0 ? 0 :1);
+				$items["comment"] = lib_BaseUtils::getstr($_GET["comment"]);
+				$items["yx"] = lib_BaseUtils::getstr($_GET ["yx"]);//印象
+			}
+			if($items["score"] <= $evaluation['score']){
+				lib_BaseUtils::jsonp('不能进行此修改', 1, -1);
+				exit;
+			}
+			$this->out['state'] = -1;
+			if (SFilter::checkey ( $items ["comment"], 2 ) || SFilter::checkey ( $items ["yx"], 2 )) {
+				$this->out['msg'] = '您输入的信息中可能有违规信息，请修改后再提交。';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+				exit;
+			}
+			if (mb_strlen ( $items["comment"], 'UTF8' ) > 200) {
+				$this->out['msg'] = '评价不能够超过200字';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+				exit;
+			}
+			if (mb_strlen ( str_replace(",","",$items ["yx"]), 'UTF8' ) > 30) {
+				$this->out['msg'] = '印象不能够超过30字';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+				exit;
+			}
+			$items["yx"] = str_replace ( "，", ",", $items ["yx"] );
+			$items["yx"] = implode ( ',', array_unique ( explode ( ',', $items ["yx"] ) ) );
+	
+			$evaluationObj = new zbj_service_evaluation($evaluation['evaluation_id']);
+			if ($evaluationObj->edit($this->user, $items, array())) {
+				if ($items["score"] == 0) {
+					$log_msg = '差评';
+				} elseif ($items["score"] == 1) {
+					$log_msg = '中评';
+				} else {
+					$log_msg = '好评';
+				}
+				$log_msg = '修改评价为：'.$log_msg;
+				$this->out['state'] = 1;
+				$this->out['msg'] = '修改评价成功';
+				$this->srvTask->addTaskActionLog($log_msg,$role);
+				//处理日志
+				$params['type'] = 4;
+				$params['score'] = $items["score"];
+				$this->srvWork->addWorksSourceLog($role, 1, $items["comment"], $params);
+				lib_BaseUtils::jsonp($this->out['msg'], 1, 1);
+			} else {
+				$this->out['state'] = -1;
+				$this->out['msg'] = '修改评价出错！'.$evaluationObj->getError();
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+			}
+			exit;
+		}
+	
+		$this->params['role'] = $role;
+		$this->params['isbuy'] = $isbuy;
+		$this->params['isEdit'] = 1;
+		$this->params['type'] = 'editEvaluation';
+		$this->params['taskId'] = $this->task['task_id'];
+		$this->params['worksId'] = $this->wid;
+		$this->params['evaluation'] = $evaluation;
+		$this->params['score'] = $evaluation['score'];
+	
+		$html = $this->render('task/ajax/ajax_evaluation.html', $this->params);
+		$html = mb_convert_encoding($html,'UTF-8','auto');
+		
+		lib_BaseUtils::jsonp($html,1,1);
+	}
+	
+	/**
+	 * 新-检查用户是否可以投标
+	 * @param int $worksType
+	 */
+	protected function checkAllowSignNew($worksType){
+		$this->cache = new zbj_lib_cache ( 'memcache' );
+		$limitCacheName = "task.handle.base.jg." . $this->_userid;
+		$speedLimit = $this->cache->get ( $limitCacheName );
+		$allowTime = intval($speedLimit ['allowTime']);
+		if ($allowTime > $this->_time) {
+			$bidSpeedLimit = $allowTime-$this->_time>300 ? $allowTime :$allowTime + 30;//提示后在增加30秒
+			$this->cache->set($limitCacheName, array('allowTime'=>$bidSpeedLimit), $bidSpeedLimit);
+			$timeStr = zbj_lib_BaseUtils::intervalTime2str($allowTime-$this->_time,"second");
+			$this->setError ( "您的速度比孙悟空还快，歇一歇，喝杯茶，休息{$timeStr}再来吧。" );
+			return false;
+		}
+
+        if(zbj_lib_BaseUtils::compareRuntime('zhubajie.com','zhubajie.la')){
+            $srvUser = new zbj_service_user($this->srvTask->get('user_id'));
+            if(zbj_lib_BaseUtils::getIp() == $srvUser->get('regip')){
+                $this->setError("在该需求下，您涉嫌违规交稿，如有疑问，请致电400 188 6666");
+                return false;
+            }
+        }
+
+        if($this->srvTask->checkAllowSignNew($this->user,$worksType) === false){
+            $this->setError($this->srvTask->getError(),$this->srvTask->getError('code'));
+            return false;
+        }
+
+		//蜜桃客户端需求
+		if($this->srvTask->get('task_info.task_source') == 3){
+			$this->setError("这个需求来自于「蜜桃」手机应用，请下载「蜜桃App」参与需求。立即下载>>");
+			return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * 检查重复内容
+	 * @param int $lastTaskID 上次的任务ID
+	 * @param string $title 本次的标题
+	 */
+	protected function checkRepeatTaskCont($content, $task_id = 0) {
+		$model = zbj_model_api::get('zbj_model_mk_task');
+		$ymd=date('Y-m-d',strtotime('-7 day'));
+		$model->setLimit(10);
+		$condi = "mk_task.user_id={$this->_userid} and mk_task.createymd>'{$ymd}' and mk_task.state<=2 and mk_task.open_state=0";
+		if($task_id > 0) $condi .= " and mk_task.task_id != {$task_id}";
+		$rs = $model->select($condi,"mk_task_cont.content","","order by mk_task.task_id desc",array('mk_task_cont'=>'mk_task.task_id=mk_task_cont.task_id'))->items;
+		if ($rs){
+			foreach ($rs as $v){
+				$sim = 0;
+				similar_text($content, $v['content'], $sim);
+				if($sim > 80){
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
+	/**
+	 * 上传源文件
+	 */
+	function upWorksSourcefile(){
+		if ($this->srvWork->get("issuccess") != 1) {
+			$this->setError("稿件未中标");return false;
+		}
+		$order = $this->srvWork->getSuccessOrder();
+		if(!$order){
+			$this->setError("没有中标订单");return false;
+		}
+		$files = array();
+		if ($_POST['affix']) {
+			$a_files = explode("-,", rtrim($_POST['affix'],'-'));
+			$a_file = array ();
+			foreach($a_files as $key => $value) {
+				if ($value)
+					$a_file[$key] = unserialize(stripslashes($value));
+			}
+			foreach($a_file as $k => $value) {
+				if($value['file']){
+					$files[$k] = array (
+						"user_id" => $this->_userid, 
+						"nickname" => $this->_nickname, 
+						"task_id"=>$this->tid,
+						"file" => zbj_lib_BaseUtils::getStr($value ["file"]), 
+						"ofilename" => zbj_lib_BaseUtils::getStr($value ["ofilename"]), 
+						"createtime" => $this->_time, 
+						"size" => intval($value ["size"]), 
+						"ext" => zbj_lib_BaseUtils::getStr($value ["ext"]) 
+					);
+					if($value["file_id"] && $value["key"] == md5($value["file_id"].$value["size"].zbj_lib_Constant::ZBJ_SYSUSERKEY)){
+						$files[$k]['file_id'] = intval($value["file_id"]);
+					}
+				}
+			}
+			$sid = $this->srvWork->sourcefileinsert($order['order_id'], $files);
+			if($sid === false){
+				$this->setError("上传源文件出错");return false;
+			}
+			$this->srvWork->setDbEntry(true);
+			$file = (array)$this->srvWork->getWorkSourcefile();
+			$arr = array();
+			foreach ($file as $k=>$v){
+				$arr[$k]['sid'] = $v['sourcefile_id'];
+				$arr[$k]['dateline'] = $v['dateline'];
+				$arr[$k]['oldname'] = $v['oldname'];
+				$arr[$k]['filesize'] = $v['filesize'];
+				$arr[$k]['downloadnum'] = $v['downloadnum'];
+			}
+			lib_BaseUtils::jsonp($arr);
+		}
+		$this->params['taskID'] = $this->tid;
+		$this->params['worksID'] = $this->srvWork->getId();
+		$category = new zbj_service_category($this->srvTask->get('category_id'));
+		$this->params['fileext'] = $category->get('fileext');
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_sourcefile.html', $this->params));
+	}
+	//源文件申述
+	function Representations($lid){
+		return false;//废弃
+		$lid = intval($lid);
+		if(!$this->wid){
+			$this->setError("缺少稿件参数");return false;
+		}
+		$sLogModel = new zbj_model_mk_workssourcelog();
+		$condi = array('sourcelog_id'=>$lid, 'works_id'=>$this->wid, 'task_id'=>$this->tid, 'type'=>5,'state'=>0);
+		$rs = $sLogModel->selectOne($condi);
+		if(!$rs){
+			$this->setError("参数错误");return false;
+		}
+		$sData = unserialize($rs['content']);
+		if($_POST){
+			$content = zbj_lib_BaseUtils::getStr($_POST['content']);
+			if(!$content){
+				$this->setError("理由不能为空");return false;
+			}
+			if($this->srvTask->buyerRefusePay($lid, $content) === false){
+				$this->setError("操作出错");return false;
+			}
+			//通知
+			$other = array(
+				'task_id'=>$this->tid,
+				'task_title'=>$this->task['title']
+			);
+			$srvUser = new zbj_service_user($this->srvWork->get('user_id'));
+			zbj_service_taskmsg::sendmsg($srvUser, "seller", "要求重新上传源文件",array(21,0,11),$other);
+			$this->srvTask->addTaskActionLog("雇主要求威客重新上传源文件", 1);
+			lib_BaseUtils::jsonp("操作成功");
+		}
+	}
+	
+	/**
+	 * 评价解释
+	 * @param int $role 1雇主操作 2服务商操作
+	 * @param int $isbuy 1服务
+	 */
+	protected function evaluationexplain($role = 1, $isbuy = 0) {
+		if (!in_array($role, array(1,2))) {
+			lib_BaseUtils::jsonp('参数错误', 1, -1);
+			exit;
+		}
+	
+		if ($this->task['allot'] == 3 || $this->task['open_state'] == 1) {
+			lib_BaseUtils::jsonp('任务模式或状态不对，不允许操作', 1, -1);
+			exit;
+		}
+	
+		$mdlEval = new zbj_model_mb_evaluation();
+		$order = $this->srvWork->getSuccessOrder();
+		if (!$order) {
+			lib_BaseUtils::jsonp('获取订单信息失败', 1, -1);
+			exit;
+		}
+		if ($role == 1) {
+			$userId = $this->task['user_id'];
+		} else {
+			$userId = $order['sl_user_id'];
+		}
+		$evaluation = $mdlEval->selectOne("task_id={$this->task['task_id']} and user_id={$userId}");
+
+		if (empty($evaluation)) {
+			lib_BaseUtils::jsonp('查询评价信息失败', 1, -1);
+			exit;
+		}
+	
+		if (($this->_time-$evaluation['dateline'])/86400 > 30 && $evaluation['dateline'] > 1390534685) {
+			lib_BaseUtils::jsonp('评价后超过30天不可进行解释', 1, -1);
+			exit;
+		}
+	
+		$mdlExplain = new zbj_model_mb_evaluationexplain();
+		$explain = $mdlExplain->selectOne("evaluation_id={$evaluation['evaluation_id']} and score={$evaluation['score']}");
+		if ($explain) {
+			lib_BaseUtils::jsonp('已经对该评价做过解释', 1, -1);
+			exit;
+		}
+	
+		$this->out['state'] = -1;
+		$this->params['role'] = $role;
+		$this->params['isbuy'] = $isbuy;
+		$this->params['taskId'] = $this->task['task_id'];
+		$this->params['worksId'] = $this->wid;
+		$this->params['score'] = $evaluation['score'];
+	
+		if ($_POST || $_GET['ispost'] == 1) {
+			$items = array ();
+			if ($_POST) {
+				$items['content'] = lib_BaseUtils::getstr($_POST["explain"]);
+			} else {
+				$items['content'] = lib_BaseUtils::getstr($_GET["explain"]);
+			}
+			if (SFilter::checkey ( $items ['content'], 2 )) {
+				$this->out['msg'] = '您输入的信息中可能有违规信息，请修改后再提交。';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+				exit;
+			}
+			if (mb_strlen ( $items['content'], 'UTF8' ) > 200) {
+				$this->out['msg'] = '解释不能够超过200字';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+				exit;
+			}
+			$items['evaluation_id'] = $evaluation['evaluation_id'];
+			$items['task_id'] = $evaluation['task_id'];
+			$items['user_id'] = $evaluation['user_id'];
+			$items['nickname'] = $evaluation['nickname'];
+			$items['type'] = $evaluation['type'];
+			$items['score'] = $evaluation['score'];
+			$items['dateline'] = $this->_time;
+			$items['dateymd'] = date('Y-m-d', $this->_time);
+	
+			$res = $mdlExplain->insert($items);
+			if ($res) {
+				$log_msg = '评价解释';
+				$this->out['state'] = 1;
+				$this->out['msg'] = '解释成功';
+				$this->srvTask->addTaskActionLog($log_msg,$role);
+				//交易日志表
+				if (in_array($this->srvTask->get('mode'), array(11, 12))) {
+					$role_type = $role == 2 ? 1 : 0;
+					$tradelog_model = new zbj_model_mk_tasktradelog();
+					$log = $tradelog_model->selectOne("type=8 and task_id={$this->task['task_id']} and role={$role_type}");
+					if ($log) {
+						$log['options'] = unserialize($log['options']);
+						$log['options'] || $log['options'] = array();
+							
+						$log['options']['is_explain'] = 1;
+						$log['options']['explain_time'] = $this->_time;
+						$tradelog_model->update('tid='.$log['tid'], array('options' => serialize($log['options'])));
+					}
+				}
+				//处理日志
+				$params['type'] = 3;
+				if($this->srvWork->addWorksSourceLog($role, 1, $items["content"], $params) === false){
+					$this->srvTask->addTaskActionLog($this->srvWork->getError(),$role);
+				}
+				lib_BaseUtils::jsonp($this->out['msg'], 1, 1);
+			} else {
+				$this->out['msg'] = '解释出错！';
+				lib_BaseUtils::jsonp($this->out['msg'], 1, -1);
+			}
+		}
+		$this->params['wid'] = (int)$this->url['wid'];
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_explain.html', $this->params));
+	}
+
+	/**
+	 *检查当前登录用户是否是在快印设置的参与白名单中
+	  */
+	public function isInKuaiYinVcardUserList($user_id=false) {
+		if ($user_id === false && !$this->_userid) return false;
+		if ($user_id !== false && !ctype_digit((string) $user_id)) return false;
+		$uid = $user_id !== false ? intval($user_id) : $this->_userid;
+		$lCache = new zbj_lib_cache('memcached');
+		$cache_name = controller_api_kuaiyin::CACHE_NAME_VCARD_USER_LIST;
+		$cached_value = $lCache->get($cache_name);
+		if ($cached_value === false) {
+			$mdl = zbj_model_api::get('zbj_model_mb_userkyvcard');
+			$uids = $mdl->select('', 'user_id')->items;
+			$uids = array_keys(zbj_lib_BaseUtils::indexArray($uids, 'user_id', 'user_id'));
+			$lCache->set($cache_name, $uids);
+			$cached_value = $uids;
+		}
+		return in_array($uid, $cached_value);
+	}
+    
+    
+    public function isInKuaiYinChannelUserList($opis_ht, $user_id=false){
+        if ($user_id === false && !$this->_userid) return false;
+        if (!is_numeric($opis_ht)) return false;
+        $uid = $user_id !== false ? intval($user_id) : $this->_userid;
+        $mdl = zbj_model_api::get('zbj_model_mb_userkychannel');
+        if($mdl->selectOne(array('user_id' => $uid, 'opis_ht' => $opis_ht), 'user_id')){
+            return true;
+        }else{
+            return false;
+        }
+    }
+    /**
+     * 检查是否是不满意免单需求,如果是,需要加入到服务部审核列表中去
+     */
+    protected function checkFreeTaskToMkChecklist($workid = 0){
+    	if($workid<=0){
+    		return false;
+    	}
+    	$option = $this->srvTask->get('task_info.option');
+    	$option = unserialize($option);
+    	if(empty($option)){
+    		return false;
+    	}
+    	if(!isset($option['freetaskservice']) || $option['freetaskservice']!=1){
+    		return false;
+    	}
+    	$checkdata = array(
+    		'type'=>2,
+    		'status'=>0,
+    		'pk_id'=>$workid,
+    		'task_id'=>$this->srvTask->get('task_id'),
+    		'user_id'=>$this->_userid,
+    		'nickname'=>$this->_nickname,
+    		'ip'=>zbj_lib_BaseUtils::getIp(),
+    		'createdate'=>date('Y-m-d'),
+    		'createtime'=>time(),
+    		'accept_user_id'=>$this->srvTask->get('manager_id2'),
+    		'accept_name'=>$this->srvTask->get('manager_name2'),
+    		'cp_user_id'=>0,
+    		'cp_name'=>'',
+    		'optiondate'=>'1970-01-01',
+    		'optiontime'=>0,
+    		'refuse_option'=>'',
+    		'level'=>5,
+    		'issend'=>0,
+    		'handle_rule'=>'00000110',
+    		'refuse_item_id'=>0
+    	);
+    	$modelcheck = new zbj_model_mk_check();
+    	return $modelcheck->insert($checkdata);    	
+    }
+    /**
+     * 检查需求是否被系统托管
+     */
+    protected function checkFreeTaskToHost(){    	
+    	$option = $this->srvTask->get('task_info.option');
+    	$option = unserialize($option);
+    	if(empty($option)){
+    		return false;
+    	}
+    	if(!isset($option['freetaskservice'])){
+    		return false;
+    	}
+    	if($option['freetaskservice']!=9){
+    		return false;
+    	}
+    	return true; 	
+    }
+
+
+    /**
+     * 服务商入驻 专场 网建专场 categorytype 为1
+     */
+    public function joinSpecialCategory($categoryType = 1)
+    {
+
+        $result = array("state"=>0,'msg' => "操作失败");
+
+        try
+        {
+            if (zbj_lib_BaseUtils::isAjax()){
+
+                zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET);
+                $userService = new com\zhubajie\user\interfaces\UserServiceClient(NULL);
+                zbj_lib_ApiClient::build($userService);
+                $stationed=$userService->joinSpecialCategory($this->_userid , $categoryType );
+
+                if(is_object($stationed))
+                {
+                    $stationed->is_success && $result['state'] = 1;
+                    $result['msg'] = "thrift-》".$stationed->msg;
+                }
+            }
+
+        }catch (Exception $e)
+        {
+            $result['state'] = 0;
+            $result['msg'] = $e->getMessage();
+        }
+
+        return $result;
+
+    }
+
+    public function setFilePermit($tid, $wid){
+		zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET);
+		$api = new com\zhubajie\crm\interfaces\FileServiceClient(null);
+		zbj_lib_ApiClient::build($api);
+		$api->SetFilePermit($wid, $tid);
+	}
+
+
+
+    /**
+	 * 检验分期付款是否完成 by houxiaopeng
+	 * 返回分期付款小于50的尾款 $last_pay 如无尾款返回false
+	 */
+	public function getMinPaymentAmount(){
+		$min_amount = 50;
+		if($this->srvTask->get('state') != 3) return false;
+
+	    $fn_order_at_price = $this->srvTask->getOneWinOrder();
+	    if(!$fn_order_at_price['order_id']){
+	    	$this->setError("获取订单号出错！".$this->srvTask->getError());
+	    	return false;
+	    }
+        //获取分期付款流水表实例 by houxiaopeng 20150427
+		$imDB = zbj_model_api::get("zbj_model_mk_installment");
+		$pay_sum = $imDB->getOrderPaySum($fn_order_at_price['order_id']);//已支付的总额
+		if($pay_sum===false || $pay_sum<=0){
+			$pay_sum = 0;
+		}
+
+		$agreement = $this->srvTask->loadAgreements(false,false);
+		$stepMoney = (array)$agreement['content']['stepMoney'];
+		if(empty($stepMoney)) return $min_amount;
+
+		//计算是否分期付款最后一笔
+    	$agree_pay = 0;
+        foreach((array)$agreement['content']['stepMoney'] as $k=>$v){
+        	$num = (float)$v;
+        	(is_numeric($v) && $num>0) && $agree_pay += $num;
+        	if($pay_sum < $agree_pay) {
+        		$min_amount = round($agree_pay,2) - round((float)$pay_sum,2);
+        		break;
+        	}
+        }
+	  
+	    return ($min_amount>=50 || $min_amount<=0)?50:$min_amount;
+	}
+
+	/**
+	 * 雇主操作  29:追加评论
+	 */
+	public function commonBuyerHandle($url) {
+		$this->init($url);
+		if (!$this->srvTask->isAuthor ( $this->_userid )) {
+			lib_BaseUtils::jsonp('无权操作');
+		}
+
+		switch ($this->url['do']) {
+			case 29 : //确认支付
+				$this->evaluationAdd($this->url);
+            	break;
+		}
+		lib_BaseUtils::jsonp($this->getError());
+	}
+
+	//追加评论
+	public function evaluationAdd($url){
+		if($_GET && !empty($_GET['comment'])){
+			$evalid = (int)$_GET['evaluationid'];
+			$comment = ltrim(zbj_lib_BaseUtils::getStr($_GET['comment']));
+
+			$len = mb_strlen($comment, 'UTF8');
+			if($len <= 6 || $len > 200){
+				lib_BaseUtils::jsonp('追加评论大于6个小于200个字数',1,-1);
+			}else if($evalid <= 0){
+				lib_BaseUtils::jsonp('主评论异常',1,-1);
+			}
+
+			try {
+				zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID, zbj_lib_Constant::ZBJAPI_APPSECRET);
+
+		        $evaluationAddService = new com\zhubajie\user\interfaces\EvaluationAddServiceClient(NULL);
+		        zbj_lib_ApiClient::build($evaluationAddService);
+
+		        $createEvaluationAddDTO = new com\zhubajie\user\dataobject\evaluationadd\CreateEvaluationAddDTO();
+		       
+		        $createEvaluationAddDTO->evaluation_id = $evalid;
+		 		$createEvaluationAddDTO->comment = $comment;
+		 		$createEvaluationAddDTO->ip = zbj_lib_BaseUtils::getIp();
+		 		$back = $evaluationAddService->add($createEvaluationAddDTO);
+
+		 		if($back->success != 1){
+		 			throw new Exception($back->message);	
+		 		}
+			} catch (Exception $e) {
+				lib_BaseUtils::jsonp('追加评价失败！'.$e->getMessage(),1,-1);
+			}
+			lib_BaseUtils::jsonp('追加评价成功！', 1, 1);
+		}
+
+		$evaluation_id = (int)$this->url['evaluationid'];
+
+		$evaService = new zbj_service_evaluation($evaluation_id);
+		$eva = $evaService->get();
+		$eva['tid'] = $eva['task_id'];
+		if($this->_userid != $eva['puser_id']){
+			lib_BaseUtils::jsonp('您无权操作！',1,-1);
+		}
+
+		lib_BaseUtils::jsonp($this->render('task/ajax/ajax_add_comment.html',$eva,'%'));
+
+	}
+
+    /**
+     * 服务商抢标
+     * @param $inPath
+     * @return string
+     */
+    public function GetBid($urlparams){
+        echo json_encode(array("state"=>0,'msg' => "该需求所属模式不允许抢标！"));
+    }
+    
+}

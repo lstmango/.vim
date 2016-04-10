@@ -1,0 +1,7 @@
+<subscribers>
+    <phpclass name="consumer_service_allot_grab">
+        <method name="removeGrabPool">
+			<event>task.refund.success</event>
+        </method>
+    </phpclass>
+</subscribers>

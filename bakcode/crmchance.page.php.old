@@ -1,0 +1,1703 @@
+<?php
+use com\zhubajie\ub\dataobject\UserInfo\FieldType as ubFieldType;
+use com\zhubajie\ub\dataobject\UserInfo\ResultTypeDTO as ubResultTypeDTO;
+use com\zhubajie\ub\dataobject\UserRegister\RegisterOptions;
+/**
+ * 
+ * crm 机会
+ * @author tanqing
+ * @date 2015-7-9
+ * @email itanqing@gmail.com
+ */
+class controller_crmchance extends components_basepage{
+    private $groupIds = array(374,455,364);
+    
+    
+    /**
+     * 为控制权限将之前的list节点拆为所有列表和我的列表，之前的list为我的列表，新增的当前节点allList为所有列表
+     * 
+     * @author yuanzhuang
+     * @date 2015-09-21
+     */
+    public function pageAllList($inPath) {
+    	return $this->pageList($inPath);
+    }
+    
+	/**
+	 * 列表页面
+	 * @author tanqing
+	 * @date 2015-7-9
+	 */
+	public function pageList($inPath){
+		$urlParams = $this->getUrlParams($inPath);
+		$page = $urlParams ['page'] ? $urlParams ['page'] : 1;
+		$limit = $urlParams ['limit'] ? $urlParams ['limit'] : 10;
+		var_dump($_GET);
+		
+		try {
+			if (!$_GET['type']) {
+				$_GET['type'] = 51;
+			}
+			$type = lib_BaseUtils::getStr($_GET['type'],'int');
+			$sConfig = new service_config();
+			$types = $sConfig->getCrmChanceType();
+			$sConfig = $sConfig->init($type);
+			$field = $_POST['field'];
+			if ($field) {
+				$sConfig->setField('task_id');
+				$sConfig->setField('title');
+				foreach ($field as $value) {
+					$sConfig->setField($value);
+				}
+				$sConfig->addConfig($this->_userid);
+			}
+			$fieldsConfig = $sConfig->getFieldsByUser($this->_userid);
+			$fields = array_keys($fieldsConfig);
+			//导航
+			$this->tplvar['types'] = $types;
+			//配置
+			$this->tplvar['fields'] = $fieldsConfig;
+			$this->tplvar['fields_key'] = $fields;
+			$this->tplvar['allfields'] = $sConfig->getFields();
+			$this->tplvar['title'] = '商机管理列表';
+			
+			
+			
+			//商机顾问
+			/*
+			$user_groups = new zbj_model_cp_usergroups();
+			$group_ids  = $this->groupIds;
+			$groups1 = $user_groups->select("group_id in (".implode(',', $group_ids).")", '`group_id`,`name`','','order by group_type desc,sort asc')->items;
+			$this->tplvar['groups'] = $groups1;
+			*/
+			$searchTypes = array(
+					//0=>'不限',
+					1=>'商机ID',
+					2=>'手机号',
+					3=>'用户ID',
+					4=>'用户昵称',
+			);
+			$this->tplvar['searchTypes'] = $searchTypes;
+			
+			//分类
+			$sCategory = new service_category();
+			$categoryArray = $sCategory->getChild();;
+			$this->tplvar['categoryArray'] = $categoryArray;
+			$categorys = $sCategory->getCategorys();
+			$this->tplvar['categorys'] = $categorys;
+			
+			lib_BaseUtils::apiInit(5,array('zbj_sdk'));
+			$crmClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+			lib_BaseUtils::apigetclient($crmClient);
+			
+			
+			$filter = new \com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+			$filter->page =$page;
+			$filter->limit = $limit;
+			$filter->bs_id = 8; // 固定业务类型
+			$search_type = lib_BaseUtils::getStr($_GET['search_type'],'int');
+			$keywords = lib_BaseUtils::getStr($_GET['keywords']);
+			if ($keywords) {
+				switch ($search_type){
+					case 1:
+						$filter->bs_to_ct_id = (int)$keywords;
+						break;
+					case 2:
+						$filter->ct_mobile = trim($keywords);  //手机号
+						break;
+					case 3:
+						$filter->uid = (int) $keywords;
+						break;
+					case 4:
+						$filter->unickname = trim($keywords);
+						break;
+				}
+			}
+			$ctype = lib_BaseUtils::getStr($_GET['ctype'],'int');
+			if ($ctype) {
+				$filter->categoryname = service_crmchance::getIndustry($ctype);
+			}
+			
+			//顾问
+			$gid = lib_BaseUtils::getStr($_GET['gid'],'int');
+			$follow_uid = lib_BaseUtils::getStr($_GET['uid'],'int');
+			if ($follow_uid) {
+				$filter->follow_uid = array($follow_uid); //客服ID
+			}elseif ($gid>1){
+				$s_cpuser = new service_cpuser();
+				$group_users = $s_cpuser->getGroupUsers($gid);
+				$filter->follow_uid = array_keys($group_users);
+			}
+			
+			$begin_create_time = lib_BaseUtils::getStr($_GET['begin_create_time']);
+			if ($begin_create_time) {
+				$filter->createtimelower = strtotime($begin_create_time);
+			}
+			$end_create_time = lib_BaseUtils::getStr($_GET['end_create_time']);
+			if ($end_create_time) {
+				$filter->createtimeupper = strtotime( $end_create_time);
+			}
+			$begin_follow_time = lib_BaseUtils::getStr($_GET['begin_follow_time']);
+			if ($begin_follow_time) {
+				$filter->followtimelower = strtotime($begin_follow_time);
+			}
+			$end_follow_time = lib_BaseUtils::getStr($_GET['end_follow_time']);
+			if ($end_follow_time) {
+				$filter->followtimeupper =strtotime( $end_follow_time);
+			}
+			$begin_next_follow_time = lib_BaseUtils::getStr($_GET['begin_next_follow_time']);
+			if ($begin_next_follow_time) {
+			    $filter->nextfollowtimemin = $begin_next_follow_time;
+			}
+			$end_next_follow_time = lib_BaseUtils::getStr($_GET['end_next_follow_time']);
+			if ($end_next_follow_time) {
+			    $filter->nextfollowtimemax =$end_next_follow_time;
+			}
+			
+			$begin_allot_time = lib_BaseUtils::getStr($_GET['begin_allot_time']);
+			if ($begin_allot_time) {
+				$filter->allottimelower = strtotime($begin_allot_time);
+			}
+			$end_allot_time = lib_BaseUtils::getStr($_GET['end_allot_time']);
+			if ($end_allot_time) {
+				$filter->allottimeupper = strtotime($end_allot_time);
+			}
+			
+			$begin_order_time = lib_BaseUtils::getStr($_GET['begin_order_time']);
+			if ($begin_order_time) {
+				$filter->ordertimelower = strtotime($begin_order_time); 
+			}
+			$end_order_time = lib_BaseUtils::getStr($_GET['end_order_time']);
+			if ($end_order_time) {
+				$filter->ordertimeupper = strtotime($end_order_time);
+			}
+			$begin_giveup_time = lib_BaseUtils::getStr($_GET['begin_giveup_time']);
+			if ($begin_giveup_time) {
+				$filter->giveuptimelower = strtotime($begin_giveup_time);
+			}
+			$end_giveup_time = lib_BaseUtils::getStr($_GET['end_giveup_time']);
+			if ($end_giveup_time) {
+				$filter->giveuptimeupper = strtotime($end_giveup_time);
+			}
+            
+			$cate1 = lib_BaseUtils::getStr($_GET['cat1']);
+			if ($cate1){
+			    $filter->base_cat1=$cate1;
+			}
+			$cate2 = lib_BaseUtils::getStr($_GET['cat2']);
+			if ($cate2){
+			    $filter->base_cat2 = $cate2;
+			}
+			$cate3 = lib_BaseUtils::getStr($_GET['cat3']);
+			if ($cate3){
+			    $filter->base_cat3 = $cate3;
+			}
+			
+			
+			
+			//创建人与部门
+			$create_gid = lib_BaseUtils::getStr($_GET['create_gid'],'int');
+			$create_uid = lib_BaseUtils::getStr($_GET['create_manager_id'],'int');
+			if ($create_uid) {
+				$filter->create_uid =array( $create_uid);  //创建人
+			}elseif ($create_gid>1){
+				$s_cpuser = new service_cpuser();
+				$group_users = $s_cpuser->getGroupUsers($create_gid);
+				$filter->create_uid = array_keys($group_users);
+			}
+			
+			$way_type = lib_BaseUtils::getStr($_GET['way_type'],'int');
+			if ($way_type) {
+				$filter->way_type = $way_type;
+			}
+			$categoryname = lib_BaseUtils::getStr($_GET['categoryname']);
+			if ($categoryname) {
+				$filter->categoryname = $categoryname;
+			}
+			
+			$o = $_GET['o']; //排序条件
+			$ud = (int) $_GET['ud']; //升降序
+			$filter->order=array();
+			if ($o) {
+                switch ($o) {
+                    case '_createtime':
+                        if ($ud) {
+                            $filter->order[] = array(
+                                com\zhubajie\boss\dataobject\bschance\chanceOrderCol::CREATETIME => true
+                            );
+                        } else {
+                            $filter->order[] = array(
+                                com\zhubajie\boss\dataobject\bschance\chanceOrderCol::CREATETIME => false
+                            );
+                        }
+                        break;
+                    case 'bs_to_ct_id':
+                        if ($ud) {
+                            $filter->order[] = array(
+                                com\zhubajie\boss\dataobject\bschance\chanceOrderCol::CREATETIME => true
+                            );
+                        } else {
+                            $filter->order[] = array(
+                                com\zhubajie\boss\dataobject\bschance\chanceOrderCol::CREATETIME => false
+                            );
+                        }
+                        break;
+                    default:
+                        $order_by = "order by $o " . ($ud == 1 ? 'desc' : 'asc');
+                        break;
+                }
+            }
+            $follow_status = lib_BaseUtils::getStr($_GET['follow_status'],'int');
+
+			switch ($type){
+				case 51:
+			
+					break;
+				case 52:
+				    //待受理
+					$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::WAITDEAL;
+					if (in_array($follow_status,array(1,2))){
+					    $filter->follow_status = $follow_status;
+					}
+					break;
+				case 53:
+				    //跟进中
+					$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::DEALING;
+					if (in_array($follow_status,array(3,4))){
+					    $filter->follow_status = $follow_status;
+					}
+					break;
+				case 54:
+					$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::ORDERED;
+					$filter->includeTask=1;
+					if($_REQUEST['orderChanceType']){
+					    $filter->orderChanceType=intval($_REQUEST['orderChanceType']);
+					}
+					break;
+				case 55:
+					$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::GIVEUP;
+					break;
+			}
+			
+			
+			$status = lib_BaseUtils::getStr($_GET['status']);
+			if ($status) {
+				switch($status){
+					case 1:
+						$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::WAITDEAL;
+						break;
+					case 2:
+						$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::DEALING;
+						break;
+					case 3:
+						$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::ORDERED;
+						break;
+					case 4:
+						$filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::GIVEUP;
+						break;
+					case 5:
+					    $filter->dealstatus = com\zhubajie\boss\dataobject\bschance\DEALSTATUS::NOTALLOT;
+					    break;
+				}
+			}
+			if ($_GET['own']) {
+				$filter->follow_uid = array($this->_userid);
+				$this->tplvar['own'] = 1;
+			}
+			/*
+			$filter->order = array(
+					array(com\zhubajie\boss\dataobject\bschance\chanceOrderCol::FOLLOWTIME=>false)
+			);
+			*/
+			
+			$filter->no_cache=1;
+			$listsResult = $crmClient->GetBussinessContactor($filter);
+			//print_r($listsResult);
+			if ($listsResult->success) {
+				if ($listsResult->data_obj->items) {
+					foreach ($listsResult->data_obj->items as $k=> $v){
+						if ($v['options']) {
+							$options = unserialize($v['options']);
+							if ($options) {
+								foreach ($options as $_kkkk=>$_val){
+									$_tmp_key= 'follow_remark'.($_kkkk+1);
+									$v['followLists'][$_tmp_key] = $_val;
+								}
+							}
+						}
+						$lists[] = $v;
+					}
+				}
+			}else{
+			    return $this->printmsg($listsResult->message);
+			}
+			
+			//解析url参数
+			parse_str($_SERVER['QUERY_STRING'],$params);
+			if ($params){
+			    foreach ($params as $k=>$v){
+			        $k = lib_BaseUtils::getStr($k);
+			        $queryParams[$k] = lib_BaseUtils::getStr($v);
+			    }
+			}
+			$s_user=new service_manager();
+			$this->tplvar['allgroups'] = $s_user->getgrouptree(0);
+			//$this->tplvar['allgroups2'] = $s_user->getgrouptree(0);
+			/*
+			$this->tplvar['allgroups'] = $s_user->getgrouptree(0,$create_gid);
+			$this->tplvar['allgroups2'] = $s_user->getgrouptree(0,$gid);
+			*/
+			
+			$this->tplvar['queryParams'] = $queryParams;
+			
+			$this->tplvar['chance_list'] = $lists;
+			$this->tplvar['total'] = $listsResult->data_obj->totalSize;
+			$this->tplvar['source'] = service_crmchance::getSource();
+			$this->tplvar['pagebar'] = $this->PageBar($listsResult->data_obj->totalSize, $limit, $page, $inPath, 'style6', $_SERVER['QUERY_STRING']);
+			
+			//$s_crmchance = new service_crmchance();
+			//$s_crmchance->getSubSource();
+			
+		} catch (Exception $e) {
+		    echo $e->getMessage();
+			if ($_GET['debug']) {
+				echo $e->getMessage();
+			}
+		}
+		return $this->render('crmchance/list.html', $this->tplvar);
+	}
+	/**
+	 * 商机详情页面
+	 * 
+	 * @author tanqing
+	 * @date 2015年7月20日
+	 */
+	public function pagedetail($inPath){
+	    try {
+	        $urlParams = $this->getUrlParams($inPath);
+    		$page = $urlParams ['page'] ? $urlParams ['page'] : 1;
+    		$limit = $urlParams ['limit'] ? $urlParams ['limit'] : 10;
+    		if(!$_GET['tab']){
+    		    $_GET['tab']='detail';
+    		}
+    		$tab = lib_BaseUtils::getStr($_GET['tab']);
+	        $bs_id = lib_BaseUtils::getStr($_GET['id'],'int');
+	        if (!$bs_id){
+	            throw new Exception('商机id丢失');
+	        }
+	        
+	        lib_BaseUtils::apiInit();
+	        $bschanceClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	        lib_BaseUtils::apigetclient($bschanceClient);
+	        
+	        
+	        $businessFilter = new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+	        $businessFilter->bs_to_ct_id = $bs_id;
+	        
+			$businessFilter->no_cache=1;
+	        $info = $bschanceClient->GetBussinessContactor($businessFilter);
+	        if (!$info->success){
+	            throw new Exception('商机信息获取失败');
+	        }
+	        if (empty($info->data_obj->items[0])){
+	            throw new Exception('商机信息不存在');
+	        }
+            $bschanceInfo=  $info->data_obj->items[0];
+            if(!$bschanceInfo['bs_to_ct_id']){
+                throw new Exception('商机信息不存在');
+            }
+            //$this->addLog2($bs_id,'e',com\zhubajie\boss\dataobject\bosslog\logProduct::BSCHANCE,4);
+            //类目
+            $this->tplvar['cattree']= json_encode(zbj_service_categoryguide::getTreeLite());
+            $bschanceInfo['cat1_name'] = '';
+            $bschanceInfo['cat2_name'] = '';
+            $bschanceInfo['cat1_name'] = '';
+            $s_cate = new zbj_service_categoryguide();
+            if ($bschanceInfo['cat1']){
+                $cate1Info = $s_cate->getInfoById($bschanceInfo['cat1']);
+                $bschanceInfo['cat1_name'] = $cate1Info['guide_name'];
+            }
+            if ($bschanceInfo['cat2']){
+                $cate2Info =  $s_cate->getInfoById($bschanceInfo['cat2']);
+                $bschanceInfo['cat2_name'] = $cate2Info['guide_name'];
+            }
+            if ($bschanceInfo['cat3']){
+                $cate3Info =  $s_cate->getInfoById($bschanceInfo['cat3']);
+                $bschanceInfo['cat3_name'] = $cate3Info['guide_name'];
+            }
+            //商机信息
+            $this->tplvar['bschanceInfo'] = $bschanceInfo;
+            $followLogsResult2 = $bschanceClient->getFollowLogList($bs_id,1,1000);
+            $followlog=$followLogsResult2->data_obj->items;
+            $showlog=array();
+            foreach ($followlog as $k=>$v  ){
+                $v['sort_time']=date('Y-m-d H:i:s',$v['follow_time']);
+                $v['is_followlog']=1;
+                $showlog[]=$v;
+            }
+             
+            if ($bschanceInfo['bs_options']){
+                $options = json_decode($bschanceInfo['bs_options'],true);
+                $this->tplvar['noteList'] = $options['note_info'];
+                if(is_array($options['note_info'])){
+                    foreach ($options['note_info'] as $k=>$v  ){
+                        $v['sort_time']=date('Y-m-d H:i:s',$v['time']);
+                        $v['is_optionlog']=1;
+                        $showlog[]=$v;
+                    }
+                }
+            }
+            $showlog=lib_BaseUtils::array_sort($showlog, 'sort_time', 'desc');
+            $this->tplvar['showlogs'] =array_slice($showlog, 0,5);
+	        //跟进记录
+	        switch ($tab){
+	            case "followlog":
+	                $this->tplvar['showlogs2'] =$showlog;
+	                 
+	                
+	                break;
+	            case "log":
+	                
+	                //操作日志
+	                lib_BaseUtils::apiInit();
+	                $bosslogClient = new com\zhubajie\boss\interfaces\bosslogServiceClient(null);
+	                lib_BaseUtils::apigetclient($bosslogClient);
+	                $search = new com\zhubajie\boss\dataobject\bosslog\searchInput();
+	                $search->page = $page;
+	                $search->limit = $limit;
+	                $search->product_id = $bs_id;
+	                $search->product_type = com\zhubajie\boss\dataobject\bosslog\logProduct::BSCHANCE;
+	                $loglistResult = $bosslogClient->logList($search);
+	                if (!$loglistResult->success){
+	                    throw new Exception('操作日志获取失败');
+	                }
+	                $this->tplvar['logList'] = $loglistResult->items;
+	                $this->tplvar['logs_pagebar'] = $this->PageBar($loglistResult->total, $limit, $page, $inPath,'style6');
+	                $this->tplvar['logs_total'] = $loglistResult->total;
+	                 
+	                
+	                break;
+	            default:
+	                $m_remark = new model_cp_remark();
+	                $type_id  = service_crmchance::getLogType();
+	                
+	                $condition['pk_id'] = $bs_id;
+	                $condition['type_id'] = $type_id;
+	                $condition[] = 'status>0';
+	                $logs = $m_remark->select($condition);
+	                $logArray = array();
+	                $descArray = array();
+	                if ($logs->items){
+	                    foreach ($logs->items as $log){
+	                        if (in_array($log['status'],array(1,2,3,4))){
+	                           $logArray[$log['status']][] = $log;
+	                        }
+	                        if (in_array($log['status'],array(5))){
+	                            $descArray[] = $log;
+	                        }
+	                    }
+	                }
+	                $this->tplvar['salelog'] = $logArray;
+	                $this->tplvar['descArray'] = $descArray;
+	                
+	                $chanceDetailResult = $bschanceClient->chanceDetail($bs_id);
+	                
+	                if (!$chanceDetailResult->success){
+	                    throw new Exception('获取');
+	                }
+	                $task_list = $chanceDetailResult->ext_params['task_list'];
+	                $taskList = array();
+	                if ($task_list){
+    	                $task_list = json_decode($task_list,true);
+    	                if ($task_list){
+    	                    foreach ($task_list as $task){
+    	                        if ($task['task_id']){
+    	                            $taskList [] = $task;
+    	                        }
+    	                    }
+    	                }
+	                }
+	                //分类
+	                $sCategory = new service_category();
+	                $categoryArray = $sCategory->getChild();;
+	                $this->tplvar['categoryArray'] = $categoryArray;
+	                $categorys = $sCategory->getCategorys();
+	                $this->tplvar['categorys'] = $categorys;
+	                $this->tplvar['taskList'] = $taskList;
+	                $this->tplvar['createLocation']=lib_BaseUtils::getLocationByIp(long2ip($bschanceInfo['ip']));
+	                break;
+	        }
+	        
+// 	        exit;
+	        $this->tplvar['newFollowLogs'] =$followLogsResult2->data_obj->items;
+	        
+	       
+// 	        exit;
+	        $crmchance = new service_crmchance();
+	        //跟进选项
+	        $this->tplvar['followOptions'] = $crmchance->getOptions(62);
+	        //放弃选项
+	        $this->tplvar['giveupOptions'] = $crmchance->getOptions(63);
+	        /*
+	        
+	        //操作日志
+	        lib_BaseUtils::apiInit();
+	        $bosslogClient = new com\zhubajie\boss\interfaces\bosslogServiceClient(null);
+	        lib_BaseUtils::apigetclient($bosslogClient);
+	        $search = new com\zhubajie\boss\dataobject\bosslog\searchInput();
+	        $search->page = $page;
+	        $search->limit = $limit;
+	        $search->product_id = $bs_id;
+	        $search->product_type = com\zhubajie\boss\dataobject\bosslog\logProduct::BSCHANCE;
+	        $loglistResult = $bosslogClient->logList($search);
+	        if (!$loglistResult->success){
+	            throw new Exception('操作日志获取失败');
+	        }
+	        $this->tplvar['logList'] = $loglistResult->items;
+	        $this->tplvar['logs_pagebar'] = $this->PageBar($loglistResult->total, $limit, $page, $inPath,'style6');
+	        $this->tplvar['logs_total'] = $loglistResult->total;
+	        */
+	        
+	        if ($bschanceInfo['ct_mobile']){
+    	        $businessFilter = new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+				$businessFilter->no_cache=1;
+    	        $businessFilter->ct_mobile = $bschanceInfo['ct_mobile'];
+    	        $otherResult =  $bschanceClient->GetBussinessContactor($businessFilter);
+
+    	        $items = $otherResult->data_obj->items;
+    	        if ($items){
+    	            foreach ($items as $v){
+    	                //if($v['bs_to_ct_id']!=$bs_id){
+    	                    $otherList [] = $v;
+    	                //}
+    	            }
+    	        }
+    	       $this->tplvar['otherList'] = $otherList;
+
+               //通过商机ID集合获取任务数据 20151106
+               $this->tplvar['otherTaskList'] = $this->getTaskDataByChance($otherList);
+    	       
+	        }
+	        
+	        
+	        $this->tplvar['title'] = '商机详情';if($_GET['debug'] == 1) {print_r($this->tplvar);}
+	        return $this->render('crmchance/detail.html',$this->tplvar);
+	    } catch (Exception $e) {
+	        return $this->printmsg($e->getMessage());
+	    }
+	}
+
+    /*
+    * 通过商机ID集合获取任务号
+    * $otherList array 商机ID集合
+    */
+    private function getTaskDataByChance($otherList){
+       $result = array();
+       //通过商机ID集合获取任务数据 20151106
+       if(!empty($otherList)){
+       	   foreach($otherList as $k=>$v){
+       	   	    $bs_to_ct_id[$v['bs_to_ct_id']] = $v['bs_to_ct_id'];
+       	   }
+       	   $bs_to_ct_id_str = implode(',',$bs_to_ct_id);
+       	   $bs_to_ct_id_str = trim($bs_to_ct_id_str,',');
+       }
+
+       
+       if(!empty($bs_to_ct_id)){
+       	   $m_bstoct_task = zbj_model_api::get('zbj_model_mk_bstocttask');
+       	   $bstoct_task_res = $m_bstoct_task->select("bs_to_ct_id in({$bs_to_ct_id_str})",'task_id');
+       	   if(!empty($bstoct_task_res->items)){
+       	   	    foreach($bstoct_task_res->items as $k=>$v){
+       	   	    	$bstoct_task_taskid[$v['task_id']] = $v['task_id'];
+       	   	    }
+       	   	    $bstoct_task_taskid_str = implode(',',$bstoct_task_taskid);
+       	        $bstoct_task_taskid_str = trim($bstoct_task_taskid_str,',');
+       	   }
+       }
+
+       if(!empty($bstoct_task_taskid)){
+       	    $m_task = zbj_model_api::get('zbj_model_mk_task');
+       	    $task_result = $m_task->select("task_id in({$bstoct_task_taskid_str})");
+       	    if(!empty($task_result->items)){
+       	    	foreach($task_result->items as $k=>$v){
+       	    		$result[$v['task_id']] = $v;
+       	    		$result[$v['task_id']]['createtimes'] = date('m-d',$v['createtime']);
+       	    	}
+       	    }
+       }
+
+       return $result;
+    }
+	
+	
+	
+	/**
+	 * 用户代注册
+	 */
+	public function pageHelpRegister($inPath) {
+	    //还是想改为一个方法实现
+	    $this->tplvar['info'] = '注册成功后，系统将自动给用户发送一条账号密码的短信。';
+	    $bs_id = lib_BaseUtils::getStr($_GET['id']);
+	    $s_crmchance = new service_crmchance($bs_id);
+	    if (false===$s_crmchance->checkDoAction($bs_id)){
+	        return $this->printmsg($s_crmchance->getError());
+	    }
+	    $ct_id = lib_BaseUtils::getStr($_GET['ct_id']);
+	    if ($_POST) {
+	        
+	        $token = lib_BaseUtils::getStr($_POST['token']);
+	        if (!$this->checkReqToken($token,true,180)){
+	            return $this->printmsg ( '您的会话已过期，请您刷新页面。' );
+	        }
+	        
+	        if (empty($bs_id) ||  empty($ct_id)){
+	            return $this->printmsg ( '参数id丢失' );
+	        }
+	        
+	        $phone = zbj_lib_BaseUtils::getStr ( $_POST ['phone']);
+			if (!lib_BaseUtils::IsMobile($phone)){
+				$res['msg'] = '号码有误，请正确输入11位手机号码';
+				$this->printmsg($res);
+			}
+			$ip = lib_BaseUtils::getIp();
+
+			zbj_lib_ApiClient::init(lib_Constant::API_BOSS_APPID, lib_Constant::API_BOSS_SECRET, 10, array('ub-client'));
+			$registerParam = array(
+				'account' => $phone,
+				'accountType' => 1,
+				'ip' => $ip,
+				'nickname' => 'm_'.substr($phone, -4).lib_BaseUtils::random(6,0),
+				'password' => lib_BaseUtils::random(6,1)
+			);
+	        $payapi = new com\zhubajie\ub\interfaces\UserRegisterServiceClient(NULL);
+	        lib_BaseUtils::apigetclient($payapi);
+			$optionParam = array();
+			$optionParam[RegisterOptions::APP_ID] = 'quick-jccp-fqv2w0du7twsybkz';
+			$optionParam[RegisterOptions::REGISTER_URL] = zbj_lib_Constant::BOSS2_URL.'/crmchance/helpregister';
+			$optionParam[RegisterOptions::USER_INTENTION] = 1;
+			$optionParam[RegisterOptions::WAY_TYPE] = 22;
+			$param = new com\zhubajie\ub\dataobject\UserRegister\RegisterParamDTO($registerParam);
+			$param->options = $optionParam;
+	        try{
+	            /*
+	            $accredit_data = array(
+	                'user_id'=>2856,
+	                'user_name'=>'爱哭二',
+	                'accredit_type'	=>1
+	            );
+	            
+	            
+	            return $this->printmsg($accredit_data,1);
+	            */
+				$back = $payapi->directRegister($param);
+	            if ($back->success) {
+	                //往代注册表中插入记录，目的标识是后台用户代注册的
+	                $m_register_help = new zbj_model_mb_registerhelp();
+	                $m_register_help->insert(array('user_id'=>$back->userId, 'manager_id'=>$this->_userid));
+	                //发送短信
+	                $data = array(
+	                    "tplkey"	 => 'com.zhubajie.boss.register.help',
+	                    't_userid'=>$back->userId,
+	                    't_nickname'=>$back->nickname,
+	                    'password'=>$registerParam['password'],
+	                    'mobile' => $phone
+	                );
+	                $s_user = new zbj_service_user($back->userId);
+	                $ret = zbj_service_taskmsg::sendmsgnew($s_user, 'buyer', "com.zhubajie.boss.register.help", "", $data);
+	                if(!$ret) {
+	                    $cache = new zbj_lib_cache('memcache');
+	                    $key   = 'boss.helpregister.phone.'.$phone;
+	                    $cache->set($key,$data,60*60*2);//缓存2个小时
+	                    $msg = '短信发送失败：'.zbj_service_taskmsg::getErr();
+	                    $msg .= ' <a href="/user/resendmsg?phone='.$phone.'">[重新发送]</a>';
+	                }else {
+	                    $msg = '账号密码已发送至用户手机。';
+	                }
+	                $this->tplvar['info'] = "你已成功代用户注册账号：<a href='/user/view-uid-{$back->userId}' target='_blank'>{$back->nickname}</a>，".$msg ;
+	                //加入授权
+	                $accredit_data = array(
+	                    'user_id'=>$back->userId,
+	                    'user_name'=>$phone,
+	                    'accredit_type'	=>1
+	                );
+	                $s_accredit = new service_npsaccredit();
+	                $accredit_type = 1;
+	                $s_accredit->add($accredit_type,$this->_userid,$this->_nickname,1,$accredit_data);
+	                
+	                
+	                lib_BaseUtils::apiInit();
+	                $crmClient = new \com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	                lib_BaseUtils::apigetclient($crmClient);
+	                $ctToU = new com\zhubajie\boss\dataobject\bschance\CtToU();
+	                $ctToU->ct_id = $ct_id;
+	                $ctToU->user_id = $back->userId;
+	                $ctToU->unickname = $back->nickname;
+	                $ctToU->bs_to_ct_id = $bs_id;
+	                
+	                $res = $crmClient->AddCt2U($ctToU);
+	                $s_MemberStatInsertDTO=new com\zhubajie\union\dataobject\MemberStat\MemberStatInsertDTO();
+	                SMessageQueue::init();
+	                $s_message=new  \MessageQueue\Message();
+	                $s_MemberStatInsertDTO->user_id=$back->userId;
+	                $s_MemberStatInsertDTO->way_type=com\zhubajie\union\dataobject\WayType\WAY_TYPE::BOSS;
+	                $s_message->content=json_encode($s_MemberStatInsertDTO);
+	                $s_message->exchangeName="exchange_user";
+	                $s_message->routingKey="routingkey_user";
+	                $result=\MessageQueue\Publisher::publish($s_message);
+	                if ($res->success){
+	                    $this->addLog2($bs_id,'代注册自动关联了用户ID:'.$back->userId.',昵称'.$back->nickname,service_crmchance::getLogType());
+	                }
+	                $this->addLog($back->userId,$this->_nickname.'代用户注册了帐号('.$msg.')，帐号名：'.$back->nickname,'user');
+	            }else{
+	                throw new Exception($back->message);
+	                //$this->tplvar['info'] = "<span style='color: red;'>{$back->message}，请尝试用其它手机号进行注册！</span>";
+	            }
+	            return $this->printmsg('代注册成功',1,null,$_SERVER['HTTP_REFERER']);
+	        }catch(Exception $e){
+	            // 				echo 'err:'.$e->getMessage();
+	            //$this->tplvar['info'] = "<span style='color: red;'> {$e->getMessage()}，请尝试用其它手机号进行注册！</span>";
+	           return $this->printmsg($e->getMessage(),0);
+	        }
+	    }
+	    $this->tplvar['token'] = $this->getReqToken();
+	    return $this->render('crmchance/ajax/helpregister.html',$this->tplvar);
+	}
+	/**
+	 * 创建
+	 * @author tanqing
+	 * @date 2015-7-9
+	 */
+	public function pageCreate(){
+		if ($_POST) {
+			try {
+				
+			
+				lib_BaseUtils::apiInit();
+				$crmClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+				lib_BaseUtils::apigetclient($crmClient);
+				$ct_name = lib_BaseUtils::getStr($_POST['ct_name']);
+				$ct_mobile = lib_BaseUtils::getStr($_POST['ct_mobile']);
+				$ct_sex = lib_BaseUtils::getStr($_POST['ct_sex']);
+				$ct_qq = lib_BaseUtils::getStr($_POST['ct_qq']);
+				$ct_email = lib_BaseUtils::getStr($_POST['ct_email']);
+				$cat1 = lib_BaseUtils::getStr($_POST['cat1']);
+				$cat2 = lib_BaseUtils::getStr($_POST['cat2']);
+				$cat3 = lib_BaseUtils::getStr($_POST['cat3']);
+				$note = lib_BaseUtils::getStr($_POST['note']);
+				$ct_tel = lib_BaseUtils::getStr($_POST['ct_tel']);
+				
+				$bs_to_ct_id = lib_BaseUtils::getStr($_GET['id']);
+				
+				$contactorDO  = new \com\zhubajie\boss\dataobject\bschance\ContactorDO();
+				$contactorDO->bosscreate_uid=$this->_userid;
+				$contactorDO->ip=zbj_lib_BaseUtils::getIp(1);
+				$contactorDO->note=$note;
+				/*
+				$contactorDO->cat1=$cat1;
+				$contactorDO->cat2=$cat2;
+				$contactorDO->cat3=$cat3;
+				*/
+				$contactorDO->base_cat3 = $cat3; //基础三级类目
+				
+				$contactorDO->ct_tel = $ct_tel;
+				$contactorDO->surgent_note=lib_BaseUtils::getStr($_POST['surgent_note'],'string');
+				$contactorDO->isurgent=lib_BaseUtils::getStr($_POST['isurgent'],'int');
+				/*
+				if (!preg_match("/1[23456789]{1}\d{9}$/",$ct_mobile)) {
+					throw new Exception('手机号码格式不正确');
+				}
+				*/
+				
+				if ($ct_name) {
+					$contactorDO->ct_name = $ct_name;
+				}
+				if (empty($ct_mobile)) {
+					throw new Exception('请填写手机号码');
+				}
+				
+				$contactorDO->ct_mobile = $ct_mobile;
+				$contactorDO->ct_sex = $ct_sex;
+				if ($ct_email) {
+					if (!filter_var ( $ct_email, FILTER_VALIDATE_EMAIL )) {
+						throw new Exception('邮箱格式不正确');
+					}
+					$contactorDO->ct_email = $ct_email;
+				}
+				if ($ct_qq) {
+					if (!lib_BaseUtils::IsQQ($ct_qq)){
+						throw new Exception('QQ格式不正确');
+					}
+					$contactorDO->ct_qq = $ct_qq;
+				}
+				$othre=new com\zhubajie\union\dataobject\ChanceStat\ChanceStatInsertDTO();
+				//$source = lib_BaseUtils::getStr($_POST['source'],'int');
+				$othre->post_page=$_SERVER['HTTP_REFERER'];
+				$othre->first_page=$_SERVER['HTTP_REFERER'];
+				$othre->way_type= com\zhubajie\union\dataobject\WayType\WAY_TYPE::BOSS;
+				if ($bs_to_ct_id) {
+					$bsModule= zbj_model_api::get('zbj_model_mk_bstoct');
+					$getBsData=$bsModule->selectOne('bs_to_ct_id='.$bs_to_ct_id);
+					if(!$getBsData){
+						throw new Exception('获取商机信息失败');
+					}
+					if($contactorDO->base_cat3!=$getBsData['base_cat3']){
+						$bsSrvAllot=new zbj_service_allot_bsallot();
+						$newConfigId=$bsSrvAllot->__getconfigid($contactorDO->base_cat3);
+						$followUid=$getBsData['follow_uid'];
+						if($followUid && $newConfigId!=$getBsData['config_id']){
+							$allotUserModule= zbj_model_api::get('zbj_model_mk_allotuser');
+							$leftjoin = array(
+								'mk_allot_user_bsdimension as a_u_b'=>'a_u_b.manager_id = a_u.manager_id',
+							);
+							$condi[]="a_u_b.bsdimension_id=".$newConfigId;
+							$condi[]="a_u.manager_id=".$followUid;
+							$condi[]="a_u.status=1";
+							$checkBsdimension=$allotUserModule->_db->select('mk_allot_user as a_u',$condi,"a_u.*", '', 'order by nextallottime asc', $leftjoin)->items;
+							if(!$checkBsdimension){
+								$bsSrvCheck=new zbj_service_allot_bscheck();
+								$resetResult=$bsSrvCheck->resetManager(array('task_id'=>$getBsData['bs_to_ct_id']));
+								if(!$resetResult){
+									throw new Exception($bsSrvCheck->getError());
+								}
+							}
+						}
+					}
+
+					$chanceBussinessDo = new com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo();
+					$chanceBussinessDo->bs_to_ct_id = $bs_to_ct_id;
+					$chanceBussinessDo->contactorDO = $contactorDO;
+					$res= $crmClient->UpdateBussinessChance($chanceBussinessDo);
+				}else{
+					$res = $crmClient->CreateBusinessContactor($contactorDO,$othre);
+					
+				}
+				if (!$res->success) {
+					throw new Exception($res->message,0);
+				}else{
+				    if ($bs_to_ct_id){
+				        $this->addLog2($bs_to_ct_id,'修改商机信息 ID'.$bs_to_ct_id,service_crmchance::getLogType(),0);
+				    }else{
+				        $source = service_crmchance::getSource($othre->way_type);
+				        $this->addLog2($res->code,'通过'.$source.'创建商机 ID'.$bs_to_ct_id,service_crmchance::getLogType(),1);
+				    }
+				    $link = '<a href="/crmchance/detail?id='.($bs_to_ct_id?$bs_to_ct_id:$res->code).'" target="_blank">'.($bs_to_ct_id?$bs_to_ct_id:$res->code).'</a>';
+				    $log="操作成功，商机ID是 :".$link;
+				    return $this->printmsg($log,1,null,$_SERVER['HTTP_REFERER']);
+				}
+			} catch (Exception $e) {
+				return $this->printmsg($e->getMessage(),0);
+			}
+		}else{
+			$id = lib_BaseUtils::getStr($_GET['id']);
+			
+			// 21.84
+			if ($id) {
+				lib_BaseUtils::apiInit();
+				$crmClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+				lib_BaseUtils::apigetclient($crmClient);
+				
+				$filter = new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+				$filter->page = 1;
+				$filter->limit = 1;
+				$filter->bs_to_ct_id = $id;
+				$filter->no_cache=1;
+				$result = $crmClient->GetBussinessContactor($filter);
+				if ($result->success) {
+					
+					$info =  $result->data_obj->items[0];
+					
+					if ($info['task_describle']) {
+						$info['task_describle'] = explode(',',$info['task_describle']);
+					}
+					$this->tplvar['info'] =$info;
+				}
+			}
+			//分类
+			$sCategory = new service_category();
+			$categoryArray = $sCategory->getChild();;
+			$this->tplvar['categoryArray'] = $categoryArray;
+			$categorys = $sCategory->getCategorys();
+			$this->tplvar['categorys'] = $categorys;
+			//$this->tplvar['cattree']=json_encode(zbj_service_categoryguide::getTreeLite());
+			$this->tplvar['industryList'] =service_crmchance::getIndustry();
+			return $this->render('crmchance/ajax/create.html',$this->tplvar);
+		}
+	}
+	/**
+	 * 创建
+	 * @author tanqing
+	 * @date 2015-7-9
+	 */
+	public function pagecreatenote(){
+	    if(lib_BaseUtils::isAjax()){
+	        $id=zbj_lib_BaseUtils::getStr($_REQUEST['id'],'int');
+	        if(!lib_BaseUtils::isPostRequest()){
+	            if(!$id){
+	                return '商机ID不正确';
+	            }
+	            return $this->render('crmchance/ajax/createnote.html',$this->tplvar);
+	        }
+	        if(!$id){
+	            return $this->printmsg('商机ID不正确',0,null,$_SERVER['HTTP_REFERER']);
+	        }
+	        try {
+	            lib_BaseUtils::apiInit();
+	            $crmClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	            lib_BaseUtils::apigetclient($crmClient);
+	        
+	            $contactorDO  = new \com\zhubajie\boss\dataobject\bschance\ContactorDO();
+	            $contactorDO->surgent_note=lib_BaseUtils::getStr($_POST['surgent_note'],'string');
+	            $contactorDO->isurgent=lib_BaseUtils::getStr($_POST['isurgent'],'int');
+	            $contactorDO->bosscreate_uid=$this->_userid;
+	            $othre=new com\zhubajie\union\dataobject\ChanceStat\ChanceStatInsertDTO();
+	            $othre->way_type= com\zhubajie\union\dataobject\WayType\WAY_TYPE::BOSS;
+                $chanceBussinessDo = new com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo();
+                $chanceBussinessDo->bs_to_ct_id = $id;
+                $chanceBussinessDo->contactorDO = $contactorDO;
+                $res= $crmClient->UpdateBussinessChance($chanceBussinessDo);
+	            if (!$res->success) {
+	                throw new Exception($res->message,0);
+	            }else{
+                    $this->addLog2($id,'修改商机信息 ID'.$id,service_crmchance::getLogType(),0);
+	                return $this->printmsg("操作成功",1,null,$_SERVER['HTTP_REFERER']);
+	            }
+	        } catch (Exception $e) {
+	            return $this->printmsg($e->getMessage(),0);
+	        }
+	    }
+	}
+	/**
+	 * 更改商机顾问
+	 * 
+	 * @author tanqing
+	 * @date 2015年7月20日
+	 */
+	public function pagechangeManager(){
+	    if ($_POST){
+	        try {
+    	        $id = lib_BaseUtils::getStr($_POST['id'],'int');
+    	        
+    	        if (!$id){
+    	            throw new Exception('商机id丢失');
+    	        }
+    	        $manager_id = lib_BaseUtils::getStr($_POST['manager_id'],'int');
+    	        if (!$manager_id){
+    	            throw new Exception('请选择商机顾问');
+    	        }
+    	        //@todo
+    	        $is_allot = lib_BaseUtils::getStr($_POST['is_allot']);
+    	        if ($is_allot){
+    	            //分配
+    	        }else{
+    	            //更改顾问
+    	        }
+				$bstoctMdl = zbj_model_api::get('zbj_model_mk_bstoct');
+				$bsArray=$bstoctMdl->selectOne('bs_to_ct_id='.$id);
+
+			$s_cpuser = new service_manager($manager_id);
+			$showname = $s_cpuser->getshowname();
+			$log='更改顾问【'.$showname.'】成功【直接指定】';
+			$toManager['filter']='special';
+			$toManager['manager']['manager_id']=$manager_id;
+			$toManager['log']=$log;
+			$s_allot=new zbj_service_allot_bsallot();
+			$allotResult=$s_allot->doAllot($bsArray,$toManager);
+			if(!$allotResult){
+				throw new Exception($s_allot->getMessage());
+			}
+			return $this->printmsg('更改成功',2,null,$_SERVER['HTTP_REFERER']);
+	        } catch (Exception $e) {
+	            return $this->printmsg($e->getMessage(),0);
+	        }
+	    }else{
+	        $user_groups = new zbj_model_cp_usergroups();
+	        $group_ids  = $this->groupIds;
+	        /*
+	        $groups1 = $user_groups->select("group_id in (".implode(',', $group_ids).")", '`group_id`,`name`','','order by group_type desc,sort asc')->items;
+	        $this->tplvar['groups'] = $groups1;
+	        */
+	        $s_user = new service_manager();
+	        $this->tplvar['allgroups'] = $s_user->getgrouptree(0);
+	        return $this->render('crmchance/ajax/changeManager.html',$this->tplvar);
+	    }
+	}
+	public function pageallot($inPath){
+	    $id = lib_BaseUtils::getStr($_REQUEST['id'],'int');
+	    if(!$id){
+	        return $this->printmsg('参数不合法',2);
+	    }
+	    
+	    try{
+	        lib_BaseUtils::apiInit();
+	        $bschanceClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	        lib_BaseUtils::apigetclient($bschanceClient);
+	         
+	        $businessFilter = new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+	        $businessFilter->bs_to_ct_id = $id;
+	         
+			$businessFilter->no_cache=1;
+	        $bschanceInfoResult = $bschanceClient->GetBussinessContactor($businessFilter);
+	        if (!$bschanceInfoResult->success){
+	            throw new Exception('查询失败');
+	        }
+	        $userId = $bschanceInfoResult->data_obj->items[0]['create_uid'];
+			$filterStr='分配给创建人';
+	        if (!$userId){
+	            $s_crmchance = new service_crmchance();
+	            $userId= $s_crmchance->getFollowUserByPhone($bschanceInfoResult->data_obj->items[0]['ct_mobile']);
+				$filterStr='分配给相同手机号';
+	        }
+			$s_allot=new zbj_service_allot_bsallot();
+			if($userId){
+				$allotUserModule = zbj_model_api::get('zbj_model_mk_allotuser');
+				$condition[] = 'manager_id='.$userId;
+				$condition[] = "status=1";
+				$condition[] = "isonline=1";
+				$condition[] = "allot_num<max";
+				$user=$allotUserModule->selectOne($condition);
+				if($user){
+					$allUser=$s_allot->getBsAllUser($bschanceInfoResult->data_obj->items[0],false,'boss_t6');
+					if($allUser){
+						if(!in_array($user['manager_id'],$allUser)){
+							unset($user);
+						}
+					}
+					else{
+						unset($user);
+					}
+				}
+			}
+	        if (!$user){
+				$bsAllUser=$s_allot->getBsAllUser($bschanceInfoResult->data_obj->items[0],true,'boss_t6');
+				if($bsAllUser){
+					$user=$bsAllUser[0];
+					$filterStr='直接指定';
+				}
+	        }
+	        if(!$user){
+	            throw new Exception('没有合适的用户');
+	        }
+	        
+			$log='分配顾问【'.$user['manager_name'].'】成功【'.$filterStr.'】';
+			$toManager['filter']='special';
+			$toManager['manager']=$user;
+			$toManager['log']=$log;
+			$allotResult=$s_allot->doAllot($bschanceInfoResult->data_obj->items[0],$toManager);
+			if(!$allotResult){
+				throw new Exception($s_allot->getError());
+			}
+			return $this->printmsg('分配成功',2,null,$_SERVER['HTTP_REFERER']);
+	    }catch (Exception $e){
+	        return $this->printmsg($e->getMessage(),0);
+	    }
+	}
+	/**
+	 * 关联用户
+	 * @author tanqing
+	 * @date 2015-7-9
+	 */
+	public function pagerelationUser(){
+		if (zbj_lib_BaseUtils::isAjax()) {
+			try {
+			if ($_REQUEST['user_id']) {
+					$user_id = zbj_lib_BaseUtils::getStr($_POST['user_id'],'int');
+					$user_name = zbj_lib_BaseUtils::getStr($_POST['user_name']);
+					$ct_id = lib_BaseUtils::getStr($_POST['ct_id'],'int');
+		            $bs_to_ct_id=  lib_BaseUtils::getStr($_REQUEST['bs_to_ct_id']);
+					
+		            $s_crmchance = new service_crmchance($bs_to_ct_id);
+		            if (false===$s_crmchance->checkDoAction($bs_to_ct_id)){
+		                return $this->printmsg($s_crmchance->getError().'333333',0);
+		            }
+		            
+					if (empty($ct_id)) {
+						throw new Exception('参数丢失');
+					}
+					if (empty($user_id)) {
+						throw new Exception('用户ID不能为空');
+					}
+					if (empty($user_name)) {
+						throw new Exception('用户昵称不能为空');
+					}
+					lib_BaseUtils::apiInit();
+					$crmClient = new \com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+					lib_BaseUtils::apigetclient($crmClient);
+					$ctToU = new com\zhubajie\boss\dataobject\bschance\CtToU();
+					$ctToU->ct_id = $ct_id;
+					$ctToU->user_id = $user_id;
+					$ctToU->unickname = $user_name;
+					$ctToU->bs_to_ct_id = $bs_to_ct_id;
+					$res = $crmClient->AddCt2U($ctToU);
+					if ($res->success){
+					    $this->addLog2($bs_to_ct_id,'关联了用户ID:'.$user_id.',昵称'.$user_name,service_crmchance::getLogType());
+					    return $this->printmsg('关联成功',2,null,$_SERVER['HTTP_REFERER']);
+					}else{
+					    return $this->printmsg('关联失败'.$res->message,0);
+					}
+			}
+			if($_REQUEST['search']){
+				$s_sse=new Sse(lib_Constant::BOSS_SEARCH_API_HOST,lib_Constant::BOSS_SEARCH_API_PORT);
+				$users=$s_sse->search(array('query'=>zbj_lib_BaseUtils::getStr($_REQUEST['search']),'cat'=>'user','size'=>10));
+				// 新增直接查询
+				if (empty ( $users ['items'] )) {
+					lib_BaseUtils::apiInit (10,array('ub-client'));
+					$userInfoClient = new com\zhubajie\ub\interfaces\UserInfoServiceClient ( null );
+					lib_BaseUtils::apigetclient ( $userInfoClient );
+					$resultTypeDTO = new com\zhubajie\ub\dataobject\UserInfo\ResultTypeDTO ();
+					$resultTypeDTO->baseInfo = true;
+					$keywords = zbj_lib_BaseUtils::getStr ( $_REQUEST ['search'] );
+					if (zbj_lib_BaseUtils::IsMobile ( $keywords )) {
+						// 先查询经过认证的手机
+						$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_MOBILE, $resultTypeDTO );
+						if ($res->success) {
+							if (empty ( $res->userInfoDTO )) {
+								$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::MOBILE, $resultTypeDTO );
+							}
+						}
+					} elseif (is_numeric ( $keywords ) && preg_match ( "/^[1-9]\d{0,}$/", $keywords )) {
+						$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_ID, $resultTypeDTO );
+					} elseif (filter_var ( $keywords, FILTER_VALIDATE_EMAIL )) {
+						$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_EMAIL, $resultTypeDTO );
+						if ($res->success) {
+							if (empty ( $res->userInfoDTO )) {
+								$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::EMAIL, $resultTypeDTO );
+							}
+						}
+					} else {
+						$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::BRANDNAME, $resultTypeDTO );
+						if ($res->success) {
+							if (empty ( $res->userInfoDTO )) {
+								$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USERNAME, $resultTypeDTO );
+							}
+							if (empty ( $res->userInfoDTO )) {
+								$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::NICKNAME, $resultTypeDTO );
+							}
+						}
+					}
+					if ($res->success) {
+						if ($res->userInfoDTO) {
+						    $username = $res->userInfoDTO->baseInfoDTO->brandname?$res->userInfoDTO->baseInfoDTO->brandname:$res->userInfoDTO->baseInfoDTO->username;
+							$users ['items'] = array (array ('userId' => $res->userInfoDTO->baseInfoDTO->userId,'brandName' =>$username));
+						}
+					}
+				}
+				$this->tplvar['users']=$users['items'];
+			}
+			} catch (Exception $e) {
+				return $this->printmsg($res->message,0);
+			}
+		}
+		$id = lib_BaseUtils::getStr($_GET['id'],'int');
+		$s_crmchance = new service_crmchance();
+		if (false===$s_crmchance->checkDoAction($id)){
+		    return $s_crmchance->getError().'的商机不能进行关联用户，请先认领';
+		}
+		//获取商机信息
+		$this->tplvar['chance_data'] = $this->getBussinessContactor($id);
+
+		$this->tplvar['token'] = $this->getReqToken();
+
+		if($_GET['new_type'] != 1){
+			return $this->render("crmchance/ajax/relationUser.html",$this->tplvar);
+		}else{
+			return $this->render("crmchance/ajax/relationUser-new.html",$this->tplvar);
+		}
+
+	}
+	 
+	/**********顾留中************/ 
+	 /**
+	 * 创建订单
+	 * @author guliuzhong
+	 * @date 2015-7-9
+	 */
+	public function pagepubtask($inPath){
+	    lib_BaseUtils::apiInit(5);
+	    $s_api=new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	    $s_task=new com\zhubajie\task\interfaces\TaskServiceClient(null);
+	    lib_BaseUtils::apigetclient($s_api);
+	    lib_BaseUtils::apigetclient($s_task);
+	    $businessFilter=new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+	    $businessFilter->bs_to_ct_id=lib_BaseUtils::getStr($_REQUEST['bs_to_ct_id'],'int');
+		$businessFilter->no_cache=1;
+	    $data=$s_api->GetBussinessContactor($businessFilter);
+	    if($data->success){
+	        $chance_data=$tplvar['chance_data']=$data->data_obj->items[0];
+	    }
+	    if(!$chance_data['user_id']){
+	        if(!lib_BaseUtils::isPostRequest()){
+	            return "请先关联用户";
+	        }else{
+	            return $this->printmsg("请先关联用户",0);
+	        }
+	    }
+// 	    var_export($data->data_obj->items[0]);
+	    if(!lib_BaseUtils::isPostRequest()){
+    	    $s_cat=new zbj_service_categorypub(0);
+    	    $this->tplvar['cattree']=json_encode($s_cat->getTree());
+    	    $this->tplvar['chance_data']=$chance_data;
+//     	    header('content-type:application/json');
+    	    return $this->render('crmchance/ajax/pubtask.html', $this->tplvar);
+	    }else{
+	        $user=new com\zhubajie\task\dataobject\task\PubTaskUserDO();
+	        
+// 	        $user->nickname=$chance_data['user_id'];
+	        $s_user=new zbj_service_user($chance_data['user_id']);
+	        $user->user_id=$s_user->get('user_id');
+	        $user->nickname=$s_user->get('nickname');
+	        $user->ip=long2ip($data->data_obj->items[0]['ip']);
+	        $task=new com\zhubajie\task\dataobject\task\PubTaskDO();
+	        $task->amount=lib_BaseUtils::getStr($_REQUEST['amount'],'float');
+	        $task->title=lib_BaseUtils::getStr($_REQUEST['title'],'string');
+	        $task->content=lib_BaseUtils::getStr($_REQUEST['cont'],'string');
+	        $task->virtual_id=lib_BaseUtils::getStr($_REQUEST['cat3'],'int');
+	        $task->day=lib_BaseUtils::getStr($_REQUEST['day'],'int');
+	        $allot=new com\zhubajie\task\dataobject\task\PubTaskAllotDO();
+	        switch ($_REQUEST['mode']) {
+                case 1: // 比稿
+                    $task->mode = com\zhubajie\task\dataobject\task\VirtualTaskMode::REWARD_WORKS;
+                    $allot->allot=com\zhubajie\task\dataobject\task\TaskAllot::SINGLE;
+//                     $allot_info=new com\zhubajie\task\dataobject\task\PubTaskAllotInfoDO();
+//                     $allot->allot_info=$allot_info;
+                    break;
+                case 2: // 计件
+                    $task->mode = com\zhubajie\task\dataobject\task\VirtualTaskMode::PIECE_WORKS;
+                    $allot->allot=com\zhubajie\task\dataobject\task\TaskAllot::PIECE;
+                    $allot_info=new com\zhubajie\task\dataobject\task\PubTaskAllotInfoDO();
+                    $allot_info->num=lib_BaseUtils::getStr($_REQUEST['num'],'int');
+                    $allot_info->amount=lib_BaseUtils::getStr($_REQUEST['amount'],'float');
+                    $task->amount=$allot_info->num* $allot_info->amount;
+                    $allot->allot_info[]=$allot_info;
+                    break;
+                case 3: // 招标
+                    $task->mode = com\zhubajie\task\dataobject\task\VirtualTaskMode::BIDDING_WORKS;
+                    $allot->allot=com\zhubajie\task\dataobject\task\TaskAllot::SINGLE;
+//                     $allot_info=new com\zhubajie\task\dataobject\task\PubTaskAllotInfoDO();
+//                     $allot->allot_info
+//                     $allot->allot_info=$allot_info;
+                    break;
+            }
+	        $task->allot=$allot;
+	        $task->option=array();
+	        $key=com\zhubajie\task\dataobject\task\PubTaskOption::TASK_SOURCE;
+	        $task->option[$key]=99;
+	        $taskinfo=$s_task->publishTask2($user, $task);
+	        if($taskinfo->success){
+	            //$s_MarketStatInsertDTO=new com\zhubajie\union\dataobject\MarketStat\MarketStatInsertDTO();
+	            //SMessageQueue::init();
+	            //$s_message=new  \MessageQueue\Message();
+	            //$s_MarketStatInsertDTO->task_id=$taskinfo->task_id;
+	            //$s_MarketStatInsertDTO->user_id=$user->user_id;
+	            //$s_MarketStatInsertDTO->way_type=com\zhubajie\union\dataobject\WayType\WAY_TYPE::BOSS;
+	            //$s_message->content=json_encode($s_MarketStatInsertDTO);
+	            //$s_message->exchangeName="union.task.publish";
+	            //$s_message->routingKey="union.task.publish";
+	            //$result=\MessageQueue\Publisher::publish($s_message);
+	            $addtask=array();
+	            $addtask['task_id']=$taskinfo->task_id;
+	            $addtask['task_create_amount']=$task->amount;
+	            $addtask['orderChanceType']=1;//人工转换
+	            $r=$s_api->addtasktochance($businessFilter->bs_to_ct_id,$addtask);
+	            if(!$r->success){
+	                return $this->printmsg($r->message,0);
+	            }
+				//-------------------------分配交易顾问---------------------s
+				$follow_uid = $chance_data['follow_uid'];
+				//$follow_uid = 220;
+				$task_id=$addtask['task_id'];
+				$srvTask = new zbj_service_task($task_id);
+				$srvTask = $srvTask->init();
+				if($follow_uid!=0){//分配给商机顾问
+					$toManager['filter']= 'special';
+					$toManager['from']= 'businessOrder';
+					$toManager['manager']['manager_id']= $follow_uid;
+					$srvAlloter = new zbj_service_allot_taskallot();
+					$allot_back=$srvAlloter->doAllot($srvTask,$toManager);
+					$rError=$srvAlloter->getError();
+					if($allot_back==false && !$rError){
+						$this->addLog2($businessFilter->bs_to_ct_id,'交易顾问指定为商机顾问失败，原因:'.$srvAlloter->getError(),service_crmchance::getLogType(),4);
+					}
+					if($allot_back==true){
+						$this->addLog2($businessFilter->bs_to_ct_id,'交易顾问指定为商机顾问成功!',service_crmchance::getLogType(),4);
+					}
+				}
+				else{
+					zbj_lib_Api::taskCreated($task_id);
+				}
+				//-------------------------分配交易顾问---------------------e
+				$s_allot = new zbj_service_allot(96);
+				$s_allot->processed($businessFilter->bs_to_ct_id);
+	            $this->addLog2($businessFilter->bs_to_ct_id,'创建了订单'.$addtask['task_id'],service_crmchance::getLogType(),4);
+				return $this->printmsg($taskinfo->task_id);
+	        }else{
+	            $this->addLog2($businessFilter->bs_to_ct_id,'创建订单失败，原因:'.$taskinfo->message,service_crmchance::getLogType(),4);
+	            return $this->printmsg($taskinfo->message,0);
+	        }
+	    }
+	}
+	 
+
+
+	/**
+	 * 认领
+	 * 
+	 * @author tanqing
+	 * @date 2015年7月22日
+	 * @param unknown $inPath
+	 * @throws Exception
+	 * @return Ambigous <boolean, string>
+	 */
+	public function pagegetit($inPath){
+	    try {
+            if (! $_REQUEST['id']) {
+                throw new Exception('bs_to_ct_id 不能为空', -1);
+            }
+            	
+            lib_BaseUtils::apiInit();
+            $chance_service = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+            lib_BaseUtils::apigetclient($chance_service);
+            	
+            $bs_to_ct_id=zbj_lib_BaseUtils::getStr($_REQUEST['id'],'int');
+            
+            $user_id=$this->_userid;
+            $response = $chance_service->lockBussinessContactor($bs_to_ct_id,$user_id);
+            if ($response->success) {
+                $chanceBussinessDo = new com\zhubajie\boss\dataobject\bschance\ChanceBussinessDo();
+                $s_crmchance= new service_crmchance();
+                $next_follow_time = $s_crmchance->getFollowTime();
+                $chanceBussinessDo->next_follow_time = date("Y-m-d H:i:s",$next_follow_time);
+                $chanceBussinessDo->bs_to_ct_id = $bs_to_ct_id;
+                $chanceBussinessDo->follow_uid = $this->_userid;
+                $chanceBussinessDo->allottime = 0;
+                $res = $chance_service->UpdateBussinessChance($chanceBussinessDo);
+                if (!$res->success){
+                    throw new Exception($res->message);
+                }
+                $this->addLog2($bs_to_ct_id,'认领了该商机',service_crmchance::getLogType(),2);
+                return $this->printmsg('操作成功'.$response->message, 2, null, $_SERVER['HTTP_REFERER']);
+            } else {
+                throw new Exception($response->message, -1);
+            }
+	    } catch (Exception $e) {
+	        return $this->printmsg($e->getMessage(), 0);
+	    }
+	}
+	/**
+	 * 跟进
+	 * 
+	 * @author yuanzhuang
+	 * @date 2015-07-09
+	 */
+	public function pageFollow() {
+		try {
+			if (! count($_POST)) {
+				if (1 == $_REQUEST['is_giveup']) {//give up
+				    $s_option=new service_cpoption(63);
+				    $this->tplvar['options']=$s_option->getAllItems();
+					return $this->render('crmchance/ajax/giveup.html',$this->tplvar);
+				} elseif(1==$_REQUEST['change_followtime']) { //follow
+				    $s_option=new service_cpoption(62);
+				    $this->tplvar['options']=$s_option->getAllItems();
+					return $this->render('crmchance/ajax/change_follow_time.html', $this->tplvar);
+				} else { //follow
+				    $s_option=new service_cpoption(62);
+				    $this->tplvar['options']=$s_option->getAllItems();
+					return $this->render('crmchance/ajax/follow.html',$this->tplvar);
+				}
+				
+			} else {
+				if (! $_REQUEST['id']) {
+					throw new Exception('bs_to_ct_id 不能为空', -1);
+				}
+				$is_giveup = false; 
+				if ($_REQUEST['is_giveup']) {
+				    if (! $_REQUEST['giveup_reason_remark']) {
+				        return $this->printmsg("备注不能为空", 0, 'giveup_reason_remark');
+				    }
+					if (! $_REQUEST['giveup_reason_remark']) {
+						return $this->printmsg("放弃原因不能为空", 0, 'giveup_reason_remark');
+					}
+					$is_giveup = true;
+                } elseif (1 == $_REQUEST['change_followtime']) { // follow
+                    $_REQUEST['follow_remark']="更改跟进时间";
+                    $_REQUEST['follow_option']=725;
+                    if (! $_REQUEST['next_follow_ymd']) {
+                        return $this->printmsg("请指定预约跟进时间", 0, 'next_follow_ymd');
+                    }
+                    if (strtotime($_REQUEST['next_follow_ymd'] . ' ' . $_REQUEST['next_follow_time']) < time()) {
+                        return $this->printmsg("预约跟进时间不能比当前时间小", 0, 'next_follow_ymd');
+                    }
+				} else {
+					if (! $_REQUEST['follow_remark']) {
+						return $this->printmsg("备注不能为空", 0, 'follow_remark');
+					}
+					if (! $_REQUEST['follow_option']) {
+					    return $this->printmsg("备注不能为空", 0, 'follow_option');
+					}
+					if (! $_REQUEST['next_follow_ymd']) {
+					    return $this->printmsg("请指定预约跟进时间", 0, 'next_follow_ymd');
+					}
+					if(strtotime( $_REQUEST['next_follow_ymd'].' '.$_REQUEST['next_follow_time'])<time()){
+					    return $this->printmsg("预约跟进时间不能比当前时间小", 0, 'next_follow_ymd');
+					}
+				}
+					
+				lib_BaseUtils::apiInit();
+				$chance_service = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+				lib_BaseUtils::apigetclient($chance_service);
+					
+				$follow_info = new com\zhubajie\boss\dataobject\bschance\FollowInfoDO();
+				$follow_info->bs_to_ct_id = zbj_lib_BaseUtils::getStr($_REQUEST['id']);
+				$follow_info->follow_user_id = $this->_userid;
+				$follow_info->is_giveup = zbj_lib_BaseUtils::getStr($_REQUEST['is_giveup']);
+				if($follow_info->is_giveup){
+    				$follow_info->giveup_reason_remark = zbj_lib_BaseUtils::getStr($_REQUEST['giveup_reason_remark']);
+    				$follow_info->giveup_option = zbj_lib_BaseUtils::getStr($_REQUEST['giveup_option'],'int');
+    				if (empty($follow_info->giveup_option)) {
+    					return $this->printmsg("请选择放弃原因", 0, 'giveup_option');
+    				}
+				}else{
+    				$follow_info->follow_remark = zbj_lib_BaseUtils::getStr($_REQUEST['follow_remark']);
+    				$follow_info->follow_option = zbj_lib_BaseUtils::getStr($_REQUEST['follow_option'],'int');
+    				$follow_info->next_follow_time = $_REQUEST['next_follow_ymd'].' '.$_REQUEST['next_follow_time'];
+				}
+				$response = $chance_service->follow($follow_info);
+				if ($response->success) {
+					$s_allot = new zbj_service_allot(112);
+					$s_allot->processed($_REQUEST['id']);
+					if ($is_giveup){
+    					$log = '放弃了商机';
+					}elseif ($_REQUEST['change_followtime'] == 1){
+					    $log = '预约了下次跟进';
+					}else{
+					    $log = '跟进了商机';
+					}
+					$this->addLog2($follow_info->bs_to_ct_id,$log,service_crmchance::getLogType(),3);
+					return $this->printmsg('操作成功', 2, null, $_SERVER['HTTP_REFERER']);
+				} else {
+					throw new Exception($response->message, -1);
+				}
+			}
+		} catch (Exception $e) {
+			return $this->printmsg($e->getMessage(), 0);
+		}
+	}
+	
+	public function pageaddlog(){
+	    if ($_POST){
+	        try {
+	            
+	        
+    	        $id = lib_BaseUtils::getStr($_REQUEST['id'],'int');
+    	        $content = lib_BaseUtils::getStr($_POST['content']);
+    	        if (!$id){
+    	            throw new Exception('商机id丢失');
+    	        }
+    	        if (empty($content)){
+    	            throw new Exception('备注内容不能为空');
+    	        }
+    	        
+    	        $this->addLog2($id,$content,service_crmchance::getLogType(),5);
+	        
+	        } catch (Exception $e) {
+	        }
+	    }else{
+	        
+	        return $this->render('crmchance/ajax/addlog.html',$this->tplvar);
+	    }
+	}
+
+	public function pageAddchance(){
+		$this->tplvar['users'] = $this->getSearchBuyerInfo();
+		$id = lib_BaseUtils::getStr($_GET['id'],'int');
+		$s_crmchance = new service_crmchance();
+		if (false===$s_crmchance->checkDoAction($id)){
+		    return $s_crmchance->getError().'的商机不能进行关联用户，请先认领';
+		}
+        //获取商机信息
+		$this->tplvar['chance_data'] = $this->getBussinessContactor($id);
+		//商机对应任务信息
+		$this->tplvar['task_data'] = $this->getChanceDetail($id);
+		//获取任务详细信息
+		$this->tplvar['task'] = $this->getTaskData($this->tplvar['task_data']['task_id']);
+		//获取发布类目信息
+		$s_cat=new zbj_service_categorypub(0);
+    	$this->tplvar['cattree']=$s_cat->getTree();
+
+		//获取token
+		$this->tplvar['token'] = $this->getReqToken();
+		//print_r($this->tplvar); exit;
+		return $this->render('crmchance/addchance.html',$this->tplvar);
+	}
+
+    //搜索雇主信息
+    private function getSearchBuyerInfo(){
+	try {
+		if($_REQUEST['search']){
+			$s_sse=new Sse(lib_Constant::BOSS_SEARCH_API_HOST,lib_Constant::BOSS_SEARCH_API_PORT);
+			$users=$s_sse->search(array('query'=>zbj_lib_BaseUtils::getStr($_REQUEST['search']),'cat'=>'user','size'=>10));
+			// 新增直接查询
+			if (empty ( $users ['items'] )) {
+				lib_BaseUtils::apiInit (10,array('ub-client'));
+				$userInfoClient = new com\zhubajie\ub\interfaces\UserInfoServiceClient ( null );
+				lib_BaseUtils::apigetclient ( $userInfoClient );
+				$resultTypeDTO = new com\zhubajie\ub\dataobject\UserInfo\ResultTypeDTO ();
+				$resultTypeDTO->baseInfo = true;
+				$keywords = zbj_lib_BaseUtils::getStr ( $_REQUEST ['search'] );
+				if (zbj_lib_BaseUtils::IsMobile ( $keywords )) {
+					// 先查询经过认证的手机
+					$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_MOBILE, $resultTypeDTO );
+					if ($res->success) {
+						if (empty ( $res->userInfoDTO )) {
+							$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::MOBILE, $resultTypeDTO );
+						}
+					}
+				} elseif (is_numeric ( $keywords ) && preg_match ( "/^[1-9]\d{0,}$/", $keywords )) {
+					$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_ID, $resultTypeDTO );
+				} elseif (filter_var ( $keywords, FILTER_VALIDATE_EMAIL )) {
+					$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USER_EMAIL, $resultTypeDTO );
+					if ($res->success) {
+						if (empty ( $res->userInfoDTO )) {
+							$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::EMAIL, $resultTypeDTO );
+						}
+					}
+				} else {
+					$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::BRANDNAME, $resultTypeDTO );
+					if ($res->success) {
+						if (empty ( $res->userInfoDTO )) {
+							$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::USERNAME, $resultTypeDTO );
+						}
+						if (empty ( $res->userInfoDTO )) {
+							$res = $userInfoClient->getUserInfo ( $keywords, ubFieldType::NICKNAME, $resultTypeDTO );
+						}
+					}
+				}
+				if ($res->success) {
+					if ($res->userInfoDTO) {
+					    $username = $res->userInfoDTO->baseInfoDTO->brandname?$res->userInfoDTO->baseInfoDTO->brandname:$res->userInfoDTO->baseInfoDTO->username;
+						$users ['items'] = array (array ('userId' => $res->userInfoDTO->baseInfoDTO->userId,'brandName' =>$username));
+					}
+				}
+			}
+			return $users['items'];
+		}
+		} catch (Exception $e) {
+			return $this->printmsg($res->message,0);
+		}
+	}
+
+	//获取商机信息
+	private function getBussinessContactor($bs_id){
+		try {
+	        lib_BaseUtils::apiInit();
+	        $bschanceClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	        lib_BaseUtils::apigetclient($bschanceClient);
+	        
+	        
+	        $businessFilter = new com\zhubajie\boss\dataobject\bschance\BusinessFilter();
+	        $businessFilter->bs_to_ct_id = $bs_id;
+	        
+			$businessFilter->no_cache=1;
+	        $info = $bschanceClient->GetBussinessContactor($businessFilter);
+	        if (!$info->success){
+	            throw new Exception('商机信息获取失败');
+	        }
+	        if (empty($info->data_obj->items[0])){
+	            throw new Exception('商机信息不存在');
+	        }
+            $bschanceInfo =  $info->data_obj->items[0];
+            return $bschanceInfo;
+	    } catch (Exception $e) {
+	        return $this->printmsg($e->getMessage());
+	    }
+	}
+
+	/**
+	 * 显示用户内部资料
+	 */
+  	public function pageGetBuyerInfo() {
+  		$uid = lib_BaseUtils::getStr($_GET['uid'],'int');
+  		if(!$uid) return $this->printmsg('雇主ID有误',0);
+		$m_customerperson = new zbj_model_mb_customerperson ($uid);
+
+        $ajaxparams = array ();
+		$ajaxparams ['userinfo'] = $m_customerperson->get ();
+            $ajaxparams ['uid'] = $uid;
+		$s_option=new service_cpoption(15);
+            $ajaxparams ['option_15']=$s_option->getItems();
+        $s_option=new service_cpoption(16);
+		    $ajaxparams ['option_16']=$s_option->getItems();
+        $s_option=new service_cpoption(17);
+		    $ajaxparams ['option_17']=$s_option->getItems();
+		$s_option=new service_cpoption(18);
+            $ajaxparams ['option_18']=$s_option->getItems();
+
+		//省
+		$mRegion = new zbj_model_mb_region();
+		$ajaxparams ['provinces'] = $mRegion->select(array("parent_id" => 1))->items;
+		//print_r($ajaxparams); exit;
+		return $this->render('crmchance/ajax/userinfo.html',$ajaxparams);
+    }
+
+    /**
+	 * 显示商机关联任务信息
+	 */
+    private function getChanceDetail($bs_id){
+    	try {
+	    	lib_BaseUtils::apiInit();
+	        $bschanceClient = new com\zhubajie\boss\interfaces\bschanceServiceClient(null);
+	        lib_BaseUtils::apigetclient($bschanceClient);
+	        $chanceDetailResult = $bschanceClient->chanceDetail($bs_id);
+
+	        if (!$chanceDetailResult->success){
+	            throw new Exception('获取商机对应任务失败');
+	        }
+	        $task_list = $chanceDetailResult->ext_params['task_list'];
+	        $taskList = array();
+	        if ($task_list){
+	            $task_list = json_decode($task_list,true);
+	            if ($task_list){
+	                foreach ($task_list as $task){
+	                    if ($task['task_id']){
+	                        $taskList [] = $task;
+	                    }
+	                }
+	            }
+	        }
+	        return $taskList[0];
+        } catch (Exception $e) {
+	        return false;
+	    }
+    }
+
+    //获取任务详细信息
+    private function getTaskData($tid){
+        if(!$tid) return false;
+        $task = new zbj_service_task($tid);
+        $task = $task->init();
+        $taskData = $task->get();
+        $taskData['content'] = $task->get('task_cont.content');
+
+        if($taskData['category_id']){
+	        $catobj3 =  new zbj_service_categorypub($taskData['category_id']);
+	        $taskData['cat3'] = $catobj3->getPubCategory();
+	    }
+	    return $taskData;
+    }
+
+    //检测是否有跟进信息
+    public function pageCheckFollow(){
+    	if (zbj_lib_BaseUtils::isAjax()) {
+	    	$tid = lib_BaseUtils::getStr($_GET['tid'],'int');
+	    	$followModel = zbj_model_api::get('zbj_model_mk_follow');
+	    	$follow = $followModel->selectOne(array('task_id' => $tid));
+	    	if($follow['follow_id']){
+	    		$data = array('state' => 1, 'msg' => $follow['follow_id']);
+	    	}else{
+	    		$data = array('state' => 0, 'msg' => $follow['follow_id']);
+	    	}
+	    	return $this->json($data);
+	    }
+    }
+
+}

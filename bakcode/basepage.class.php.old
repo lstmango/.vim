@@ -1,0 +1,511 @@
+<?php
+class components_basepage extends zbj_components_basepage {
+	/**
+	 * 模板变量
+	 *
+	 * @var array
+	 */
+	public  $tplvar = array ();
+	/**
+	 *
+	 * @var service_manager
+	 */
+	protected $islogin = false;
+	/**
+	 * 用户显示名
+	 *
+	 * @var string
+	 */
+	protected $_showname = '';
+	/**
+	 * 花名
+	 *
+	 * @var string
+	 */
+	protected $_huaming = '';
+	/**
+	 * 邮件
+	 *
+	 * @var string
+	 */
+	protected $_email = '';
+	/**
+	 * 用户真实姓名
+	 * 
+	 * @var string
+	 */
+	protected $_truename = '';
+	/**
+	 * 用户组ID
+	 * 
+	 * @var string
+	 */
+	protected $_usergroupid = 0;
+	/**
+	 * 用户组ID
+	 *
+	 * @var string
+	 */
+	protected $_otpauth = '';
+	/**
+	 *
+	 * @param bool $checklogin
+	 *        	是否检测登录
+	 */
+	public function __construct($checklogin = true) {
+		$this->_time = time ();
+		$this->_ymd = date('Y-m-d', $this->_time);
+		$this->_starttime = $this->microtime_float ();
+		$this->islogin = false;
+		list($user_id,$auth_uuid,$token,$email,$nickname,$showname)=explode('|', SCrypt::superrc4($_COOKIE['bossauth'],'decode',lib_Constant::BOSSAUTH_APPKEY));
+		lib_BaseUtils::apiInit ();
+//		$user_id=0;
+		if($user_id){
+		    // session
+		    session_start();
+		    lib_BaseUtils::apiInit();
+		    $sso = new com\zhubajie\boss\interfaces\ssoServiceClient(null);
+		    lib_BaseUtils::apigetclient($sso);
+		    
+		    $inputrcba = new com\zhubajie\boss\dataobject\user\inputRcbaDo();
+		    $inputrcba->user_id = $user_id;
+		    $inputrcba->auth_uuid = $auth_uuid;
+		    $inputrcba->token = $token;
+		    try {
+		        if (abs(time() - intval($_SESSION['checklogin_time'])) >= 10) {
+		            $docheck = $sso->checklogin2($inputrcba);
+		            if ($docheck->code >= 0) {
+		                $this->islogin = true;
+		                $this->_userid = $docheck->userDo->user_id;
+		                $this->_usergroupid = $docheck->userDo->group_id;
+		                $this->_name = $docheck->userDo->name;
+		                $this->_nickname = $docheck->userDo->name;
+		                $this->_truename = $docheck->userDo->name;
+		                $this->_otpauth = $docheck->otpauth;
+		                $_SESSION['checklogin_user_id'] = $this->_userid;
+		                $_SESSION['checklogin_gid'] = $this->_usergroupid;
+		                $_SESSION['checklogin_name'] = $this->_name;
+		                $_SESSION['checklogin_otpauth'] = $this->_otpauth;
+		                $_SESSION['checklogin_time'] = time();
+		                if ($_COOKIE['bossuid'] != $this->_userid) {
+		                    setcookie('bossuid', $this->_userid, time() + 31536000, '/', $_SERVER['HTTP_HOST'], 0, 1);
+		                }
+		            } else {
+		                $this->_userid = 0;
+		                setcookie('bossauth', '', - 1, '/', $_SERVER['HTTP_HOST'], 0, 1);
+		                session_destroy();
+		            }
+		        } else {
+		            $this->islogin = true;
+		            $this->_userid = $_SESSION['checklogin_user_id'];
+		            $this->_usergroupid = $_SESSION['checklogin_gid'];
+		            $this->_name = $_SESSION['checklogin_name'];
+		            $this->_nickname = $_SESSION['checklogin_name'];
+		            $this->_truename = $_SESSION['checklogin_name'];
+		            $this->_otpauth = $_SESSION['checklogin_otpauth'];
+		        }
+		    } catch (Exception $e) {
+		        echo $this->printmsg($e->getMessage());
+		        exit();
+		    }
+//             $this->_uid = 204;
+//             $this->_gid = 364;
+//             $this->_name = "顾留中";
+//             $this->_otpauth = "";
+		    if($checklogin){
+		        try {
+		            if ($_SESSION['rcba_uid'] != $this->_userid) {
+		                throw new Exception("权限与用户不对应", - 1);
+		            }
+		            if (abs(time() - intval($_SESSION['rcba_time'])) >= 60) {
+		                throw new Exception("权限过期", - 1);
+		            }
+		        } catch (Exception $e) {
+		            $rcba = $sso->getrcba($user_id, "CP");
+		            $_SESSION['_ACCESS_LIST'] = json_decode($rcba, true);
+		            $_SESSION['rcba_uid'] = $this->_uid;
+		            $_SESSION['rcba_time'] = time();
+		        }
+		        $path_array = array();
+		        $splitFlag = preg_quote(SlightPHP::$splitFlag, "/");
+		        $path_array = preg_split("/[$splitFlag\/]/", $_SERVER["PATH_INFO"], - 1, PREG_SPLIT_NO_EMPTY);
+		        $control = ! empty($path_array[1]) ? $path_array[1] : SlightPHP::$defaultPage;
+		        $method = ! empty($path_array[2]) ? $path_array[2] : SlightPHP::$defaultEntry;
+		        $urlparams = $this->getUrlParams($path_array);
+		        $subact = null;
+		        if (isset($urlparams['act']) && $urlparams['act']) {
+		            $subact = $urlparams['act'];
+		        }
+		        if (isset($urlparams['subact']) && $urlparams['subact']) {
+		            $subact = $urlparams['subact'];
+		        }
+		        if (! service_rcba::checkAnAccess($control, $method, $subact)) {
+		            if (zbj_lib_BaseUtils::isAjax ()) {
+		                if(count($_POST)){
+		                    echo json_encode ( array (
+		                        'state' => 1,
+		                        'msg' => "您没有权限操作此项目.",
+		                        'url' => '',
+		                        'field' => ''
+		                    ) );
+		                }else{
+		                    echo "您没有权限操作此项目";
+		                }
+		            }else{
+		                echo "您没有权限操作此项目";
+		            }
+		            exit();
+		        }
+		    }
+		}
+		if ($this->_userid == 0 && $checklogin) {
+		    lib_BaseUtils::apiInit();
+		    $sso=new com\zhubajie\boss\interfaces\ssoServiceClient(null);
+		    lib_BaseUtils::apigetclient($sso);
+		    $user_auth_gateway_url = $sso->getssologinurl('http://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], lib_Constant::BOSSAUTH_APPID);
+		    return $this->redirect ( $user_auth_gateway_url );
+		}
+		
+		
+		if ($this->_userid) {
+		    $this->_email=$email;
+		    $this->_showname=$showname;
+		    $this->_huaming=$nickname;
+// 			$s_manager = new zbj_service_manager ( $user_id );
+			$_SESSION ['authid'] = $user_id;
+			$_SESSION ['cp.name'] = $this->_nickname;
+			$_SESSION ['cp.group_id'] = $this->_usergroupid;
+			$allot = new service_cpallot ();
+			$_SESSION ['isonline'] = $allot->isOff ( $this->_userid ) ? 0 : 1;
+			// 上下线
+			$allot = new service_cpallot ();
+			$_SESSION ['allotlist'] = $allot->getUserConfig ( $this->_userid );
+			$_SESSION ['online_num'] = 0;
+			foreach ( $_SESSION ['allotlist'] as $value ) {
+			    if ($value ['isonline'] == 1) {
+			        $_SESSION ['online_num'] ++;
+			    }
+			}
+			// define('DEBUG', $value);
+// 			$s_manager->set ( 'bLastOnlineTime', $this->_time );
+// 			$s_manager->set ( 'isonline', 1 );
+// 			$s_manager->save ();
+		} else {
+			$this->islogin = false;
+		}
+// 		exit;
+		// 常量
+		$this->ass ( 'cp', array (
+				'userid' => $this->_userid,
+				'nickname' => $this->_nickname,
+				'groupid' => $this->_usergroupid 
+		) );
+		$this->ass ( 'siteurl', array (
+				'uc' => zbj_lib_Constant::UC_URL,
+				'face' => zbj_lib_Constant::FACE_URL,
+				'task' => zbj_lib_Constant::TASK_URL,
+				'quan' => zbj_lib_Constant::SPACE_URL,
+				'shop' => zbj_lib_Constant::SHOP_URL,
+				'home' => zbj_lib_Constant::HOME_URL,
+				'space' => zbj_lib_Constant::SPACE_URL,
+				'css' => zbj_lib_Constant::CSS_URL,
+				'js' => zbj_lib_Constant::JS_URL,
+				'login' => zbj_lib_Constant::USERLOGIN,
+				'main' => zbj_lib_Constant::MAIN_URL,
+				'yan' => zbj_lib_Constant::YAN_URL,
+				'search' => zbj_lib_Constant::SEARCH_URL,
+				'sec' => zbj_lib_Constant::SEC_URL 
+		) );
+		
+	}
+	public function __destruct() {
+		parent::xhprofrun ( "boss", 400 );
+	}
+	public function render($tpl, $params = array()) {
+		$smarty = $this->getSmartyEngine ( 3 );
+		$smarty->compile_check = true;
+		if (! empty ( $params )) {
+			foreach ( $params as $key => $value ) {
+				$smarty->assign ( $key, $value );
+			}
+		}
+		return $smarty->fetch ( $tpl );
+	}
+	public function ass($key, $value) {
+		$smarty = $this->getSmartyEngine ();
+		$smarty->assign ( $key, $value );
+	}
+	/**
+	 * 返回json数据
+	 *
+	 * @param array $data        	
+	 */
+	public function json($data) {
+		$jsonpcallback = $_REQUEST ['jsonpcallback'];
+		if (empty ( $jsonpcallback )) {
+			return json_encode ( $data );
+		} else {
+			return $jsonpcallback . '(' . json_encode ( $data ) . ')';
+		}
+	}
+	/**
+	 * 后台ajax交互或信息返回通用接口
+	 * 如果是非ajax请求则效果同showmsg,否则返回json
+	 *
+	 * 注意本函数在控制器中调用，请使用return 进行返回，为方便高度的需求本函数并没有中止脚本运行
+	 * 正式环境下请使用return。
+	 *
+	 * @param $msg string
+	 *        	信息内容
+	 * @param $state int
+	 *        	是否显示对话框 0直接在表单上提示，1对话框架不自动关闭，2其它自动关闭的对话框
+	 * @param $field string
+	 *        	高亮的字段
+	 * @param $url string
+	 *        	对话框跳转地址
+	 * @param $linktext string
+	 *        	如果类型是ajaxask时且linktext不为空时设置链接文本
+	 *        	
+	 * @return boolean
+	 */
+	public function printmsg($msg, $state = 1, $field = null, $url = null, $linktext = null) {
+		if (zbj_lib_BaseUtils::isAjax ()) {
+			return json_encode ( array (
+					'state' => $state,
+					'msg' => $msg,
+					'url' => $url,
+					'field' => $field,
+					'linktext' => $linktext
+			) );
+		} else {
+			return $this->ShowMsg ( $msg, $url );
+		}
+	}
+	/**
+	 * 设置相关字段
+	 *
+	 * @param unknown_type $inPath        	
+	 * @return Ambigous <boolean, string>
+	 */
+	public function pagesetField($inPath) {
+		$signature = $_GET ['signature'];
+		unset ( $_GET ['signature'] );
+		ksort ( $_GET );
+		$signaturestr = md5 ( "TE8GUKF(>TsZanZ{#'B'" );
+		foreach ( $_GET as $k => $v ) {
+			$signaturestr .= '=' . $k . '-' . $v;
+		}
+		if (md5 ( $signaturestr ) != $signature) {
+			return $this->printmsg ( "签名错误." );
+		}
+		if ($_GET ['model'] && $_GET ['pkid'] && $_GET ['field'] && isset ( $_GET ['value'] )) {
+			$m_model = zbj_model_api::get ( $_GET ['model'], $_GET ['pkid'] );
+			$m_model->set ( $_GET ['field'], $_GET ['value'] );
+			if ($m_model->save ()) {
+				return $this->printmsg ( "操作成功", 1, null, $_SERVER ['HTTP_REFERER'] );
+			}
+		} else {
+			return $this->printmsg ( "操作失败" );
+		}
+	}
+	/**
+	 * 数据签名
+	 *
+	 * @param unknown_type $array        	
+	 * @return string
+	 */
+	public function signtrue($array) {
+		ksort ( $array );
+		$signaturestr = md5 ( "TE8GUKF(>TsZanZ{#'B'" );
+		foreach ( $array as $k => $v ) {
+			$signaturestr .= '=' . $k . '-' . $v;
+		}
+		return urlencode ( md5 ( $signaturestr ) );
+	}
+	/**
+	 * API数据编码
+	 *
+	 * @param string $data
+	 *        	数据
+	 * @param string $status
+	 *        	状态>0的代表正常执行的各种返回，小于0代表出错的各种返回，0无意义
+	 * @param string $codestr
+	 *        	状态说明
+	 * @param string $type
+	 *        	返回数据类型默认是json,目前只支持json
+	 */
+	public function apiout($data, $code = 0, $codestr = '', $type = 'json') {
+		if (strtolower ( $type ) == 'json') {
+			echo json_encode ( array (
+					'code' => $code,
+					'codestr' => $codestr,
+					'data' => $data 
+			) );
+		}
+		exit ();
+	}
+	function pageBar($total_size, $limit, $curr_page, $inPath, $style = 'style5', $getPath = null, $domain = '') {
+		$style = $style =='style6'?"style6":'style5'; // 统一样式
+		$total_page = min ( ceil ( $total_size / $limit ), 500 );
+		$curr_page = min ( $total_page, $curr_page );
+		$curr_page = $curr_page ? $curr_page : 1;
+		$prePage = $curr_page - 1;
+		$nextPage = $curr_page >= $total_page ? '' : $curr_page + 1;
+		$offset = ($curr_page - 1) * $limit;
+		$startData = $total_size ? ($offset + 1) : 0;
+		$endData = min ( $offset + $limit, $total_size );
+		$pars = zbj_lib_BaseUtils::saddslashes ( $this->getUrlParams ( $inPath ) );
+		$params = array ();
+		$pageStart = max ( ($curr_page - zbj_lib_Constant::PAGE_SIZE / 2), 1 );
+		$pageEnd = min ( ($pageStart - 1 + zbj_lib_Constant::PAGE_SIZE), $total_page );
+		$j = 0;
+		if ($getPath == null) {
+			$getPath = '?' . ltrim ( $_SERVER ['QUERY_STRING'], '?' );
+		} else {
+			$getPath = '?' . ltrim ( $getPath, '?' );
+		}
+		for($i = $pageStart; $i <= $pageEnd; $i ++) {
+			$p = $i;
+			$params ['pages'] [$j] ['page'] = $p;
+			if ($p > 1) {
+				$pars ['page'] = $p;
+			} else {
+				$pars ['page'] = '';
+			}
+			$params ['pages'] [$j] ['url'] = Surl::createUrl ( "/{$inPath[1]}/{$inPath[2]}", $pars, $domain ) . $getPath;
+			$j ++;
+		}
+		$pars ['page'] = '';
+		$params ['first'] = Surl::createUrl ( "/{$inPath[1]}/{$inPath[2]}", $pars, $domain ) . $getPath;
+		$pars ['page'] = $total_page;
+		$params ['last'] = Surl::createUrl ( "/{$inPath[1]}/{$inPath[2]}", $pars, $domain ) . $getPath;
+		$pars ['page'] = $prePage > 1 ? $prePage : '';
+		if (! empty ( $prePage ))
+			$params ['prepg'] = Surl::createUrl ( "/{$inPath[1]}/{$inPath[2]}", $pars, $domain ) . $getPath;
+		$pars ['page'] = $nextPage;
+		if (! empty ( $nextPage ))
+			$params ['nextpg'] = Surl::createUrl ( "/{$inPath[1]}/{$inPath[2]}", $pars, $domain ) . $getPath;
+		$params ['total_page'] = $total_page; // 总页数
+		$params ['startdata'] = $startData;
+		$params ['enddata'] = $endData;
+		$params ['start'] = 0;
+		$params ['max'] = $j;
+		$params ['currpage'] = $curr_page;
+		$params ['page_limit'] = $limit;
+		return $this->render ( "common/page/{$style}.html", $params );
+	}
+	/**
+	 * 添加日志
+	 *
+	 * @param int $pk_id
+	 *        	主键编号
+	 * @param string $content
+	 *        	日志内容
+	 * @param string $type
+	 *        	日志类型，见com\zhubajie\boss\dataobject\log\logProduct
+	 * @return int
+	 */
+	public function addLog2($pk_id, $content = '', $type = com\zhubajie\boss\dataobject\bosslog\logProduct::task,$product_status = 0 ) {
+		lib_BaseUtils::apiInit();
+		$s_log=new com\zhubajie\boss\interfaces\bosslogServiceClient(null);
+		lib_BaseUtils::apigetclient($s_log);
+		$logIitem=new com\zhubajie\boss\dataobject\bosslog\logDo();
+		$logIitem->content=$content;
+		$logIitem->product_id=$pk_id;
+		$reflectionClass = new ReflectionClass ( new com\zhubajie\boss\dataobject\bosslog\logProduct() );
+		$types = $reflectionClass->getConstants ();
+		$types = array_flip ( $types );
+		if (! isset ( $types [$type] )) {
+			throw new Exception('指定产品类型不存在');
+			return false;
+		}
+		$logIitem->product_type=$type;
+		$logIitem->cp_user_id=$this->_userid;
+		$logIitem->product_status=$product_status;
+		$log=$s_log->addLog($logIitem);
+		if($log->success){
+			return true;
+		}else{
+			throw new Exception('增加日志失败'.$log->codestr);
+			return false;
+		}
+	}
+	/**
+	 * 添加日志
+	 * 
+	 * @param int $pk_id
+	 *        	主键编号
+	 * @param string $content
+	 *        	日志内容
+	 * @param string $type
+	 *        	日志类型，见lib_BaseUtils::type2id
+	 * @param int $origin
+	 *        	来源，0：后台，1：前台
+	 * @param int $create_time
+	 *        	创建时间
+	 * @return int
+	 */
+	public function addLog($pk_id, $content = '', $type = 'task', $origin = 0, $create_time = 0) {
+		$sLog = new service_log ();
+		return $sLog->addLog ( $this->_userid, $pk_id, $content, $type, $origin, $create_time);
+	}
+	/**
+	 * 生成token
+	 * @return number
+	 */
+	public function gettoken(){
+		$s_otp = new service_otpauth ( $this->_otpauth );
+		return $s_otp->getverifye();
+	}
+	/**
+	 * 验证token
+	 * @param unknown $token
+	 * @return Ambigous <boolean, number>
+	 */
+	public function validatetoken($token) {
+		$s_otp = new service_otpauth ( $this->_otpauth );
+		return $s_otp->verify ( $token );
+	}
+	/**
+	 * 生成token
+	 * @author tanqing
+	 * @date 2015-1-29
+	 */
+	public function getReqToken(){
+		$s_otp = new service_otpauth ( $this->_otpauth );
+		return $s_otp->getverifye();
+	}
+	
+	/**
+	 * 验证req token
+	 * @author tanqing
+	 * @date 2015-1-30
+	 * @param unknown $token  token
+	 * @param string $isdel   是否删除
+	 * @param number $timeout 超时时间
+	 * @return Ambigous <boolean, number>
+	 */
+	public function checkReqToken($token,$isdel = false,$timeout = 60){
+		$s_otp = new service_otpauth ( $this->_otpauth );
+		$res = $s_otp->verify($token,$timeout);
+		if ($isdel) {
+			$this->delReqToken();
+			$_SESSION['checklogin_time']= 0 ;
+			$_SESSION['checklogin_otpauth'] =null;
+		}
+		return $res;
+	}
+	/**
+	 * 更新token
+	 * @author tanqing
+	 * @date 2015-1-29
+	 * @param unknown $token
+	 */
+	public function delReqToken(){
+		lib_BaseUtils::apiInit();
+		$ssoClient =new com\zhubajie\boss\interfaces\ssoServiceClient(null);
+		lib_BaseUtils::apigetclient($ssoClient);
+		list($user_id,$auth_uuid,$token)=explode('|', SCrypt::superrc4($_COOKIE['bossauth'],'decode',lib_Constant::BOSSAUTH_APPKEY));
+		return $ssoClient->refreshReqToken($user_id, $token);
+	}
+}

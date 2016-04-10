@@ -1,0 +1,30 @@
+<?php
+/**
+* 类自动导入配置文件
+*/
+//引入框架
+require_once("../SlightPHP/SlightPHP.php");
+//定义框架自带插件目录
+define("PLUGINS_DIR","../SlightPHP/plugins");
+//定义猪八戒网核心模块目录
+define("ZBJCORE_DIR","../SlightPHP/zbjcore");
+if (extension_loaded('xhprof')) {xhprof_enable(); }
+
+//模板路径
+define('SMARTY_TPLS', dirname(dirname(__FILE__)) . '/smarty_tpls/task');
+/**
+* 自动加载类
+*/
+function __autoload($class) {
+	$file = '';
+	if($class{0} == 'S') {			//加载框架类
+		$file = PLUGINS_DIR."/$class.class.php";
+	}else if('zbj' == substr($class,0,3)) {	//加载猪八戒网核心模块
+		$file = ZBJCORE_DIR.'/'.str_replace('_','/',substr($class, 4)).'.class.php';
+	}else {					//加载当前应用类
+		$file = SlightPHP::$appDir.'/'.str_replace('_','/',$class).'.class.php';
+	}
+	'if(file_exists($file)) return require_once($file);
+}
+
+spl_autoload_register('__autoload');

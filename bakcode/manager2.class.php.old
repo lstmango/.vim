@@ -1,0 +1,59 @@
+<?php
+/**
+ * 需求分配审核顾问
+ * User: switch
+ * Date: 2015/7/8
+ * Time: 11:23
+ */
+
+class consumer_service_allot_manager2 extends components_baseservice{
+    //当前业务主数据表
+    protected $marter_table = 'zbj_model_mk_task';
+
+    public function __construct($id=0){
+        parent::__construct();
+        $this->setId($id);
+    }
+
+    /**
+     * 检查需求是否允许分配审核顾问
+     * @param $data
+     */
+    private function checkVerify($taskInfo){
+
+        if(empty($taskInfo['task_id'])){
+            throw new Exception('需求号异常');
+        }
+
+        if($taskInfo['open_state'] == 1){
+            throw new Exception('该需求已经被关闭，无法操作');
+        }
+
+    }
+
+    /**
+     * 将需求分配给审核顾问
+     * @param $data
+     */
+    public function toVerifyManager($data){
+
+        $data['task_id'] = intval($data['task_id']);
+        $taskService = new zbj_service_task($data['task_id']);
+        $taskService = $taskService->init();
+        $taskInfo = $taskService->get('*');
+
+        //需求有交易顾问或者需求模式不是雇佣||招标  退出
+        if(!empty($taskInfo['manager_id']) || !empty($taskInfo['manager_id2'])  || (!in_array($taskInfo['mode'], array(10,13))) ){
+            return true;
+        }
+
+        //验证需求是否需要审核
+        $this->checkVerify($taskInfo);
+
+        $verifyService = new zbj_service_taskverify($data['task_id']);
+        if($verifyService->toVerify($taskService) === false){
+            throw new Exception('需求分配审核人员失败');
+        }
+        return true;
+    }
+}

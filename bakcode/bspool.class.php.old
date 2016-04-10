@@ -1,0 +1,271 @@
+<?php
+/**
+ * 订单分配系统商机待分配任务池子
+ */
+class zbj_service_allot_bspool extends zbj_components_baseservice {
+	
+	protected $id;
+	protected $marter_table = 'zbj_model_mk_allotpool';
+	private $startWeights=0;
+	
+	/**
+	 * 构造函数
+	 */
+	public function __construct($id=0) {
+		parent::__construct();
+		$this->id = $id;
+	}
+	
+	/**
+	 * 将需求加入待分配池子
+	 * @param	object	$srvTask
+	 * @return bool
+	 * */
+	public function pushToAllotPool(&$srvTask){
+		return true;
+	}
+	
+	/*
+	 *获取任务权重值
+	 */
+	private function _get_task_weights($task){
+		if($task['mode']==10 && $task['allot']==3){
+			$weights=1;
+		}
+		elseif($task['mode']==11 || $task['mode']==12){
+			$weights=2;
+		}
+		elseif($task['mode']==10 && $task['allot']!=3){
+			$weights=3;
+		}
+		elseif($task['mode']==13){
+			$weights=4;
+		}
+		else{
+			$weights=1;
+		}
+		return $weights;
+	}
+	
+	/**
+	 * 将需求从待分配池子里释放出来，不需进行分配
+	 * @param	object	$srvTask
+	 * @param	string	$reason
+	 * @return bool
+	 * @author lidacheng
+	 * */
+	public function releaseFromAllotPool(&$bsArray,$reason=''){
+		if(empty($bsArray)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		
+		try{
+			$this->_beginTransaction('mk');
+			$poolCondition = array(
+				'task_id'	=> $bsArray['bs_to_ct_id'],
+				'type'		=> 2,
+			);
+			$uppool = array(
+				'allotstate'	=> 0,
+				'needallot'		=> 0,
+			);
+			
+			$allotPoolModule = zbj_model_api::get('zbj_model_mk_allotpool');
+			$poolSaveResult = $allotPoolModule->update($poolCondition,$uppool);
+			
+			if(!$poolSaveResult){
+				throw new Exception('从待分配池子释放需求失败');
+			}
+			
+			$this->_commit('mk');
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			$this->addLog2($bsArray['bs_to_ct_id'],array($e->getMessage()),30,2);
+			return false;
+		}
+		
+		$this->addLog2($bsArray['bs_to_ct_id'],'已从池子释放'.$reason,30,2);
+		
+		return true;
+	}
+	
+	
+	/**
+	 * 分配失败，将需求重新放入池子
+	 * 		如果是晚上的需求，会直接放入到第二天的延迟分配池子当中
+	 * @param	object		$srvTask
+	 * @param	bool		$isdelay	是否延迟系统调用
+	 * @return	bool
+	 * */
+	public function repushToAllotPool(&$bsArray,$isdelay=false){
+		if(empty($bsArray)){
+			$this->setError(0,'传递的参数错误');
+			return false;
+		}
+		
+		$nowhour = date('H',time());
+		$nowdate = date('Y-m-d');
+		
+		
+		try{
+			$this->_beginTransaction('mk');
+			
+			$this->setId($bsArray['bs_to_ct_id']);
+			$taskpool = $this->get();
+			if(empty($taskpool['task_id'])){
+				throw new Exception('在待分配池子内没有找到该需求');
+			}
+			
+			if($isdelay){ // 延迟系统调用，重置参数
+				$isaudit = -1;
+				$updata = array(
+					'needallot'		=> 1,
+					'allotstate'	=> 0,
+					'next_chktime'		=> $this->_time+5,
+					'begin_chktime'		=> $this->_time+5,
+				);
+			#2015-09-29由晚上11点改为晚上10点
+			}else if(($nowhour>=22 || $nowhour<9) && ($nowdate==$bsArray['createymd'])){
+				$isaudit = -2; // 无人上班的时间段，直接进第二天的延迟分配池子
+				$updata = array(
+					'needallot'		=> -2,
+					'allotstate'	=> 0,
+					'next_chktime'		=> 0,
+					'begin_chktime'		=> 0,
+				);
+			}else if($taskpool['next_chktime']-$taskpool['begin_chktime']>600){ // 已在池子中超过10分钟
+				#2015-09-29由晚上8点改为晚上10点
+				if(($nowhour >= 22 || $nowhour<9) && ($nowdate==$bsArray['createymd'])){
+					$isaudit = -2; // 进第二天的延迟分配池子
+					$updata = array(
+						'needallot'		=> 0,
+						'allotstate'	=> -2,
+						'next_chktime'		=> 0,
+						'begin_chktime'		=> 0,
+					);
+				}else{	#改为盲抢	2015-9-7
+					$isaudit = 1;
+					$updata = array(
+						'needallot'		=> 2,//盲抢
+						'allotstate'	=> 0,
+						'next_chktime'		=> $this->_time,
+					);
+				}
+			}else{ // 正常延迟
+				$isaudit = -1;
+				$updata = array(
+					'allotstate'	=> 0, // 分配失败，标识为0后正常重试
+					'next_chktime' 	=> $this->_time+120,
+				);
+			}
+
+			
+			if($updata['needallot']==2){
+				$grabData=array(
+					'task_id'  => $bsArray['bs_to_ct_id'],
+					'type'  => 2,
+					'weights'	=> $taskpool['weights'],
+					'createtime'  => time(),
+				);
+				$allotGrabPoolModule = zbj_model_api::get('zbj_model_mk_allotgrabpool');
+				$insertResult = $allotGrabPoolModule->insert($grabData);
+				if(!$insertResult){
+					throw new Exception('任务写入盲抢池失败');
+				}
+			}
+			$poolCondition = array(
+				'task_id'	=> $bsArray['bs_to_ct_id'],
+				'type'		=> 2,
+			);
+			$allotPoolModule = zbj_model_api::get('zbj_model_mk_allotpool');
+			$poolSaveResult = $allotPoolModule->update($poolCondition,$updata);
+			if(!$poolSaveResult){
+				throw new Exception('更新池子失败');
+			}
+			
+			$this->_commit('mk');	
+			
+		}catch(Exception $e){
+			$this->_rollBack('mk');
+			$this->setError(0,$e->getMessage());
+			return false;
+		}
+		switch($isaudit){
+			case 1:
+				$log = '放弃分配，交由审核系统处理';
+				break;
+			case -2:
+				$log = '需第二天延迟分配';
+				break;
+			default:
+				$log = '已重新放入池子';
+				break;
+		}
+		if($updata['needallot']==2){
+			$log='放弃分配，进入盲抢池';
+		}
+		if($isaudit==1 || $isaudit==-2){
+			$this->addLog2($bsArray['bs_to_ct_id'],$log,30,2);
+		}
+		
+		return true;
+	}
+	
+
+	public function addLog2($pk_id, $content = '', $type=30,$product_status = 0 ) {
+		$data=array(
+			'content' => $content,
+			'type_id' => $type,
+			'pk_id' => $pk_id,
+			'status' => $product_status,
+			'create_date' => date('Y-m-d',time()),
+			'create_time' => time(),
+			'local_time' => time(),
+			'origin' => 0,
+			'is_log' => 1,
+			'user_id' => 0,
+			'name' => '系统',
+		);
+		$cpRemarkModule = zbj_model_api::get('zbj_model_cp_remark');
+		$insertResult=$cpRemarkModule->insert($data);
+
+		if($insertResult){
+			return true;
+		}else{
+			throw new Exception('增加日志失败');
+			return false;
+		}
+	}
+
+	public function addLog3($pk_id, $content = '', $type=30,$product_status = 0 ) {
+		$timeout = 10;
+		$sdk_lib=array('zbj_sdk','zbj_boss_sdk', 'ub-client');
+		zbj_lib_ApiClient::init(zbj_lib_Constant::ZBJAPI_APPID,zbj_lib_Constant::ZBJAPI_APPSECRET,$timeout,$sdk_lib);
+		$s_log=new com\zhubajie\boss\interfaces\bosslogServiceClient(null);
+		zbj_lib_ApiClient::build ( $s_log );
+		$logIitem=new com\zhubajie\boss\dataobject\bosslog\logDo();
+		$logIitem->content=$content;
+		$logIitem->product_id=$pk_id;
+		$reflectionClass = new ReflectionClass ( new com\zhubajie\boss\dataobject\bosslog\logProduct() );
+		$types = $reflectionClass->getConstants ();
+		$types = array_flip ( $types );
+		if (! isset ( $types [$type] )) {
+			throw new Exception('指定产品类型不存在');
+			return false;
+		}
+		$logIitem->product_type=$type;
+		$logIitem->cp_user_id=0;
+		$logIitem->product_status=$product_status;
+		$log=$s_log->addLog($logIitem);
+			throw new Exception('增加日志失败'.$log->codestr);
+		if($log->success){
+			return true;
+		}else{
+			throw new Exception('增加日志失败'.$log->codestr);
+			return false;
+		}
+	}
+}

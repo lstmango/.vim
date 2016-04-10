@@ -1,0 +1,135 @@
+<?php
+
+/**
+ * 缓存
+ * Class zbj_lib_cache
+ */
+class zbj_lib_cache
+{
+
+    protected $_cache;
+
+    function __construct($cache_engine = 'memcache')
+    {
+
+        $cache_engine = strtolower($cache_engine);
+        if ($cache_engine == 'file') {
+            $this->_cache = SCache::getCacheEngine($cache_engine = "File");
+            if (!$this->_cache) {
+                return false;
+            }
+            $cache_dir = $this->getFileCachePath();
+            $this->_cache->init(array("dir" => $cache_dir, "depth" => 2));
+        } else {
+            if ($cache_engine == 'apc') {
+                $this->_cache = SCache::getCacheEngine($cache_engine = "APC");
+                if (!$this->_cache) {
+                    return false;
+                }
+            } else {
+                if ($cache_engine == 'memcache' || $cache_engine == 'memcached') {
+                    $this->_cache = SCache::getCacheEngine("Memcache");
+                    if (!$this->_cache) {
+                        return false;
+                    }
+                    $this->_cache->init(array('servers' => zbj_lib_Constant::MEMCACHE_SERVERS));
+                } else {
+                    if ($cache_engine == 'redis') {
+                        $this->_cache = SCache::getCacheEngine('redis');
+                        //exit();
+                        $this->_cache->init(zbj_lib_Constant::REDIS_SERVER);
+                        if (!$this->_cache) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * 获取文件缓存的文件夹路径
+     * @return string
+     */
+    private function getFileCachePath()
+    {
+        $cache_dir_prefix_primary = "/dev/shm";
+        $cache_dir_prefix_secondary = "/tmp";
+        if (zbj_lib_BaseUtils::isHostWindows()) {
+            $cache_dir_prefix = $this->getSysTempDir();
+        } else {
+            if (is_dir($cache_dir_prefix_primary) && is_writable($cache_dir_prefix_primary)) {
+                $cache_dir_prefix = $cache_dir_prefix_primary;
+            } elseif (is_dir($cache_dir_prefix_secondary) && is_writable($cache_dir_prefix_secondary)) {
+                $cache_dir_prefix = $cache_dir_prefix_secondary;
+            } else {
+                $cache_dir_prefix = $this->getSysTempDir();
+
+            }
+        }
+        $data_dir = 'file_cache_php';
+        $cache_dir = $cache_dir_prefix . DIRECTORY_SEPARATOR . $data_dir;
+
+        return $cache_dir;
+    }
+
+    /**
+     * 取系统临时目录 方法不存在时取web目录（insecure !）
+     * @return mixed
+     */
+    private function getSysTempDir()
+    {
+        $function_name_tmp_dir = 'sys_get_temp_dir';
+        if (function_exists($function_name_tmp_dir)) {
+            return $function_name_tmp_dir();
+        } else {
+            return $_SERVER['DOCUMENT_ROOT'];
+        }
+    }
+
+    /**
+     * set cache item
+     * @param $name
+     * @param $value
+     * @param int $timestamp
+     * @return mixed
+     */
+    function set($name, $value, $timestamp = -1)
+    {
+        return $this->_cache->set($name, $value, $timestamp);
+    }
+
+    /**
+     * get cached item
+     * @param $name
+     * @return mixed
+     */
+    function get($name)
+    {
+        return $this->_cache->get($name);
+    }
+
+    /**
+     * del cached item
+     * @param $name
+     * @return mixed
+     */
+    function del($name)
+    {
+        return $this->_cache->del($name);
+    }
+
+    /**
+     * get cache object
+     * @return CacheObject
+     */
+    function getCacheObject()
+    {
+        return $this->_cache;
+    }
+
+}
