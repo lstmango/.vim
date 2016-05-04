@@ -205,7 +205,7 @@ nmap <silent> <C-s> :%s///gn<cr>
 	"cs a E:\wamp\www\zbjno28zpbk_2\cscope.out
 	"cscope -Rbkq
 "cs a E:\web\zbjv6\cscope.out
-"cs add /data/www/html/zbjv6/cscope.out
+cs add /data/www/html/zbjv6/cscope.out
 set nocst    "在cscope数据库添加成功的时候不在命令栏现实提示信息.
 set cspc=6 "cscope的查找结果在格式上最多显示6层目录.
 let g:autocscope_menus=0 "关闭autocscope插件的快捷健映射.防止和我们定义的快捷键冲突.
@@ -296,7 +296,7 @@ Bundle 'ctrlpvim/ctrlp.vim'
 let g:ctrlp_working_path_mode = 'cra'
 
 "批量执行，高亮后C-n C-x跳过 C-p上一个 
-Bundle 'terryma/vim-multiple-cursors'
+"Bundle 'terryma/vim-multiple-cursors'
 let g:multi_cursor_next_key='<S-n>'
 let g:multi_cursor_prev_key='<S-p>'
 let g:multi_cursor_skip_key='<S-x>'
