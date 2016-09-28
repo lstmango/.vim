@@ -188,8 +188,8 @@ let g:winManagerWindowLayout = "TagList"
 "设置winmanager的宽度，默认为25
 let g:winManagerWidth = 30
 "定义打开关闭winmanager快捷键为F8
-"nmap <silent> <F8> :WMToggle<cr>
-nmap <silent> <A-8> :WMToggle<cr>
+nmap <silent> <F3> :WMToggle<cr>
+"nmap <silent> <A-8> :WMToggle<cr>
 "在进入vim时自动打开winmanager,1为自动，0为不启动
 let g:AutoOpenWinManager = 0
 
@@ -212,21 +212,21 @@ let g:autocscope_menus=0 "关闭autocscope插件的快捷健映射.防止和我�
 set cscopequickfix=s-,c-,d-,i-,t-,e-  
 
 "s:查找即查找C语言符号出现的地方
-nmap <A-s> :cs find s <C-R>=expand("<cword>")<CR><CR>
+cmap <C-s> :cs find s <C-R>=expand("<cword>")<CR><CR>
 "g:查找函数、宏、枚举等定义的位置
-nmap <A-g> :cs find g <C-R>=expand("<cword>")<CR><CR>
+cmap <C-g> :cs find g <C-R>=expand("<cword>")<CR><CR>
 "c:查找光标下的函数被调用的地方
-nmap <A-c> :cs find c <C-R>=expand("<cword>")<CR><CR>
+cmap <C-c> :cs find c <C-R>=expand("<cword>")<CR><CR>
 "t: 查找指定的字符串出现的地方
-nmap <A-t> :cs find t <C-R>=expand("<cword>")<CR><CR>
+cmap <C-t> :cs find t <C-R>=expand("<cword>")<CR><CR>
 "e:egrep模式查找,相当于egrep功能
-nmap <A-e> :cs find e <C-R>=expand("<cword>")<CR><CR>
+"cmap <C-e> :cs find e <C-R>=expand("<cword>")<CR><CR>
 "f: 查找文件名,相当于lookupfile
-nmap <A-f> :cs find f <C-R>=expand("<cfile>")<CR><CR>
+"cmap <C-f> :cs find f <C-R>=expand("<cfile>")<CR><CR>
 "i: 查找当前文件名出现过的地方
-nmap <A-i> :cs find i ^<C-R>=expand("<cfile>")<CR>$<CR>
+"cmap <C-i> :cs find i ^<C-R>=expand("<cfile>")<CR>$<CR>
 "d: 查找本当前函数调用的函数
-nmap <A-d> :cs find d <C-R>=expand("<cword>")<CR><CR>
+"cmap <C-d> :cs find d <C-R>=expand("<cword>")<CR><CR>
 
 "
 "
@@ -247,6 +247,32 @@ set rtp+=~/.vim/bundle/vundle/
 "此处规定插件的安装路径
 call vundle#rc()
 Bundle 'gmarik/vundle'
+
+"生成自动注释
+Bundle 'vim-scripts/DoxygenToolkit.vim'
+let g:DoxygenToolkit_briefTag_pre="@Synopsis  " 
+let g:DoxygenToolkit_paramTag_pre="@Param " 
+let g:DoxygenToolkit_returnTag="@Returns   " 
+let g:DoxygenToolkit_blockHeader="--------------------------------------------------------------------------" 
+let g:DoxygenToolkit_blockFooter="----------------------------------------------------------------------------" 
+let g:DoxygenToolkit_authorName="Mathias Lorente" 
+let g:DoxygenToolkit_licenseTag="My own license"  
+
+Bundle 'rking/ag.vim'
+
+"状态栏增强展示
+Bundle 'bling/vim-airline'
+if !exists('g:airline_symbols')
+	let g:airline_symbols = {}
+endif
+let g:airline_left_sep = '▶'
+let g:airline_left_alt_sep = '❯'
+let g:airline_right_sep = '◀'
+let g:airline_right_alt_sep = '❮'
+let g:airline_symbols.linenr = '¶'
+let g:airline_symbols.branch = '⎇'
+" 是否打开tabline
+"let g:airline#extensions#tabline#enabled = 1
 
 Bundle 'scrooloose/nerdtree'
 "imap <F9> <ESC>:NERDTreeToggle<CR>
