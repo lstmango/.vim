@@ -497,6 +497,8 @@ func! CompileRunGcc()
 	elseif &filetype == 'sh'
 	   :!time bash %
 	elseif &filetype == 'python'
-	exec "!time python3.5 %"
+		exec "!time python %"
+	elseif &filetype == 'php'
+	   exec "!php %"
 	endif
 endfunc
