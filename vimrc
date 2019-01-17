@@ -286,12 +286,12 @@ nmap <silent> <F2> :NERDTreeToggle<CR>
 
 "Bundle 'AutoComplPop'
 "html,css自动提示
-Bundle 'NeoComplCache'
+"Bundle 'NeoComplCache'
 let g:neocomplcache_enable_at_startup = 1
 "
 "
 "自动补全插件
-"Bundle 'Valloric/YouCompleteMe'
+Bundle 'Valloric/YouCompleteMe'
 "YouCompleteMe智能补全工具
 let g:ycm_global_ycm_extra_conf = '~/.vim/bundle/YouCompleteMe/third_party/ycmd/cpp/ycm/.ycm_extra_conf.py'
 " 不显示开启vim时检查ycm_extra_conf文件的信息
@@ -342,6 +342,9 @@ let g:ycm_semantic_triggers =  {
   \ }
 let g:ycm_cache_omnifunc = 1
 let g:ycm_use_ultisnips_completer = 1
+let g:ycm_path_to_python_interpreter='/Users/lstmango/anaconda3/envs/python2/bin/python'
+"let g:ycm_keep_logfiles = 1
+"let g:ycm_log_level = 'debug'
 "定义函数跟踪快捷健
 nnoremap <leader>jd :YcmCompleter GoToDefinitionElseDeclaration<CR>
 
